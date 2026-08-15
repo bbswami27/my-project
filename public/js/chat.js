@@ -316,6 +316,9 @@ class ChatEngine {
         if (modal) modal.classList.remove('active');
       });
     }
+
+    // Initialize Draggable / Movable Chat Bar
+    this.initDraggableChatBar();
   }
 
   renderChatList() {
@@ -1359,6 +1362,115 @@ class ChatEngine {
     this.renderSettingsBlockedList();
     this.updateBlockedStateUI();
     alert('Contact unblocked!');
+  }
+
+  // ================= EMOJI & GIF PICKER =================
+  toggleEmojiPicker(e) {
+    if (e) e.stopPropagation();
+    const container = document.getElementById('emoji-picker-container');
+    if (container) {
+      container.classList.toggle('active');
+    }
+  }
+
+  switchPickerTab(tabName) {
+    const tabEmojis = document.getElementById('picker-tab-emojis');
+    const tabGifs = document.getElementById('picker-tab-gifs');
+    const panelEmojis = document.getElementById('picker-panel-emojis');
+    const panelGifs = document.getElementById('picker-panel-gifs');
+
+    if (tabEmojis) tabEmojis.classList.toggle('active', tabName === 'emojis');
+    if (tabGifs) tabGifs.classList.toggle('active', tabName === 'gifs');
+
+    if (panelEmojis) panelEmojis.style.display = tabName === 'emojis' ? 'grid' : 'none';
+    if (panelGifs) panelGifs.style.display = tabName === 'gifs' ? 'block' : 'none';
+  }
+
+  insertEmoji(emoji) {
+    const textarea = document.getElementById('chat-input-textarea');
+    if (textarea) {
+      const start = textarea.selectionStart || textarea.value.length;
+      const end = textarea.selectionEnd || textarea.value.length;
+      const text = textarea.value;
+      textarea.value = text.substring(0, start) + emoji + text.substring(end);
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
+    }
+  }
+
+  sendGifSticker(gifUrl, title) {
+    const activeChat = this.getActiveChat();
+    if (!activeChat) {
+      alert('Please select or open a chat first!');
+      return;
+    }
+
+    this.sendMessage({
+      type: 'image',
+      mediaUrl: gifUrl,
+      text: title || '🎬 GIF Sticker'
+    });
+
+    const container = document.getElementById('emoji-picker-container');
+    if (container) container.classList.remove('active');
+  }
+
+  // ================= MOVABLE / DRAGGABLE CHAT BAR =================
+  initDraggableChatBar() {
+    const bar = document.getElementById('chat-input-bar-container');
+    const handle = document.getElementById('chat-bar-drag-handle');
+    if (!bar || !handle) return;
+
+    let isDragging = false;
+    let startY = 0;
+    let currentOffsetY = 0;
+
+    const onStart = (clientY) => {
+      isDragging = true;
+      startY = clientY;
+      bar.style.transition = 'none';
+    };
+
+    const onMove = (clientY) => {
+      if (!isDragging) return;
+      const deltaY = startY - clientY;
+      // Allow moving up by up to 200px or down
+      const clampedDelta = Math.max(-10, Math.min(deltaY, 220));
+      currentOffsetY = clampedDelta;
+      bar.style.transform = `translateY(-${clampedDelta}px)`;
+    };
+
+    const onEnd = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      bar.style.transition = 'transform 0.25s ease';
+      // Snap back if moved only slightly, otherwise keep position
+      if (currentOffsetY < 30) {
+        bar.style.transform = 'translateY(0px)';
+        currentOffsetY = 0;
+      }
+    };
+
+    // Mouse drag
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      onStart(e.clientY);
+    });
+    document.addEventListener('mousemove', (e) => onMove(e.clientY));
+    document.addEventListener('mouseup', onEnd);
+
+    // Touch drag
+    handle.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        onStart(e.touches[0].clientY);
+      }
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (isDragging && e.touches.length === 1) {
+        onMove(e.touches[0].clientY);
+      }
+    }, { passive: true });
+    document.addEventListener('touchend', onEnd);
   }
 }
 

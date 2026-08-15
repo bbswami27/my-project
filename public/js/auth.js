@@ -307,11 +307,44 @@ class AuthManager {
   }
 
   logout() {
-    if (confirm('Are you sure you want to log out from this device?')) {
+    if (confirm('Are you sure you want to log out and start a fresh login?')) {
       localStorage.removeItem('chatterpatter_user');
       localStorage.removeItem('gitpit_user');
+      localStorage.removeItem('gitpit_auth_user');
+      sessionStorage.clear();
       this.currentUser = null;
-      window.location.reload();
+
+      // Close open modals
+      document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+
+      // Close active chat
+      if (window.ChatEngine) {
+        window.ChatEngine.closeActiveChat();
+      }
+
+      // Reset avatar
+      const profileAvatar = document.getElementById('current-user-avatar');
+      if (profileAvatar) {
+        profileAvatar.src = 'assets/logo-icon.svg';
+        profileAvatar.title = 'Guest / Logged Out';
+      }
+
+      // Reset login form fields
+      const phoneInput = document.getElementById('mobile-number-input');
+      if (phoneInput) phoneInput.value = '';
+      const stepPhone = document.getElementById('mobile-step-phone');
+      const stepOtp = document.getElementById('mobile-step-otp');
+      if (stepPhone) stepPhone.style.display = 'block';
+      if (stepOtp) stepOtp.style.display = 'none';
+
+      // Open fresh Auth modal
+      const authModal = document.getElementById('auth-overlay-modal');
+      if (authModal) {
+        authModal.classList.add('active');
+        authModal.style.display = 'flex';
+      }
+
+      alert('👋 You have been logged out. Please log in with your phone or email!');
     }
   }
 

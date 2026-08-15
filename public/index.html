@@ -345,12 +345,21 @@
             </div>
           </div>
 
-          <!-- Chat Input Bar -->
-          <div class="chat-input-bar" id="chat-input-bar-container">
+          <!-- Chat Input Bar (Movable / Draggable) -->
+          <div class="chat-input-bar movable-chat-bar" id="chat-input-bar-container">
             
-            <!-- Attachment Buttons -->
-            <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis" onclick="document.getElementById('emoji-picker-container').classList.toggle('active')">😊</button>
-            <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options" onclick="document.getElementById('chat-attach-popup').classList.toggle('active')">📎</button>
+            <!-- Draggable Handle on Chat Bar -->
+            <div class="chat-bar-drag-handle" id="chat-bar-drag-handle" title="Drag to adjust position">
+              <span class="drag-bar-pill"></span>
+            </div>
+
+            <!-- Left Actions: Emojis, Attachments, and Dedicated Active Voice Recording Tab -->
+            <div class="chat-bar-actions-left">
+              <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis & GIFs" onclick="window.ChatEngine && window.ChatEngine.toggleEmojiPicker(event)">😊</button>
+              <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options" onclick="document.getElementById('chat-attach-popup').classList.toggle('active')">📎</button>
+              <button class="input-action-btn voice-tab-btn" id="btn-direct-record-voice" title="Record Voice Note" onclick="window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">🎙️</button>
+            </div>
+            
             <input type="file" id="hidden-file-photo" accept="image/*" style="display: none;">
             <input type="file" id="hidden-file-doc" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style="display: none;">
 
@@ -382,33 +391,90 @@
               </button>
             </div>
 
-            <!-- Text Input Wrapper -->
-            <div class="chat-input-wrapper" id="chat-input-wrapper">
-              <textarea id="chat-input-textarea" class="chat-textarea" rows="1" placeholder="Type a message..."></textarea>
+            <!-- Compact Text Input Wrapper -->
+            <div class="chat-input-wrapper compact-input-wrapper" id="chat-input-wrapper">
+              <textarea id="chat-input-textarea" class="chat-textarea compact-textarea" rows="1" placeholder="Type a message..."></textarea>
             </div>
 
-            <!-- Voice Recording UI Bar -->
+            <!-- Voice Recording Active UI Bar -->
             <div class="recording-bar" id="recording-bar-ui" style="display: none;">
               <div class="recording-indicator"></div>
               <span class="recording-time" id="recording-time-display">0:00</span>
               <button class="recording-cancel-btn" id="btn-cancel-recording">Cancel</button>
             </div>
 
-            <!-- Dedicated Primary Send Arrow Button (➤) -->
-            <button class="send-msg-btn" id="btn-send-message" title="Send Message" onclick="window.ChatEngine && window.ChatEngine.sendMessage()" style="width: 44px; height: 44px; min-width: 44px; background: #00a884; color: #ffffff; border: none; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 168, 132, 0.4); transition: transform 0.15s;">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="#ffffff" style="display: block; margin-left: 2px;">
+            <!-- Dedicated Primary Green Send Arrow Button (➤) -->
+            <button class="send-msg-btn" id="btn-send-message" title="Send Message" onclick="window.ChatEngine && window.ChatEngine.sendMessage()" style="width: 40px; height: 40px; min-width: 40px; background: #00a884; color: #ffffff; border: none; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 168, 132, 0.4); transition: transform 0.15s; flex-shrink: 0;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="#ffffff" style="display: block; margin-left: 2px;">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
               </svg>
             </button>
 
-            <!-- Emoji Picker Popup -->
+            <!-- Emoji & GIF / Sticker Picker Popup -->
             <div class="emoji-picker-container" id="emoji-picker-container">
-              <button class="emoji-btn">😀</button><button class="emoji-btn">😂</button><button class="emoji-btn">😍</button><button class="emoji-btn">🔥</button>
-              <button class="emoji-btn">👍</button><button class="emoji-btn">❤️</button><button class="emoji-btn">🚀</button><button class="emoji-btn">👏</button>
-              <button class="emoji-btn">🙏</button><button class="emoji-btn">😎</button><button class="emoji-btn">🥳</button><button class="emoji-btn">✨</button>
-              <button class="emoji-btn">🎉</button><button class="emoji-btn">💯</button><button class="emoji-btn">💡</button><button class="emoji-btn">☕</button>
-              <button class="emoji-btn">🍕</button><button class="emoji-btn">🇮🇳</button><button class="emoji-btn">🏏</button><button class="emoji-btn">⚡</button>
-              <button class="emoji-btn">🤩</button><button class="emoji-btn">🙌</button><button class="emoji-btn">🌟</button><button class="emoji-btn">🌈</button>
+              <div class="picker-tabs-header">
+                <button class="picker-tab-btn active" id="picker-tab-emojis" onclick="window.ChatEngine && window.ChatEngine.switchPickerTab('emojis')">😊 Emojis</button>
+                <button class="picker-tab-btn" id="picker-tab-gifs" onclick="window.ChatEngine && window.ChatEngine.switchPickerTab('gifs')">🎬 GIFs & Stickers</button>
+              </div>
+
+              <!-- Emojis Grid -->
+              <div class="picker-content-panel active" id="picker-panel-emojis">
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😀')">😀</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😂')">😂</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😍')">😍</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🔥')">🔥</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('👍')">👍</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('❤️')">❤️</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🚀')">🚀</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('👏')">👏</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🙏')">🙏</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😎')">😎</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🥳')">🥳</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('✨')">✨</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🎉')">🎉</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('💯')">💯</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('💡')">💡</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('☕')">☕</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🍕')">🍕</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🇮🇳')">🇮🇳</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🏏')">🏏</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('⚡')">⚡</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🤩')">🤩</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🙌')">🙌</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🌟')">🌟</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🌈')">🌈</button>
+              </div>
+
+              <!-- Animated GIFs & Stickers Grid -->
+              <div class="picker-content-panel" id="picker-panel-gifs" style="display: none;">
+                <div class="gif-cards-grid">
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', 'Namaste 🙏')">
+                    <img src="https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif" alt="Namaste">
+                    <span>🙏 Namaste</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif', 'Celebration 🎉')">
+                    <img src="https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif" alt="Celebrate">
+                    <span>🎉 Party</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif', 'Thumbs Up 👍')">
+                    <img src="https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif" alt="Thumbs Up">
+                    <span>👍 Super</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif', 'Shocked 😲')">
+                    <img src="https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif" alt="Shocked">
+                    <span>😲 Wow</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif', 'Dancing 🕺')">
+                    <img src="https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif" alt="Dance">
+                    <span>🕺 Dance</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/3oKIPnAiaMCws8nOsE/giphy.gif', 'Smart AI 🤖')">
+                    <img src="https://media.giphy.com/media/3oKIPnAiaMCws8nOsE/giphy.gif" alt="AI Robot">
+                    <span>🤖 AI Bot</span>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -906,11 +972,14 @@
           </button>
         </div>
 
-        <!-- 🚪 Prominent Exit Settings Bottom Button -->
+        <!-- 🚪 Exit Settings and Logout Bottom Buttons -->
         <div style="padding-top: 18px; margin-top: 8px; border-top: 2px solid var(--border-subtle); display: flex; gap: 10px;">
-          <button class="auth-submit-btn" id="btn-footer-exit-settings" style="background: var(--brand-green); color: #ffffff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="document.getElementById('app-settings-modal').classList.remove('active')">
+          <button class="auth-submit-btn" id="btn-footer-exit-settings" style="flex: 2; background: var(--brand-green); color: #ffffff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="document.getElementById('app-settings-modal').classList.remove('active')">
             <span>←</span>
-            <span>Exit Settings / Back to Chats</span>
+            <span>Back to Chats</span>
+          </button>
+          <button class="auth-submit-btn btn-logout-account" style="flex: 1; background: var(--brand-danger); color: #ffffff; font-weight: 700; font-size: 13.5px;" onclick="window.AuthManager && window.AuthManager.logout()">
+            🚪 Log Out
           </button>
         </div>
 
