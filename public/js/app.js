@@ -57,10 +57,32 @@ class ChatterApp {
       this.emailMemos = [...window.MOCK_DATA.initialEmailMemos];
     }
 
+    this.deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      this.deferredPrompt = e;
+      const installBtn = document.getElementById('btn-install-pwa-app');
+      if (installBtn) installBtn.style.display = 'flex';
+    });
+
     this.initSocket();
     this.bindEvents();
     this.renderMeetingsTab();
     this.renderEmailTab();
+  }
+
+  promptInstallPWA() {
+    if (this.deferredPrompt) {
+      this.deferredPrompt.prompt();
+      this.deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          alert('🎉 ChatterPatter app installed on your device Home Screen!');
+        }
+        this.deferredPrompt = null;
+      });
+    } else {
+      alert('📱 Phone me App Download / Install karne ke liye:\n\n1. Browser ke top-right 3-dots (⋮) par tap karein.\n2. "Install App" ya "Add to Home Screen" par click karein!\n\nYe bina App store ke direct aapke phone me install ho jayegi! ✨');
+    }
   }
 
   initSocket() {

@@ -22,6 +22,42 @@ class ChatEngine {
       this.chats = [...window.MOCK_DATA.initialChats];
     }
 
+    // Ensure AI Assistant is always present at top of list
+    const aiChatIndex = this.chats.findIndex(c => c.id === 'chat_ai' || c.isAi);
+    const defaultAiChat = {
+      id: 'chat_ai',
+      name: 'ChatterPatter AI 🤖',
+      username: '@ai_assistant',
+      phone: '+91 80000 00000',
+      email: 'ai@chatterpatter.app',
+      isGroup: false,
+      isAi: true,
+      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
+      unreadCount: 1,
+      pinned: true,
+      online: true,
+      messages: [
+        {
+          id: 'm1',
+          senderId: 'ai_assistant',
+          senderName: 'ChatterPatter AI 🤖',
+          text: 'Namaste! 🙏 Main aapka Smart AI Assistant hoon.\n\nMujhse koi bhi sawaal poochein, emails ya leave application likhwayein, coding help lein ya chutkula sunein!',
+          timestamp: '10:00 AM',
+          status: 'read'
+        }
+      ]
+    };
+
+    if (aiChatIndex === -1) {
+      this.chats.unshift(defaultAiChat);
+    } else {
+      this.chats[aiChatIndex].isAi = true;
+      this.chats[aiChatIndex].name = 'ChatterPatter AI 🤖';
+      if (!this.chats[aiChatIndex].messages || this.chats[aiChatIndex].messages.length === 0) {
+        this.chats[aiChatIndex].messages = defaultAiChat.messages;
+      }
+    }
+
     const savedBlocked = localStorage.getItem('gitpit_blocked_contacts');
     if (savedBlocked) {
       try {
@@ -1082,13 +1118,85 @@ class ChatEngine {
 
     this.playAudioPop();
 
-    if (window.ChatterApp && window.ChatterApp.socket) {
+    if (window.ChatterApp && window.ChatterApp.socket && window.ChatterApp.socket.connected) {
       window.ChatterApp.socket.emit('send_message', {
         ...newMsg,
         recipientId: activeChat.id,
         isAiChat: activeChat.isAi || activeChat.id === 'chat_ai'
       });
+    } else if (activeChat.isAi || activeChat.id === 'chat_ai') {
+      this.handleClientAiReply(newMsg.text, senderName);
     }
+  }
+
+  handleClientAiReply(userText, userName) {
+    const activeChat = this.getActiveChat();
+    if (!activeChat) return;
+
+    const statusElem = document.getElementById('active-chat-status');
+    if (statusElem) {
+      statusElem.textContent = '🤖 ChatterPatter AI is typing...';
+      statusElem.classList.add('typing');
+    }
+
+    setTimeout(() => {
+      if (statusElem) {
+        statusElem.textContent = '🤖 Smart AI Assistant • Always Active';
+        statusElem.classList.remove('typing');
+      }
+
+      const query = (userText || '').trim().toLowerCase();
+      let answer = '';
+
+      // Math calculations
+      const mathMatch = (userText || '').match(/^[\d\s\+\-\*\/\(\)\.\^\%]+$/);
+      if (mathMatch && (userText || '').match(/[\+\-\*\/]/)) {
+        try {
+          const sanitized = userText.replace(/[^-()\d/*+.]/g, '');
+          const result = Function(`'use strict'; return (${sanitized})`)();
+          answer = `🧮 **Calculation Result:**\n\`${userText.trim()}\` = **${result}**`;
+        } catch(e) {}
+      }
+
+      if (!answer) {
+        if (/leave application|chhutti|resignation|formal email|write an email|letter/i.test(query)) {
+          answer = `📝 **Professional Draft (Aapke liye):**\n\n**Subject:** Application for Leave / Urgent Work\n\nRespected Sir/Madam,\n\nI am writing to formally request leave of absence from [Start Date] to [End Date] due to [urgent personal work / health reason]. I will ensure that all my pending tasks are coordinated and I remain reachable via email for urgent matters.\n\nKindly grant me leave for the specified duration.\n\nThanking you,\nYours sincerely,\n**${userName || 'Friend'}**`;
+        } else if (/joke|chutkula|hasao|shayari|funny|comedy/i.test(query)) {
+          const jokes = [
+            `😂 **Chutkula:**\n\nTeacher: "Batao, sabse zyada bijli kahan banti hai?"\nStudent: "Sir, hamare padosi ke ghar me!"\nTeacher: "Kaise?"\nStudent: "Kyunki wahan din-raat 'shanti' naam ki ladki chalti hai aur sab kehte hain 'Shanti me bahut power hai!' 🤣⚡`,
+            `✨ **Shayari:**\n\n*Manzil unhi ko milti hai, jinke sapno me jaan hoti hai...*\n*Pankho se kuch nahi hota, hauslo se udaan hoti hai!* 🦅🔥`
+          ];
+          answer = jokes[Math.floor(Math.random() * jokes.length)];
+        } else if (/hi|hello|hey|namaste|kem cho|pranam/i.test(query)) {
+          answer = `Namaste ${userName || 'Friend'}! 🙏✨\n\nMain aapka **Smart AI Assistant** hoon. Main aapke kisi bhi sawaal ka jawaab de sakta hoon:\n\n• 💡 **Sawaal-Jawaab & General Knowledge**\n• ✍️ **Emails, Applications & Letters likhna**\n• 💻 **Programming & Coding Help**\n• 🌐 **Language Translation (Hindi/English)**\n• 📞 **Audio/Video Calling & Screen Sharing Help**\n\nAap mujhse abhi kya poochna chahte hain?`;
+        } else if (/video call|screen share|screen sharing/i.test(query)) {
+          answer = `📹 **Video Calling & Screen Sharing Guide:**\n\n• **Video Call:** Chat header me **📹 Video Icon** par tap karein.\n• **Screen Share:** Call ke dauran neeche **🖥️ Screen Share** button dabayein aur window choose karein!\n• **Mic/Camera:** Call ke waqt aap **🎤 Mic** aur **📹 Camera** aasani se toggle kar sakte hain.`;
+        } else if (/code|javascript|python|html|css|react/i.test(query)) {
+          answer = `💻 **Coding Assistant:**\n\nYeh raha ek clean example:\n\`\`\`javascript\n// Quick Search Filter Function\nfunction filterItems(items, query) {\n  return items.filter(item => \n    item.name.toLowerCase().includes(query.toLowerCase())\n  );\n}\n\`\`\`\nAap kisi bhi specific language me coding sawal pooch sakte hain!`;
+        } else {
+          answer = `🤖 **Smart AI Answer:**\n\nAapke sawaal *"**${userText}**"* ke baare me:\n\n• Yeh ek bahut badiya topic hai. Main ispar aapko poori jankari aur guidance de sakta hoon.\n• Aap mujhse leave applications, programming code, jokes, translation ya calculation bhi karwa sakte hain! 💡`;
+        }
+      }
+
+      const aiReplyMsg = {
+        id: 'msg_ai_' + Date.now(),
+        chatId: activeChat.id,
+        senderId: 'ai_assistant',
+        senderName: 'ChatterPatter AI 🤖',
+        senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
+        text: answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        createdAt: Date.now(),
+        status: 'read'
+      };
+
+      activeChat.messages.push(aiReplyMsg);
+      this.saveChats();
+      this.renderMessages();
+      this.renderChatList();
+      this.scrollToBottom();
+      this.playAudioPop();
+    }, 600);
   }
 
   openEditModal(msgId) {

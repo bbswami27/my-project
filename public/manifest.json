@@ -1,0 +1,17 @@
+{
+  "name": "ChatterPatter",
+  "short_name": "ChatterPatter",
+  "description": "Real-time Social Chatting, Smart AI Assistant, Video Calls & Live News",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b141a",
+  "theme_color": "#00a884",
+  "icons": [
+    {
+      "src": "assets/logo-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
