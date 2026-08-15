@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: gitpit-server
+    runtime: node
+    plan: free
+    region: singapore # Closest to India for ultra-low latency!
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    autoDeploy: true

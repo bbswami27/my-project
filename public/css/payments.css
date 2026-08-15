@@ -1,0 +1,335 @@
+/* ChatterPatter - UPI Payments, QR Scanner & Location Styles */
+
+/* Attachment Dropdown Menu in Chat */
+.attachment-menu-popup {
+  position: absolute;
+  bottom: 70px;
+  left: 56px;
+  background: var(--bg-modal);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 190px;
+  z-index: 100;
+  animation: fadeInAttachment 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.attachment-menu-popup.active {
+  display: flex;
+}
+
+@keyframes fadeInAttachment {
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.attachment-option-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.attachment-option-btn:hover {
+  background: var(--bg-hover);
+}
+
+.attachment-icon-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.icon-bg-photo { background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); }
+.icon-bg-location { background: linear-gradient(135deg, #10b981 0%, #047857 100%); }
+.icon-bg-payment { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); }
+.icon-bg-qr { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); }
+
+/* Location Message Bubble Card */
+.location-bubble-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  min-width: 240px;
+  max-width: 300px;
+}
+
+.location-map-preview {
+  width: 100%;
+  height: 130px;
+  background: #1e293b url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=600&q=80') center/cover;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.location-pin-marker {
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+  animation: bouncePin 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes bouncePin {
+  from { transform: translateY(0); }
+  to { transform: translateY(-8px); }
+}
+
+.location-body {
+  padding: 10px 12px;
+}
+
+.location-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.location-address {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.location-btn-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-link);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* UPI Payment Message Bubble Card (WhatsApp Pay Style) */
+.payment-bubble-card {
+  background: var(--bg-card);
+  border: 1.5px solid #22c55e;
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 250px;
+  margin-bottom: 6px;
+  box-shadow: var(--shadow-sm);
+}
+
+.payment-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.upi-badge-logo {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #22c55e;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.5px;
+}
+
+.payment-status-pill {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.payment-amount-display {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.payment-note-text {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.payment-txn-id {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 6px;
+}
+
+/* UPI Send Money Modal */
+.upi-modal-amount-box {
+  background: var(--bg-input-field);
+  border: 2px solid var(--brand-blue);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: center;
+  margin: 16px 0;
+}
+
+.upi-amount-input {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 36px;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+  width: 100%;
+}
+
+.upi-amount-currency {
+  font-size: 24px;
+  color: var(--brand-green);
+  font-weight: 700;
+}
+
+/* 4/6 Digit UPI MPIN Modal Keyboard */
+.mpin-dots-wrapper {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.mpin-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.mpin-dot.filled {
+  background: var(--brand-green);
+  border-color: var(--brand-green);
+  box-shadow: 0 0 8px rgba(0, 168, 132, 0.4);
+}
+
+.mpin-keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.mpin-key-btn {
+  height: 52px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.mpin-key-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--brand-blue);
+}
+
+/* QR Code Scanner & My QR Modal */
+.qr-modal-tabs {
+  display: flex;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.qr-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.qr-tab-btn.active {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.qr-scanner-viewfinder {
+  width: 100%;
+  height: 260px;
+  background: #000000;
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-scanner-laser {
+  position: absolute;
+  top: 10%;
+  left: 10%;
+  right: 10%;
+  height: 3px;
+  background: #22c55e;
+  box-shadow: 0 0 10px #22c55e;
+  animation: scanLaser 2s infinite ease-in-out;
+}
+
+@keyframes scanLaser {
+  0% { top: 15%; opacity: 0.8; }
+  50% { top: 85%; opacity: 1; }
+  100% { top: 15%; opacity: 0.8; }
+}
+
+.qr-scan-corners {
+  width: 190px;
+  height: 190px;
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 16px;
+  position: absolute;
+}
+
+.my-qr-display-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  display: inline-block;
+  margin: 10px auto;
+  box-shadow: var(--shadow-md);
+}
+
+.my-qr-code-svg {
+  width: 180px;
+  height: 180px;
+  display: block;
+}

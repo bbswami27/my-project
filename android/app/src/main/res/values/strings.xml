@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GitPit</string>
+    <string name="title_activity_main">GitPit</string>
+    <string name="package_name">com.gitpit.app</string>
+    <string name="custom_url_scheme">com.gitpit.app</string>
+</resources>
