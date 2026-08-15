@@ -57,5 +57,68 @@ window.MOCK_DATA = {
       priority: 'normal',
       body: 'Welcome to ChatterPatter! You can chat in real time, conduct HD video calls with screen sharing, ask our AI assistant anything, jump to chat dates with our calendar tool, and link all your mobile and web devices.'
     }
+  ],
+
+  initialNewsArticles: [
+    {
+      id: 'news-1',
+      category: 'Tech',
+      title: '🚀 Next-Gen Satellite Internet Constellation Successfully Deployed',
+      summary: 'Advanced broadband satellites reach low Earth orbit to deliver gigabit connectivity and high-speed data transmission across rural and urban territories.',
+      source: 'Space & Tech Chronicle',
+      time: '10 mins ago',
+      badge: '🚀 BREAKING',
+      image: 'https://images.unsplash.com/photo-1517976487502-570a2d98a002?auto=format&fit=crop&w=600&q=80',
+      likes: 540,
+      comments: 62
+    },
+    {
+      id: 'news-2',
+      category: 'India',
+      title: '🇮🇳 UPI Crosses 500 Million Daily Transactions Milestone Globally',
+      summary: 'India\'s digital public infrastructure sets a new world record as real-time QR payments expand across Europe, Middle East, and Southeast Asia.',
+      source: 'National Financial Pulse',
+      time: '25 mins ago',
+      badge: '🇮🇳 INDIA GROWTH',
+      image: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=600&q=80',
+      likes: 1250,
+      comments: 230
+    },
+    {
+      id: 'news-3',
+      category: 'Tech',
+      title: '⚡ On-Device AI Neural Engines Bring Instant Voice & Translation',
+      summary: 'New mobile chips process conversational intelligence and natural language translation locally on device with zero latency and complete privacy.',
+      source: 'FutureTech Daily',
+      time: '40 mins ago',
+      badge: '⚡ TECH AI',
+      image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+      likes: 890,
+      comments: 115
+    },
+    {
+      id: 'news-4',
+      category: 'Sports',
+      title: '🏏 Spectacular T20 Championship Thriller Decided in Super-Over',
+      summary: 'Sensational final-ball heroics secure dramatic victory in front of 90,000 electric fans in a historic stadium atmosphere.',
+      source: 'Sporting World',
+      time: '1 hour ago',
+      badge: '🏏 SPORTS UPDATE',
+      image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=600&q=80',
+      likes: 2190,
+      comments: 480
+    },
+    {
+      id: 'news-5',
+      category: 'Business',
+      title: '📈 Clean Energy Investments Surge by 35% in Landmark Quarter',
+      summary: 'Massive solar and green hydrogen installations accelerate as battery storage costs drop significantly across major emerging markets.',
+      source: 'Global Energy Pulse',
+      time: '2 hours ago',
+      badge: '📈 BUSINESS',
+      image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=600&q=80',
+      likes: 420,
+      comments: 55
+    }
   ]
 };

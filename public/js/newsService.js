@@ -81,11 +81,23 @@ class NewsService {
     try {
       const url = category === 'All' ? '/api/news' : `/api/news?category=${category}`;
       const resp = await fetch(url);
-      this.newsArticles = await resp.json();
-      this.renderNewsFeed();
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        this.newsArticles = data;
+      } else if (window.MOCK_DATA && window.MOCK_DATA.initialNewsArticles) {
+        this.newsArticles = category === 'All' 
+          ? window.MOCK_DATA.initialNewsArticles 
+          : window.MOCK_DATA.initialNewsArticles.filter(a => a.category.toLowerCase() === category.toLowerCase());
+      }
     } catch (e) {
-      console.warn('Error fetching news:', e);
+      console.warn('Error fetching news from API, loading local feeds:', e);
+      if (window.MOCK_DATA && window.MOCK_DATA.initialNewsArticles) {
+        this.newsArticles = category === 'All' 
+          ? window.MOCK_DATA.initialNewsArticles 
+          : window.MOCK_DATA.initialNewsArticles.filter(a => a.category.toLowerCase() === category.toLowerCase());
+      }
     }
+    this.renderNewsFeed();
   }
 
   renderNewsFeed() {

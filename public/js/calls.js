@@ -323,17 +323,27 @@ class CallManager {
         const constraints = {
           video: {
             facingMode: this.currentFacingMode,
-            width: { ideal: 640 },
-            height: { ideal: 480 }
+            width: { min: 1280, ideal: 1920 },
+            height: { min: 720, ideal: 1080 },
+            frameRate: { ideal: 30, max: 60 }
           },
-          audio: true
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
         };
 
         try {
           this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (mediaErr) {
           this.localStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: this.currentFacingMode }
+            video: {
+              facingMode: this.currentFacingMode,
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: true
           });
         }
 

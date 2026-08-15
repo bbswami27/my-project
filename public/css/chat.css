@@ -463,7 +463,7 @@ body.light-theme .document-bubble-card {
   display: flex;
   flex-direction: column;
   position: relative;
-  max-width: 68%;
+  max-width: 72%;
   animation: fadeInMsg 0.15s ease-out;
 }
 
@@ -473,11 +473,17 @@ body.light-theme .document-bubble-card {
 }
 
 .msg-wrapper.msg-outgoing {
-  align-self: flex-end;
+  align-self: flex-end !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  text-align: left;
 }
 
 .msg-wrapper.msg-incoming {
-  align-self: flex-start;
+  align-self: flex-start !important;
+  margin-right: auto !important;
+  margin-left: 0 !important;
+  text-align: left;
 }
 
 .msg-bubble {
@@ -490,16 +496,22 @@ body.light-theme .document-bubble-card {
   line-height: 1.45;
 }
 
-.msg-outgoing .msg-bubble {
+.msg-wrapper.msg-outgoing .msg-bubble {
   background: var(--bg-bubble-out);
   color: var(--text-out-msg);
   border-top-right-radius: 2px;
+  border-bottom-right-radius: 12px;
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
 }
 
-.msg-incoming .msg-bubble {
+.msg-wrapper.msg-incoming .msg-bubble {
   background: var(--bg-bubble-in);
   color: var(--text-in-msg);
   border-top-left-radius: 2px;
+  border-bottom-left-radius: 12px;
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 /* Quoted Reply inside Bubble */
