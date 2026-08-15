@@ -1046,3 +1046,47 @@ body.light-theme .document-bubble-card {
 .react-emoji-btn:hover {
   transform: scale(1.3);
 }
+
+/* Smart AI Prompt Chips Bar */
+.ai-prompt-chips-bar {
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+  padding: 8px 14px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.ai-chips-scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.ai-chips-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.ai-chip-btn {
+  background: var(--bg-input-field);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-chip-btn:hover {
+  background: var(--brand-blue);
+  color: #ffffff;
+  border-color: var(--brand-blue);
+  transform: translateY(-1px);
+}

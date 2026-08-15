@@ -1,4 +1,4 @@
-// ChatterPatter - Audio & Video Calling Manager (with Group Calls, Camera Toggle, Silent & Delete)
+// ChatterPatter - Audio & Video Calling Manager (with Screen Sharing, Group Calls, Camera Toggle, Silent & Delete)
 
 class CallManager {
   constructor() {
@@ -8,6 +8,8 @@ class CallManager {
     this.callSeconds = 0;
     this.ringtoneInterval = null;
     this.localStream = null;
+    this.screenStream = null;
+    this.isScreenSharing = false;
     this.remoteAudioCtx = null;
     this.isMicMuted = false;
     this.isSpeakerMuted = false;
@@ -58,6 +60,12 @@ class CallManager {
     const cameraBtn = document.getElementById('btn-call-camera');
     if (cameraBtn) {
       cameraBtn.addEventListener('click', () => this.toggleCamera());
+    }
+
+    // Toggle Screen Share
+    const screenshareBtn = document.getElementById('btn-call-screenshare');
+    if (screenshareBtn) {
+      screenshareBtn.addEventListener('click', () => this.toggleScreenShare());
     }
 
     // Flip Front/Back Camera
@@ -524,8 +532,90 @@ class CallManager {
     }, 1000);
   }
 
+  async toggleScreenShare() {
+    if (this.isScreenSharing) {
+      this.stopScreenShare();
+    } else {
+      await this.startScreenShare();
+    }
+  }
+
+  async startScreenShare() {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: false
+        });
+
+        const localVideo = document.getElementById('local-video-feed');
+        const localFallback = document.getElementById('local-video-fallback');
+        const screenshareBtn = document.getElementById('btn-call-screenshare');
+
+        if (this.screenStream && localVideo) {
+          localVideo.srcObject = this.screenStream;
+          localVideo.style.display = 'block';
+          if (localFallback) localFallback.style.display = 'none';
+          this.isScreenSharing = true;
+
+          if (screenshareBtn) {
+            screenshareBtn.style.background = '#10b981';
+            screenshareBtn.style.color = '#ffffff';
+            screenshareBtn.title = 'Stop Screen Sharing';
+          }
+
+          const badge = document.getElementById('call-status-badge');
+          if (badge) badge.textContent += ' • 🖥️ Sharing Screen';
+
+          // When user clicks "Stop sharing" on the browser native banner
+          this.screenStream.getVideoTracks()[0].onended = () => {
+            this.stopScreenShare();
+          };
+          return;
+        }
+      } else {
+        alert('Screen sharing is not supported by your browser.');
+      }
+    } catch (err) {
+      console.warn('Screen sharing cancelled or error:', err);
+      this.stopScreenShare();
+    }
+  }
+
+  stopScreenShare() {
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+    }
+    this.isScreenSharing = false;
+
+    const screenshareBtn = document.getElementById('btn-call-screenshare');
+    if (screenshareBtn) {
+      screenshareBtn.style.background = '';
+      screenshareBtn.style.color = '';
+      screenshareBtn.title = 'Share My Screen';
+    }
+
+    if (this.activeCall && this.activeCall.type === 'video') {
+      this.initLocalVideo();
+    }
+  }
+
+  startCallWithScreenShare() {
+    const activeChat = window.ChatEngine ? window.ChatEngine.getActiveChat() : null;
+    const name = activeChat ? activeChat.name : 'Group Meeting';
+    const avatar = activeChat ? activeChat.avatar : 'assets/logo-icon.svg';
+    const contactId = activeChat ? activeChat.id : null;
+
+    this.startCall(name, avatar, 'video', contactId);
+    setTimeout(() => {
+      this.startScreenShare();
+    }, 1200);
+  }
+
   endCall() {
     this.stopRingtone();
+    this.stopScreenShare();
     clearInterval(this.callDurationTimer);
     cancelAnimationFrame(this.animationFrameId);
 

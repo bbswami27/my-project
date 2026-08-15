@@ -55,17 +55,17 @@
 
             <!-- WhatsApp Style 3-Dots Vertical Dropdown Menu -->
             <div class="three-dots-dropdown" id="main-three-dots-dropdown">
+              <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
+                <span class="dropdown-item-icon">🤖</span>
+                <span>ChatterAI Assistant</span>
+              </button>
               <button class="dropdown-item" onclick="window.ChatterApp.switchTab('meetings')">
                 <span class="dropdown-item-icon">📅</span>
-                <span>GitPit Meetings</span>
+                <span>Video Meetings</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.switchTab('email')">
                 <span class="dropdown-item-icon">✉️</span>
                 <span>Email / Memos</span>
-              </button>
-              <button class="dropdown-item" onclick="window.ChatterApp.switchTab('payments')">
-                <span class="dropdown-item-icon">💸</span>
-                <span>UPI Payments</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.switchTab('news')">
                 <span class="dropdown-item-icon">📡</span>
@@ -222,35 +222,7 @@
           </div>
         </div>
 
-        <!-- 6. UPI PAYMENTS TAB VIEW (DEDICATED) -->
-        <div class="tab-view" id="tab-view-payments">
-          <div class="payments-tab-container">
-            <!-- Wallet Hero Balance Card -->
-            <div class="wallet-hero-card">
-              <div class="wallet-balance-label">Available UPI Balance</div>
-              <div class="wallet-balance-amount" id="wallet-balance-display">₹24,500.00</div>
-              <div class="wallet-actions-grid">
-                <button class="wallet-action-btn" onclick="window.PaymentManager && window.PaymentManager.openPaymentModal()">
-                  <span>↗️</span>
-                  <span>Send Money</span>
-                </button>
-                <button class="wallet-action-btn" onclick="alert('Payment Request link created & copied!')">
-                  <span>↙️</span>
-                  <span>Request</span>
-                </button>
-                <button class="wallet-action-btn" onclick="window.PaymentManager && window.PaymentManager.openQrModal()">
-                  <span>🔲</span>
-                  <span>My QR / Scan</span>
-                </button>
-              </div>
-            </div>
 
-            <div class="status-section-title">Recent Transactions</div>
-            <div class="txns-history-list" id="upi-txns-container">
-              <!-- Rendered by paymentService.js -->
-            </div>
-          </div>
-        </div>
 
         <!-- 7. CALLS TAB VIEW -->
         <div class="tab-view" id="tab-view-calls">
@@ -272,10 +244,10 @@
           <img class="empty-logo" src="assets/logo.svg" alt="GitPit">
           <h2 class="empty-title">GitPit Web</h2>
           <p class="empty-desc">
-            Send and receive real-time messages, edit sent texts, schedule meetings, record voice notes, make audio/video group calls, share live location, pay via UPI, and catch live news updates.
+            Send and receive real-time messages, ask Smart AI Assistant 🤖, share screen 🖥️, make HD audio & video calls 📹, record voice notes, and catch live news updates.
           </p>
           <div class="empty-lock">
-            <span>🔒</span> End-to-end encrypted messaging, calls & payments
+            <span>🔒</span> End-to-end encrypted messaging, AI assistant & video calls
           </div>
         </div>
 
@@ -339,6 +311,18 @@
             <button class="reply-preview-close" id="btn-close-reply">✕</button>
           </div>
 
+          <!-- Smart AI Quick Prompt Chips Bar (Shown in AI Chat) -->
+          <div class="ai-prompt-chips-bar" id="ai-prompt-chips-bar" style="display: none;">
+            <div class="ai-chips-scroll">
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('💡 Summarize today\'s latest news updates')">💡 News Summary</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('✍️ Write a professional leave application email')">✍️ Leave Application</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('💻 Write a JavaScript function example')">💻 Coding Help</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('😂 Mujhe ek mazedaar chutkula sunao')">😂 Ek Chutkula</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('📹 Video calling aur screen share kaise use karein?')">📹 Video & Screen Share</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('🌐 Translate: How are you to Hindi and English')">🌐 Translation</button>
+            </div>
+          </div>
+
           <!-- Chat Input Bar -->
           <div class="chat-input-bar" id="chat-input-bar-container">
             
@@ -357,13 +341,17 @@
                 <div class="attachment-icon-circle icon-bg-photo">📷</div>
                 <span>Photos & Media</span>
               </button>
+              <button class="attachment-option-btn" id="opt-attach-screenshare" onclick="window.CallManager && window.CallManager.startCallWithScreenShare()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">🖥️</div>
+                <span>Share Screen</span>
+              </button>
+              <button class="attachment-option-btn" id="opt-attach-ai" onclick="window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">🤖</div>
+                <span>Ask AI Assistant</span>
+              </button>
               <button class="attachment-option-btn" id="opt-attach-location">
                 <div class="attachment-icon-circle icon-bg-location">📍</div>
                 <span>Share Location</span>
-              </button>
-              <button class="attachment-option-btn" id="opt-attach-payment">
-                <div class="attachment-icon-circle icon-bg-payment">💸</div>
-                <span>UPI Payment</span>
               </button>
               <button class="attachment-option-btn" id="opt-attach-meeting">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">📅</div>
@@ -372,10 +360,6 @@
               <button class="attachment-option-btn" id="opt-attach-email">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">✉️</div>
                 <span>Quick Email Memo</span>
-              </button>
-              <button class="attachment-option-btn" id="opt-attach-qr">
-                <div class="attachment-icon-circle icon-bg-qr">🔲</div>
-                <span>QR Code / Scanner</span>
               </button>
             </div>
             <input type="file" id="chat-doc-upload" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style="display: none;">
@@ -894,11 +878,11 @@
 
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
           <div>
-            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">GitPit UPI Payments</div>
-            <div style="font-size: 12.5px; color: var(--text-secondary);">Direct in-chat payments & QR code transfers</div>
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">🤖 ChatterAI Assistant & Screen Sharing</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Direct smart AI chat assistance & 1-click video screen share</div>
           </div>
-          <button class="auth-submit-btn" style="width: auto; padding: 6px 14px; font-size: 13px; background: #22c55e;" onclick="document.getElementById('app-settings-modal').classList.remove('active'); window.PaymentManager.openQrModal();">
-            My QR 🔲
+          <button class="auth-submit-btn" style="width: auto; padding: 6px 14px; font-size: 13px; background: var(--brand-blue);" onclick="document.getElementById('app-settings-modal').classList.remove('active'); window.ChatEngine && window.ChatEngine.openChat('chat_ai');">
+            Open AI 🤖
           </button>
         </div>
 
@@ -1143,6 +1127,7 @@
       <button class="call-ctrl-btn" id="btn-call-mute" title="Mute/Unmute Mic (Outgoing)">🎤</button>
       <button class="call-ctrl-btn" id="btn-call-speaker-mute" title="Mute/Unmute Speaker (Hear Caller)">🔊</button>
       <button class="call-ctrl-btn" id="btn-call-camera" title="Toggle Camera On/Off">📹</button>
+      <button class="call-ctrl-btn" id="btn-call-screenshare" title="Share My Screen (Window/Tab/Display)">🖥️</button>
       <button class="call-ctrl-btn" id="btn-call-flip-camera" title="Flip Camera" style="display: none;">🔄</button>
       <button class="call-ctrl-btn" id="btn-call-add-participant" title="Add Contact to Call">👥+</button>
       <button class="call-ctrl-btn" id="btn-call-silent" title="Silent Ringtone">🔕</button>

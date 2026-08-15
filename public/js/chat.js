@@ -131,8 +131,8 @@ class ChatEngine {
     const optDocument = document.getElementById('opt-attach-document');
     const optPhoto = document.getElementById('opt-attach-photo');
     const optLocation = document.getElementById('opt-attach-location');
-    const optPayment = document.getElementById('opt-attach-payment');
-    const optQr = document.getElementById('opt-attach-qr');
+    const optScreenshare = document.getElementById('opt-attach-screenshare');
+    const optAi = document.getElementById('opt-attach-ai');
     const optMeeting = document.getElementById('opt-attach-meeting');
     const optEmail = document.getElementById('opt-attach-email');
     const docInput = document.getElementById('chat-doc-upload');
@@ -159,24 +159,24 @@ class ChatEngine {
       });
     }
 
+    if (optScreenshare) {
+      optScreenshare.addEventListener('click', () => {
+        if (attachMenu) attachMenu.classList.remove('active');
+        if (window.CallManager) window.CallManager.startCallWithScreenShare();
+      });
+    }
+
+    if (optAi) {
+      optAi.addEventListener('click', () => {
+        if (attachMenu) attachMenu.classList.remove('active');
+        this.openChat('chat_ai');
+      });
+    }
+
     if (optLocation) {
       optLocation.addEventListener('click', () => {
         if (attachMenu) attachMenu.classList.remove('active');
         if (window.LocationService) window.LocationService.shareCurrentLocation();
-      });
-    }
-
-    if (optPayment) {
-      optPayment.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        if (window.PaymentManager) window.PaymentManager.openPaymentModal();
-      });
-    }
-
-    if (optQr) {
-      optQr.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        if (window.PaymentManager) window.PaymentManager.openQrModal();
       });
     }
 
@@ -686,14 +686,32 @@ class ChatEngine {
     document.getElementById('active-chat-avatar').src = chat.avatar;
     document.getElementById('active-chat-name').textContent = chat.name;
     const statusElem = document.getElementById('active-chat-status');
-    statusElem.textContent = chat.isGroup
-      ? `${(chat.members || []).length} members: ${(chat.members || []).slice(0, 3).join(', ')}...`
-      : (chat.online ? 'Online' : (chat.lastSeen ? `Last seen ${chat.lastSeen}` : 'GitPit'));
+    const isAi = chat.isAi || chat.id === 'chat_ai';
+
+    statusElem.textContent = isAi
+      ? '🤖 Smart AI Assistant • Always Active'
+      : (chat.isGroup
+        ? `${(chat.members || []).length} members: ${(chat.members || []).slice(0, 3).join(', ')}...`
+        : (chat.online ? 'Online' : (chat.lastSeen ? `Last seen ${chat.lastSeen}` : 'GitPit')));
     statusElem.className = 'status-text';
+
+    // Toggle AI Quick Prompt Suggestion Chips Bar
+    const aiChipsBar = document.getElementById('ai-prompt-chips-bar');
+    if (aiChipsBar) {
+      aiChipsBar.style.display = isAi ? 'block' : 'none';
+    }
 
     this.updateBlockedStateUI();
     this.renderMessages();
     this.scrollToBottom();
+  }
+
+  sendAiPrompt(promptText) {
+    const textarea = document.getElementById('chat-input-textarea');
+    if (textarea) {
+      textarea.value = promptText;
+    }
+    this.sendMessage();
   }
 
   cleanDisappearingMessages(chat) {
@@ -969,7 +987,13 @@ class ChatEngine {
 
   formatText(text) {
     if (!text) return '';
-    return text.replace(/\n/g, '<br>');
+    let formatted = text
+      .replace(/```([\s\S]*?)```/g, '<pre style="background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 12px; margin: 6px 0; border: 1px solid var(--border-subtle); color: #38bdf8;"><code>$1</code></pre>')
+      .replace(/`([^`]+)`/g, '<code style="background: rgba(0,0,0,0.2); padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #38bdf8;">$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<b style="color: var(--text-primary);">$1</b>')
+      .replace(/\*([^*]+)\*/g, '<i>$1</i>')
+      .replace(/\n/g, '<br>');
+    return formatted;
   }
 
   scrollToBottom() {
