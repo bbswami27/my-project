@@ -350,9 +350,9 @@ setInterval(() => {
   io.emit('flash_news_update', dynamicNews);
 }, 25000);
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`=======================================================`);
-  console.log(`🚀 ChatterPatter Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 ChatterPatter Server is running on port ${PORT}`);
   console.log(`📱 Real-time Chat • Voice Notes • Video Calls • Flash News`);
   console.log(`=======================================================`);
 });
