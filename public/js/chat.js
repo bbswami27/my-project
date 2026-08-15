@@ -1133,6 +1133,141 @@ class ChatEngine {
     } catch(e) {}
   }
 
+  closeActiveChat() {
+    this.activeChatId = null;
+    const sidebar = document.getElementById('sidebar-container');
+    const chatArea = document.getElementById('chat-main-area');
+    const emptyState = document.getElementById('chat-empty-state');
+    const activeView = document.getElementById('chat-active-view');
+    
+    if (sidebar) sidebar.classList.remove('mobile-hidden');
+    if (chatArea) chatArea.classList.remove('mobile-active');
+    if (emptyState) emptyState.style.display = 'flex';
+    if (activeView) activeView.style.display = 'none';
+    this.renderChatList();
+  }
+
+  // ================= MEETINGS & MEMOS =================
+  openMeetingModal() {
+    const modal = document.getElementById('schedule-meeting-modal');
+    if (!modal) return;
+    
+    // Set default date & time (tomorrow 11:00 AM)
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateInput = document.getElementById('meeting-date-input');
+    const timeInput = document.getElementById('meeting-time-input');
+    if (dateInput) dateInput.value = tomorrow.toISOString().split('T')[0];
+    if (timeInput) timeInput.value = '11:00';
+
+    modal.classList.add('active');
+  }
+
+  scheduleMeeting() {
+    const titleInput = document.getElementById('meeting-title-input');
+    const dateInput = document.getElementById('meeting-date-input');
+    const timeInput = document.getElementById('meeting-time-input');
+    const durSelect = document.getElementById('meeting-duration-select');
+
+    const title = titleInput ? titleInput.value.trim() : '';
+    const date = dateInput ? dateInput.value : '';
+    const time = timeInput ? timeInput.value : '';
+    const duration = durSelect ? durSelect.value : '30 mins';
+
+    if (!title || !date || !time) {
+      alert('Please enter meeting title, date, and time!');
+      return;
+    }
+
+    const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
+    const newMeeting = {
+      id: 'meet_' + Date.now(),
+      title: title,
+      date: date,
+      time: time,
+      duration: duration,
+      host: currentUser ? currentUser.name : 'You',
+      avatar: currentUser ? currentUser.avatar : 'https://api.dicebear.com/7.x/bottts/svg?seed=MeetingHost'
+    };
+
+    if (window.ChatterApp) {
+      window.ChatterApp.meetings.unshift(newMeeting);
+      window.ChatterApp.saveMeetings();
+      window.ChatterApp.renderMeetingsTab();
+    }
+
+    const modal = document.getElementById('schedule-meeting-modal');
+    if (modal) modal.classList.remove('active');
+    if (titleInput) titleInput.value = '';
+
+    // If active chat exists, share invite message
+    const activeChat = this.getActiveChat();
+    if (activeChat) {
+      this.sendMessage({
+        type: 'meeting',
+        meetingId: newMeeting.id,
+        text: `📅 Scheduled Meeting: "${title}" on ${date} at ${time} (${duration})`
+      });
+    }
+
+    alert(`🎉 Meeting "${title}" scheduled successfully!`);
+    if (window.ChatterApp) window.ChatterApp.switchTab('meetings');
+  }
+
+  openEmailMemoModal() {
+    const modal = document.getElementById('email-memo-modal');
+    if (modal) modal.classList.add('active');
+  }
+
+  sendEmailMemo() {
+    const subjInput = document.getElementById('email-subject-input');
+    const bodyInput = document.getElementById('email-body-input');
+    const prioChecked = document.querySelector('input[name="email-priority"]:checked');
+
+    const subject = subjInput ? subjInput.value.trim() : '';
+    const body = bodyInput ? bodyInput.value.trim() : '';
+    const priority = prioChecked ? prioChecked.value : 'normal';
+
+    if (!subject || !body) {
+      alert('Please enter subject and message body!');
+      return;
+    }
+
+    const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
+    const newMemo = {
+      id: 'memo_' + Date.now(),
+      subject: subject,
+      body: body,
+      priority: priority,
+      sender: currentUser ? currentUser.name : 'You',
+      avatar: currentUser ? currentUser.avatar : 'https://api.dicebear.com/7.x/bottts/svg?seed=MemoSender',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    if (window.ChatterApp) {
+      window.ChatterApp.memos.unshift(newMemo);
+      window.ChatterApp.saveMemos();
+      window.ChatterApp.renderEmailTab();
+    }
+
+    const modal = document.getElementById('email-memo-modal');
+    if (modal) modal.classList.remove('active');
+    if (subjInput) subjInput.value = '';
+    if (bodyInput) bodyInput.value = '';
+
+    // Send in chat if active
+    const activeChat = this.getActiveChat();
+    if (activeChat) {
+      this.sendMessage({
+        type: 'memo',
+        text: `✉️ [${priority.toUpperCase()} MEMO] ${subject}\n\n${body}`
+      });
+    }
+
+    alert(`✉️ Memo "${subject}" sent successfully!`);
+    if (window.ChatterApp) window.ChatterApp.switchTab('email');
+  }
+
   updateBlockedStateUI() {
     const activeChat = this.getActiveChat();
     const inputArea = document.querySelector('.chat-input-wrapper');
@@ -1157,10 +1292,42 @@ class ChatEngine {
   }
 
   resetRecordingUI() {
-    const bar = document.getElementById('chat-input-bar-normal');
-    const recBar = document.getElementById('chat-input-bar-recording');
-    if (bar) bar.style.display = 'flex';
-    if (recBar) recBar.style.display = 'none';
+    const bar = document.getElementById('recording-bar-ui');
+    if (bar) bar.style.display = 'none';
+  }
+
+  renderSettingsBlockedList() {
+    const container = document.getElementById('settings-blocked-list-container');
+    const badge = document.getElementById('blocked-count-badge');
+    if (badge) badge.textContent = this.blockedContacts.length;
+    if (!container) return;
+
+    if (this.blockedContacts.length === 0) {
+      container.innerHTML = `<p style="font-size: 12.5px; color: var(--text-muted); text-align: center; margin: 8px 0;">No contacts currently blocked.</p>`;
+      return;
+    }
+
+    container.innerHTML = this.blockedContacts.map(id => {
+      const chat = this.chats.find(c => c.id === id) || { name: 'Blocked Contact (' + id + ')' };
+      return `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle);">
+          <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${chat.name}</span>
+          <button class="btn-unblock-pill" onclick="window.ChatEngine.unblockContact('${id}')">Unblock</button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  renderSettingsVideoBlockedList() {
+    // Video block renderer
+  }
+
+  unblockContact(id) {
+    this.blockedContacts = this.blockedContacts.filter(item => item !== id);
+    localStorage.setItem('gitpit_blocked_contacts', JSON.stringify(this.blockedContacts));
+    this.renderSettingsBlockedList();
+    this.updateBlockedStateUI();
+    alert('Contact unblocked!');
   }
 }
 
@@ -1168,3 +1335,5 @@ class ChatEngine {
 window.addEventListener('DOMContentLoaded', () => {
   window.ChatEngine = new ChatEngine();
 });
+
+

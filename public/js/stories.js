@@ -113,6 +113,54 @@ class StoriesManager {
     this.renderStoryItem();
   }
 
+  handleMediaSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const isVideo = file.type.startsWith('video');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.selectedMedia = {
+        type: isVideo ? 'video' : 'image',
+        dataUrl: e.target.result,
+        fileName: file.name
+      };
+
+      const mediaContainer = document.getElementById('status-preview-media-container');
+      const clearBtn = document.getElementById('btn-status-clear-media');
+      const colorWrapper = document.getElementById('status-color-palette-wrapper');
+
+      if (mediaContainer) {
+        mediaContainer.style.display = 'block';
+        if (isVideo) {
+          mediaContainer.innerHTML = `<video src="${e.target.result}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>`;
+        } else {
+          mediaContainer.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        }
+      }
+
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+      if (colorWrapper) colorWrapper.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  clearSelectedMedia() {
+    this.selectedMedia = null;
+    const mediaContainer = document.getElementById('status-preview-media-container');
+    const clearBtn = document.getElementById('btn-status-clear-media');
+    const fileInput = document.getElementById('status-media-file-input');
+    const colorWrapper = document.getElementById('status-color-palette-wrapper');
+
+    if (mediaContainer) {
+      mediaContainer.innerHTML = '';
+      mediaContainer.style.display = 'none';
+    }
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (fileInput) fileInput.value = '';
+    if (colorWrapper) colorWrapper.style.display = 'block';
+  }
+
   renderStoryItem() {
     if (!this.currentStory) return;
     const item = this.currentStory.items[this.currentItemIndex];
@@ -146,7 +194,12 @@ class StoriesManager {
       if (item.type === 'image') {
         contentBody.innerHTML = `
           <img class="story-img-display" src="${item.mediaUrl}" alt="Story">
-          ${item.caption ? `<div style="position:absolute; bottom: 80px; left: 20px; right: 20px; text-align: center; color: white; background: rgba(0,0,0,0.6); padding: 8px 14px; border-radius: 20px; font-weight: 500;">${item.caption}</div>` : ''}
+          ${item.caption || item.text ? `<div style="position:absolute; bottom: 80px; left: 20px; right: 20px; text-align: center; color: white; background: rgba(0,0,0,0.65); padding: 10px 16px; border-radius: 20px; font-weight: 600; font-size: 15px; backdrop-filter: blur(4px);">${item.caption || item.text}</div>` : ''}
+        `;
+      } else if (item.type === 'video') {
+        contentBody.innerHTML = `
+          <video class="story-img-display" src="${item.mediaUrl}" autoplay playsinline controls style="max-height: 80vh; max-width: 100%; border-radius: 12px;"></video>
+          ${item.caption || item.text ? `<div style="position:absolute; bottom: 80px; left: 20px; right: 20px; text-align: center; color: white; background: rgba(0,0,0,0.65); padding: 10px 16px; border-radius: 20px; font-weight: 600; font-size: 15px; backdrop-filter: blur(4px);">${item.caption || item.text}</div>` : ''}
         `;
       } else {
         contentBody.innerHTML = `
@@ -225,14 +278,31 @@ class StoriesManager {
   publishNewStatus() {
     const textInput = document.getElementById('new-status-text');
     const text = textInput ? textInput.value.trim() : '';
-    if (!text) {
-      alert('Please type something for your status!');
+
+    if (!text && !this.selectedMedia) {
+      alert('Please enter a caption or attach a photo/video for your status!');
       return;
     }
 
     const activeDot = document.querySelector('.color-dot.active');
     const bgColor = activeDot ? activeDot.getAttribute('data-color') : '#0284c7';
     const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+
+    let storyItem = {};
+    if (this.selectedMedia) {
+      storyItem = {
+        type: this.selectedMedia.type,
+        mediaUrl: this.selectedMedia.dataUrl,
+        text: text,
+        caption: text
+      };
+    } else {
+      storyItem = {
+        type: 'text',
+        bgColor: bgColor,
+        text: text
+      };
+    }
 
     const myStory = {
       id: 'story_my_' + Date.now(),
@@ -241,13 +311,7 @@ class StoriesManager {
       authorAvatar: currentUser ? currentUser.avatar : 'https://api.dicebear.com/7.x/bottts/svg?seed=MyStatus',
       time: 'Just now',
       viewed: false,
-      items: [
-        {
-          type: 'text',
-          bgColor: bgColor,
-          text: text
-        }
-      ]
+      items: [storyItem]
     };
 
     this.stories.unshift(myStory);
@@ -255,10 +319,12 @@ class StoriesManager {
     this.renderStatusTab();
 
     if (textInput) textInput.value = '';
+    this.clearSelectedMedia();
+
     const createModal = document.getElementById('create-status-modal');
     if (createModal) createModal.classList.remove('active');
 
-    alert('Your Status has been posted successfully! ✨');
+    alert('🎉 Your Status has been posted successfully! ✨');
   }
 
   saveStories() {

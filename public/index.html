@@ -55,8 +55,8 @@
             <img class="brand-logo-img" src="assets/logo.svg" alt="GitPit">
           </div>
           <div class="sidebar-header-actions">
-            <button class="header-icon-btn" id="btn-new-chat" title="New Chat / Group">💬</button>
-            <button class="header-icon-btn" id="btn-header-settings" title="Settings">⚙️</button>
+            <button class="header-icon-btn" id="btn-new-chat" title="New Chat / Group" onclick="window.ChatterApp && window.ChatterApp.openNewGroupModal()">💬</button>
+            <button class="header-icon-btn" id="btn-header-settings" title="Settings" onclick="window.ChatterApp && window.ChatterApp.openSettingsModal()">⚙️</button>
             <button class="three-dots-btn" id="btn-main-three-dots" title="More Options">⋮</button>
 
             <!-- WhatsApp Style 3-Dots Vertical Dropdown Menu -->
@@ -90,7 +90,7 @@
                 <span>Sync Contacts</span>
               </button>
               <div class="dropdown-divider"></div>
-              <button class="dropdown-item" id="menu-opt-new-group">
+              <button class="dropdown-item" id="menu-opt-new-group" onclick="window.ChatterApp && window.ChatterApp.openNewGroupModal()">
                 <span class="dropdown-item-icon">💬</span>
                 <span>New Group</span>
               </button>
@@ -102,7 +102,7 @@
                 <span class="dropdown-item-icon">👤</span>
                 <span>My Profile</span>
               </button>
-              <button class="dropdown-item" id="menu-opt-settings">
+              <button class="dropdown-item" id="menu-opt-settings" onclick="window.ChatterApp && window.ChatterApp.openSettingsModal()">
                 <span class="dropdown-item-icon">⚙️</span>
                 <span>Settings</span>
               </button>
@@ -110,17 +110,25 @@
           </div>
         </div>
 
-        <!-- Tab Navigation Bar (Clean WhatsApp 3-Tabs Layout) -->
+        <!-- Tab Navigation Bar (All Main Tabs) -->
         <nav class="nav-tabs-bar">
           <button class="tab-btn active" data-tab="chats">
             <span>💬 Chats</span>
-            <span class="tab-badge" id="chats-unread-badge">3</span>
           </button>
           <button class="tab-btn" data-tab="status">
             <span>⭕ Status</span>
           </button>
           <button class="tab-btn" data-tab="calls">
             <span>📞 Calls</span>
+          </button>
+          <button class="tab-btn" data-tab="news">
+            <span>📡 News</span>
+          </button>
+          <button class="tab-btn" data-tab="meetings">
+            <span>📅 Meetings</span>
+          </button>
+          <button class="tab-btn" data-tab="email">
+            <span>✉️ Memos</span>
           </button>
         </nav>
 
@@ -275,33 +283,33 @@
           <!-- Conversation Header -->
           <div class="chat-header">
             <div class="chat-header-user">
-              <button class="back-btn-mobile" id="btn-chat-back-mobile">←</button>
-              <div class="avatar-wrapper" style="width: 40px; height: 40px;">
+              <button class="back-btn-mobile" id="btn-chat-back-mobile" onclick="window.ChatEngine && window.ChatEngine.closeActiveChat()" title="Back to Chats">←</button>
+              <div class="avatar-wrapper" style="width: 40px; height: 40px;" onclick="window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
                 <img id="active-chat-avatar" class="avatar-img" src="" alt="Contact">
               </div>
-              <div class="chat-header-meta">
+              <div class="chat-header-meta" onclick="window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)" style="cursor: pointer;">
                 <h3 id="active-chat-name">Contact Name</h3>
                 <span id="active-chat-status" class="status-text">Online</span>
               </div>
             </div>
 
             <div class="chat-header-actions" style="position: relative;">
-              <button class="header-icon-btn" id="btn-jump-to-date" title="📅 Jump to Specific Date (Calendar)">📅</button>
-              <button class="header-icon-btn" id="btn-chat-video-call" title="Start Video Call">📹</button>
-              <button class="header-icon-btn" id="btn-chat-audio-call" title="Start Voice Call">📞</button>
-              <button class="header-icon-btn" id="btn-chat-header-dots" title="More Options">⋮</button>
+              <button class="header-icon-btn" id="btn-jump-to-date" title="📅 Jump to Specific Date (Calendar)" onclick="window.ChatEngine && window.ChatEngine.openJumpToDateModal()">📅</button>
+              <button class="header-icon-btn" id="btn-chat-video-call" title="Start Video Call" onclick="const c = window.ChatEngine && window.ChatEngine.getActiveChat(); if (c && window.CallManager) window.CallManager.startCall(c.name, c.avatar, 'video', c.id);">📹</button>
+              <button class="header-icon-btn" id="btn-chat-audio-call" title="Start Voice Call" onclick="const c = window.ChatEngine && window.ChatEngine.getActiveChat(); if (c && window.CallManager) window.CallManager.startCall(c.name, c.avatar, 'audio', c.id);">📞</button>
+              <button class="header-icon-btn" id="btn-chat-header-dots" title="More Options" onclick="document.getElementById('chat-header-dropdown-menu').classList.toggle('active')">⋮</button>
 
               <!-- Active Chat 3-Dots Dropdown Menu -->
               <div class="chat-header-dropdown" id="chat-header-dropdown-menu">
-                <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
                   <span class="dropdown-item-icon">👤</span>
                   <span>View Contact & Media</span>
                 </button>
-                <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.openJumpToDateModal()">
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openJumpToDateModal()">
                   <span class="dropdown-item-icon">📅</span>
                   <span>Jump to Date</span>
                 </button>
-                <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
                   <span class="dropdown-item-icon">🗑️</span>
                   <span style="color: var(--brand-danger);">Delete Chat</span>
                 </button>
@@ -340,31 +348,31 @@
           <!-- Chat Input Bar -->
           <div class="chat-input-bar" id="chat-input-bar-container">
             
-            <!-- Emoji & Attachment Buttons -->
-            <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis">😊</button>
-            <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options">📎</button>
+            <!-- Attachment Buttons -->
+            <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis" onclick="document.getElementById('emoji-picker-container').classList.toggle('active')">😊</button>
+            <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options" onclick="document.getElementById('chat-attach-popup').classList.toggle('active')">📎</button>
             <input type="file" id="hidden-file-photo" accept="image/*" style="display: none;">
             <input type="file" id="hidden-file-doc" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style="display: none;">
 
             <!-- Attachment Menu Dropdown -->
             <div class="attachment-menu-popup" id="chat-attach-popup">
-              <button class="attachment-option-btn" id="opt-attach-doc">
+              <button class="attachment-option-btn" id="opt-attach-doc" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); document.getElementById('hidden-file-doc').click()">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);">📄</div>
                 <span>Document / File</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-photo">
+              <button class="attachment-option-btn" id="opt-attach-photo" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); document.getElementById('hidden-file-photo').click()">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #ec4899 0%, #be185d 100%);">📷</div>
                 <span>Photos & Media</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-screenshare">
+              <button class="attachment-option-btn" id="opt-attach-screenshare" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.CallManager && window.CallManager.startCallWithScreenShare()">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">🖥️</div>
                 <span>Share Screen</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-ai">
+              <button class="attachment-option-btn" id="opt-attach-ai" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">🤖</div>
                 <span>Ask AI Assistant</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-location">
+              <button class="attachment-option-btn" id="opt-attach-location" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); if (window.LocationService) window.LocationService.openLocationModal()">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f97316 0%, #c2410c 100%);">📍</div>
                 <span>Share Location</span>
               </button>
@@ -383,13 +391,15 @@
             </div>
 
             <!-- Dedicated Voice Note Trigger Button -->
-            <button class="voice-record-btn" id="btn-voice-record-trigger" title="Record Voice Note">
+            <button class="voice-record-btn" id="btn-voice-record-trigger" title="Record Voice Note" onclick="window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">
               🎙️
             </button>
 
             <!-- Dedicated Send Arrow Button (➤) -->
-            <button class="send-msg-btn" id="btn-send-message" title="Send Message">
-              ➤
+            <button class="send-msg-btn" id="btn-send-message" title="Send Message" onclick="window.ChatEngine && window.ChatEngine.sendMessage()">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="display: block; transform: rotate(0deg); margin-left: 2px;">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
             </button>
 
             <!-- Emoji Picker Popup -->
@@ -506,7 +516,7 @@
     <div class="modal-card" style="max-width: 460px;">
       <div class="modal-header">
         <h3 class="modal-title">📅 Fix a Meeting</h3>
-        <button class="modal-close-btn" id="btn-close-meeting-modal">✕</button>
+        <button class="modal-close-btn" id="btn-close-meeting-modal" onclick="document.getElementById('schedule-meeting-modal').classList.remove('active')">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -532,7 +542,7 @@
             <option value="1 hour">1 Hour</option>
           </select>
         </div>
-        <button class="auth-submit-btn" id="btn-submit-schedule-meeting" style="background: var(--brand-blue);">
+        <button class="auth-submit-btn" id="btn-submit-schedule-meeting" style="background: var(--brand-blue);" onclick="window.ChatEngine && window.ChatEngine.scheduleMeeting()">
           Schedule & Share Invite 🚀
         </button>
       </div>
@@ -544,7 +554,7 @@
     <div class="modal-card" style="max-width: 480px;">
       <div class="modal-header">
         <h3 class="modal-title">✉️ Quick Email / Memo</h3>
-        <button class="modal-close-btn" id="btn-close-email-memo">✕</button>
+        <button class="modal-close-btn" id="btn-close-email-memo" onclick="document.getElementById('email-memo-modal').classList.remove('active')">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -566,7 +576,7 @@
           <label class="form-label">Message / Memo Body</label>
           <textarea id="email-body-input" class="auth-input" rows="4" placeholder="Type your short formal memo or message..."></textarea>
         </div>
-        <button class="auth-submit-btn" id="btn-submit-email-memo" style="background: var(--brand-orange);">
+        <button class="auth-submit-btn" id="btn-submit-email-memo" style="background: var(--brand-orange);" onclick="window.ChatEngine && window.ChatEngine.sendEmailMemo()">
           Send Email Memo ✉️
         </button>
       </div>
@@ -1041,16 +1051,32 @@
 
   <!-- CREATE STATUS MODAL -->
   <div class="modal-overlay" id="create-status-modal">
-    <div class="modal-card">
+    <div class="modal-card" style="max-width: 440px;">
       <div class="modal-header">
-        <h3 class="modal-title">Create New Status</h3>
-        <button class="modal-close-btn" id="btn-close-create-status">✕</button>
+        <h3 class="modal-title">Create New Status ⭕</h3>
+        <button class="modal-close-btn" id="btn-close-create-status" onclick="document.getElementById('create-status-modal').classList.remove('active')">✕</button>
       </div>
       <div class="modal-body">
-        <div class="status-preview-box" id="status-preview-box" style="background-color: #0284c7;">
-          Type your status below...
+        
+        <!-- Live Media / Color Preview Box -->
+        <div class="status-preview-box" id="status-preview-box" style="background-color: #0284c7; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; margin-bottom: 14px;">
+          <div id="status-preview-media-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div>
+          <div id="status-preview-text-display" style="position: relative; z-index: 2; padding: 12px; color: #ffffff; font-weight: 700; font-size: 16px; text-shadow: 0 1px 3px rgba(0,0,0,0.6);">Type your status below...</div>
         </div>
-        <div class="form-group">
+
+        <!-- Attach Photo or Video Button -->
+        <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+          <input type="file" id="status-media-file-input" accept="image/*,video/*" style="display: none;" onchange="window.StoriesManager && window.StoriesManager.handleMediaSelect(event)">
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="document.getElementById('status-media-file-input').click()">
+            <span>📷 / 🎥</span>
+            <span>Attach Photo or Video</span>
+          </button>
+          <button type="button" id="btn-status-clear-media" class="auth-submit-btn" style="width: auto; background: var(--bg-input-field); color: var(--brand-danger); border: 1px solid var(--border-color); font-size: 12px; display: none;" onclick="window.StoriesManager && window.StoriesManager.clearSelectedMedia()">
+            ✕ Clear Media
+          </button>
+        </div>
+
+        <div class="form-group" id="status-color-palette-wrapper">
           <label class="form-label">Pick Background Color</label>
           <div class="status-color-palette">
             <div class="color-dot active" style="background: #0284c7" data-color="#0284c7"></div>
@@ -1061,11 +1087,13 @@
             <div class="color-dot" style="background: #0f172a" data-color="#0f172a"></div>
           </div>
         </div>
+
         <div class="form-group">
-          <label class="form-label">Status Message</label>
-          <textarea id="new-status-text" class="auth-input" rows="3" placeholder="What's on your mind?"></textarea>
+          <label class="form-label">Status Caption / Message</label>
+          <textarea id="new-status-text" class="auth-input" rows="2" placeholder="What's on your mind? (Caption / Message)"></textarea>
         </div>
-        <button class="auth-submit-btn" id="btn-publish-status">
+
+        <button class="auth-submit-btn" id="btn-publish-status" onclick="window.StoriesManager && window.StoriesManager.publishNewStatus()">
           Post Status ✨
         </button>
       </div>
