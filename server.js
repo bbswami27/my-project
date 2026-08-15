@@ -185,6 +185,16 @@ app.get('/api/messages/:chatId', (req, res) => {
   res.json(messages);
 });
 
+// Save Message API
+app.post('/api/messages', (req, res) => {
+  const savedMsg = db.saveMessage(req.body);
+  if (req.body.chatId) {
+    io.emit(`receive_message_${req.body.chatId}`, savedMsg);
+  }
+  io.emit('receive_message', savedMsg);
+  res.json({ success: true, message: savedMsg });
+});
+
 // Edit Message API
 app.put('/api/messages/:id', (req, res) => {
   const { text } = req.body;

@@ -63,48 +63,48 @@
             <div class="three-dots-dropdown" id="main-three-dots-dropdown">
               <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
                 <span class="dropdown-item-icon">🤖</span>
-                <span>ChatterAI Assistant</span>
+                <span data-i18n="menu_ai">ChatterAI Assistant</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.switchTab('meetings')">
                 <span class="dropdown-item-icon">📅</span>
-                <span>Video Meetings</span>
+                <span data-i18n="menu_meetings">Video Meetings</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.switchTab('email')">
                 <span class="dropdown-item-icon">✉️</span>
-                <span>Email / Memos</span>
+                <span data-i18n="menu_email">Email / Memos</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.switchTab('news')">
                 <span class="dropdown-item-icon">📡</span>
-                <span>Flash News Channels</span>
+                <span data-i18n="menu_news">Flash News Channels</span>
               </button>
               <button class="dropdown-item" id="btn-install-pwa-app" onclick="window.ChatterApp && window.ChatterApp.promptInstallPWA()">
                 <span class="dropdown-item-icon">📱</span>
-                <span style="color: #22c55e; font-weight: 700;">Install Mobile App</span>
+                <span style="color: #22c55e; font-weight: 700;" data-i18n="menu_install_app">Install Mobile App</span>
               </button>
               <button class="dropdown-item" onclick="window.AuthManager && window.AuthManager.openLinkedDevicesModal()">
                 <span class="dropdown-item-icon">💻</span>
-                <span>Linked Devices</span>
+                <span data-i18n="menu_linked_devices">Linked Devices</span>
               </button>
               <button class="dropdown-item" onclick="window.AuthManager && window.AuthManager.openContactSyncModal()">
                 <span class="dropdown-item-icon">👥</span>
-                <span>Sync Contacts</span>
+                <span data-i18n="menu_sync_contacts">Sync Contacts</span>
               </button>
               <div class="dropdown-divider"></div>
               <button class="dropdown-item" id="menu-opt-new-group" onclick="window.ChatterApp && window.ChatterApp.openNewGroupModal()">
                 <span class="dropdown-item-icon">💬</span>
-                <span>New Group</span>
+                <span data-i18n="menu_new_group">New Group</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.toggleTheme()">
                 <span class="dropdown-item-icon">🌓</span>
-                <span>Switch Theme</span>
+                <span data-i18n="menu_theme">Switch Theme</span>
               </button>
               <button class="dropdown-item" onclick="window.AuthManager && window.AuthManager.openProfileModal()">
                 <span class="dropdown-item-icon">👤</span>
-                <span>My Profile</span>
+                <span data-i18n="menu_profile">My Profile</span>
               </button>
               <button class="dropdown-item" id="menu-opt-settings" onclick="window.ChatterApp && window.ChatterApp.openSettingsModal()">
                 <span class="dropdown-item-icon">⚙️</span>
-                <span>Settings</span>
+                <span data-i18n="menu_settings">Settings</span>
               </button>
             </div>
           </div>
@@ -364,6 +364,10 @@
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #ec4899 0%, #be185d 100%);">📷</div>
                 <span>Photos & Media</span>
               </button>
+              <button class="attachment-option-btn" id="opt-attach-voice" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">🎙️</div>
+                <span>Voice Note</span>
+              </button>
               <button class="attachment-option-btn" id="opt-attach-screenshare" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.CallManager && window.CallManager.startCallWithScreenShare()">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">🖥️</div>
                 <span>Share Screen</span>
@@ -390,14 +394,9 @@
               <button class="recording-cancel-btn" id="btn-cancel-recording">Cancel</button>
             </div>
 
-            <!-- Dedicated Voice Note Trigger Button -->
-            <button class="voice-record-btn" id="btn-voice-record-trigger" title="Record Voice Note" onclick="window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">
-              🎙️
-            </button>
-
-            <!-- Dedicated Send Arrow Button (➤) -->
-            <button class="send-msg-btn" id="btn-send-message" title="Send Message" onclick="window.ChatEngine && window.ChatEngine.sendMessage()">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="display: block; transform: rotate(0deg); margin-left: 2px;">
+            <!-- Dedicated Primary Send Arrow Button (➤) -->
+            <button class="send-msg-btn" id="btn-send-message" title="Send Message" onclick="window.ChatEngine && window.ChatEngine.sendMessage()" style="width: 44px; height: 44px; min-width: 44px; background: #00a884; color: #ffffff; border: none; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 168, 132, 0.4); transition: transform 0.15s;">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="#ffffff" style="display: block; margin-left: 2px;">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
               </svg>
             </button>

@@ -924,9 +924,27 @@ class ChatEngine {
         recipientId: activeChat.id,
         isAiChat: activeChat.isAi || activeChat.id === 'chat_ai'
       });
-    } else if (activeChat.isAi || activeChat.id === 'chat_ai') {
-      this.handleClientAiReply(newMsg.text, senderName);
     }
+
+    // Direct AI Response Trigger
+    if (activeChat.isAi || activeChat.id === 'chat_ai') {
+      setTimeout(() => {
+        this.handleClientAiReply(newMsg.text, senderName);
+      }, 500);
+    }
+
+    // Persist via REST API Fallback
+    try {
+      fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newMsg,
+          recipientId: activeChat.id,
+          isAiChat: activeChat.isAi || activeChat.id === 'chat_ai'
+        })
+      }).catch(() => {});
+    } catch (e) {}
   }
 
   handleClientAiReply(userText, userName) {
@@ -1054,12 +1072,25 @@ class ChatEngine {
   }
 
   onReceiveMessage(msg) {
-    let chat = this.chats.find(c => c.id === msg.chatId);
+    const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : 'me';
+    
+    // Map conversation ID correctly for direct vs group/AI messages
+    let convId = msg.chatId;
+    const isGroupOrAi = msg.chatId === 'chat_ai' || (msg.chatId && msg.chatId.startsWith('group_'));
+    if (!isGroupOrAi && msg.recipientId && msg.senderId) {
+      if (currentUserId === msg.recipientId) {
+        convId = msg.senderId;
+      } else if (currentUserId === msg.senderId) {
+        convId = msg.recipientId;
+      }
+    }
+
+    let chat = this.chats.find(c => c.id === convId);
     if (!chat) {
       chat = {
-        id: msg.chatId,
+        id: convId,
         name: msg.senderName || 'Chatter User',
-        avatar: msg.senderAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${msg.chatId}`,
+        avatar: msg.senderAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${convId}`,
         messages: [],
         unreadCount: 0,
         online: true
@@ -1070,14 +1101,14 @@ class ChatEngine {
     // Check duplicate
     if (!chat.messages.some(m => m.id === msg.id)) {
       chat.messages.push(msg);
-      if (this.activeChatId !== msg.chatId) {
+      if (this.activeChatId !== convId) {
         chat.unreadCount = (chat.unreadCount || 0) + 1;
       }
     }
 
     this.saveChats();
     this.renderChatList();
-    if (this.activeChatId === msg.chatId) {
+    if (this.activeChatId === convId) {
       this.renderMessages();
       this.scrollToBottom();
     }

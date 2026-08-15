@@ -391,6 +391,10 @@ class ChatterApp {
     if (tabName === 'email') {
       this.renderEmailTab();
     }
+
+    if (window.I18N) {
+      window.I18N.applyTranslations(window.I18N.currentLang);
+    }
   }
 
   renderMeetingsTab() {

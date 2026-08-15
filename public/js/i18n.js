@@ -345,6 +345,7 @@ class LocalizationManager {
     if (!I18N_TRANSLATIONS[langCode]) return;
     this.currentLang = langCode;
     localStorage.setItem('gitpit_language', langCode);
+    localStorage.setItem('chatterpatter_language', langCode);
     this.applyTranslations(langCode);
   }
 
@@ -356,44 +357,90 @@ class LocalizationManager {
   applyTranslations(langCode) {
     const dict = I18N_TRANSLATIONS[langCode] || I18N_TRANSLATIONS['en'];
 
-    // Update Tab Labels
-    const chatTab = document.querySelector('.tab-btn[data-tab="chats"] span:first-child');
-    if (chatTab) chatTab.textContent = dict.tab_chats;
+    // 1. Update All 6 Tab Labels
+    const tabMap = {
+      chats: dict.tab_chats || '💬 Chats',
+      status: dict.tab_status || '⭕ Status',
+      calls: dict.tab_calls || '📞 Calls',
+      news: dict.tab_news || '📡 News',
+      meetings: dict.tab_meetings || '📅 Meetings',
+      email: dict.tab_email || '✉️ Memos'
+    };
 
-    const statusTab = document.querySelector('.tab-btn[data-tab="status"] span:first-child');
-    if (statusTab) statusTab.textContent = dict.tab_status;
-
-    const callTab = document.querySelector('.tab-btn[data-tab="calls"] span:first-child');
-    if (callTab) callTab.textContent = dict.tab_calls;
-
-    // Update Search Placeholder
-    const searchInput = document.getElementById('chat-search-input');
-    if (searchInput) searchInput.placeholder = dict.search_placeholder;
-
-    // Update Message Textarea Placeholder
-    const msgInput = document.getElementById('chat-input-textarea');
-    if (msgInput) msgInput.placeholder = dict.type_message_placeholder;
-
-    // Update Section Titles
-    document.querySelectorAll('.status-section-title').forEach(elem => {
-      if (elem.textContent.includes('Recent Calls') || elem.textContent.includes('Calls')) {
-        elem.textContent = dict.recent_calls;
-      } else if (elem.textContent.includes('Recent updates') || elem.textContent.includes('updates')) {
-        elem.textContent = dict.recent_updates;
+    Object.keys(tabMap).forEach(key => {
+      const tabBtn = document.querySelector(`.tab-btn[data-tab="${key}"] span:first-child`);
+      if (tabBtn && tabMap[key]) {
+        tabBtn.textContent = tabMap[key];
       }
     });
 
-    // Update My Status
-    const myStatusTitle = document.querySelector('.status-card-info h4');
-    if (myStatusTitle) myStatusTitle.textContent = dict.my_status;
+    // 2. Update Search & Input Placeholders
+    const searchInput = document.getElementById('chat-search-input');
+    if (searchInput && dict.search_placeholder) {
+      searchInput.placeholder = dict.search_placeholder;
+    }
 
-    // Apply data-i18n attributes if present
+    const msgInput = document.getElementById('chat-input-textarea');
+    if (msgInput && dict.type_message_placeholder) {
+      msgInput.placeholder = dict.type_message_placeholder;
+    }
+
+    // 3. Update Empty Welcome Screen
+    const emptyTitle = document.querySelector('.empty-title');
+    if (emptyTitle) {
+      emptyTitle.textContent = langCode === 'hi' ? 'चैटरपैट्टर वेब' : 'ChatterPatter Web';
+    }
+
+    const emptyDesc = document.querySelector('.empty-desc');
+    if (emptyDesc) {
+      emptyDesc.textContent = langCode === 'hi' 
+        ? 'रीयल-टाइम संदेश भेजें, स्मार्ट एआई बॉट 🤖 से पूछें, स्क्रीन शेयर 🖥️ करें, एचडी ऑडियो-वीडियो कॉल 📹 करें और लाइव खबरें देखें।'
+        : 'Send and receive real-time messages, ask Smart AI Assistant 🤖, share screen 🖥️, make HD audio & video calls 📹, record voice notes, and catch live news updates.';
+    }
+
+    const emptyLock = document.querySelector('.empty-lock');
+    if (emptyLock) {
+      emptyLock.innerHTML = langCode === 'hi'
+        ? '<span>🔒</span> एंड-टू-एंड एन्क्रिप्टेड मैसेजिंग, एआई असिस्टेंट और वीडियो कॉल्स'
+        : '<span>🔒</span> End-to-end encrypted messaging, AI assistant & video calls';
+    }
+
+    // 4. Update Status Section Titles
+    document.querySelectorAll('.status-section-title').forEach(elem => {
+      const t = elem.textContent.toLowerCase();
+      if (t.includes('recent calls') || t.includes('calls') || t.includes('कॉल्स')) {
+        elem.textContent = dict.recent_calls || 'Recent Calls';
+      } else if (t.includes('recent updates') || t.includes('updates') || t.includes('अपडेट्स')) {
+        elem.textContent = dict.recent_updates || 'Recent updates';
+      } else if (t.includes('upcoming') || t.includes('meetings') || t.includes('मीटिंग्स')) {
+        elem.textContent = dict.upcoming_meetings || 'Upcoming Meetings';
+      } else if (t.includes('memos') || t.includes('inbox') || t.includes('मेमो')) {
+        elem.textContent = dict.inbox_memos || 'Inbox Memos';
+      }
+    });
+
+    // 5. Update My Status Card Info
+    const myStatusTitle = document.querySelector('.status-card-info h4');
+    if (myStatusTitle && dict.my_status) {
+      myStatusTitle.textContent = dict.my_status;
+    }
+
+    // 6. Update Language Select Dropdown
+    const langSelect = document.getElementById('settings-language-select');
+    if (langSelect) {
+      langSelect.value = langCode;
+    }
+
+    // 7. Apply data-i18n attributes
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
       if (dict[key]) el.textContent = dict[key];
     });
+
+    console.log(`🌐 Language switched to: ${dict.name} (${langCode})`);
   }
 }
 
 window.I18N = new LocalizationManager();
 window.I18N_TRANSLATIONS = I18N_TRANSLATIONS;
+
