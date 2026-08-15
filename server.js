@@ -134,13 +134,84 @@ app.get('/api/news/flash', (req, res) => {
 
 // Users Sync API
 app.get('/api/users', (req, res) => {
-  res.json(db.getAllUsers());
+  const requestingUserId = req.query.userId || null;
+  res.json(db.getAllUsers(requestingUserId));
+});
+
+// User Privacy Settings API
+app.post('/api/user/privacy', (req, res) => {
+  const { userId, privacy } = req.body;
+  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+  const updated = db.updatePrivacy(userId, privacy);
+  io.emit('user_privacy_updated', { userId, privacy: updated });
+  res.json({ success: true, privacy: updated });
+});
+
+// Phonebook Contacts Sync API
+app.post('/api/contacts/sync', (req, res) => {
+  const { phoneNumbers = [] } = req.body;
+  const cleanNumbers = phoneNumbers.map(p => p.replace(/\D/g, '').slice(-10));
+  const allUsers = db.getAllUsers();
+  const matchedUsers = allUsers.filter(u => {
+    const userClean = (u.phone || '').replace(/\D/g, '').slice(-10);
+    return userClean && cleanNumbers.includes(userClean);
+  });
+  res.json({ success: true, matchedUsers });
+});
+
+// Linked Devices API (Multi-Device QR & Web Connect)
+app.get('/api/devices/:userId', (req, res) => {
+  const devices = db.getLinkedDevices(req.params.userId);
+  res.json({ success: true, devices });
+});
+
+app.post('/api/devices/link', (req, res) => {
+  const { userId, device } = req.body;
+  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+  const newDev = db.addLinkedDevice(userId, device || {});
+  io.emit(`device_linked_${userId}`, newDev);
+  res.json({ success: true, device: newDev });
+});
+
+app.delete('/api/devices/:userId/:deviceId', (req, res) => {
+  const { userId, deviceId } = req.params;
+  const removed = db.removeLinkedDevice(userId, deviceId);
+  res.json({ success: removed });
 });
 
 // Messages History API
 app.get('/api/messages/:chatId', (req, res) => {
   const messages = db.getChatMessages(req.params.chatId);
   res.json(messages);
+});
+
+// Edit Message API
+app.put('/api/messages/:id', (req, res) => {
+  const { text } = req.body;
+  const updated = db.editMessage(req.params.id, text);
+  if (updated) {
+    io.emit('message_edited', updated);
+    return res.json({ success: true, message: updated });
+  }
+  res.status(404).json({ error: 'Message not found' });
+});
+
+// Delete Message API
+app.delete('/api/messages/:id', (req, res) => {
+  const isForEveryone = req.query.everyone !== 'false';
+  const deleted = db.deleteMessage(req.params.id, isForEveryone);
+  if (deleted) {
+    io.emit('message_deleted', { id: req.params.id, isForEveryone });
+    return res.json({ success: true });
+  }
+  res.status(404).json({ error: 'Message not found' });
+});
+
+// Delete Entire Chat API
+app.delete('/api/chats/:chatId', (req, res) => {
+  const deleted = db.deleteChat(req.params.chatId);
+  io.emit('chat_deleted', { chatId: req.params.chatId });
+  res.json({ success: true });
 });
 
 // Groups List & Create API
@@ -212,9 +283,9 @@ app.post('/api/auth/send-otp', (req, res) => {
   });
 });
 
-// Verify OTP
+// Verify OTP & Register
 app.post('/api/auth/verify-otp', (req, res) => {
-  const { phone, otp, displayName } = req.body;
+  const { phone, otp, displayName, username, avatar, bio } = req.body;
   if (!phone || !otp) {
     return res.status(400).json({ error: 'Phone and OTP are required' });
   }
@@ -226,14 +297,17 @@ app.post('/api/auth/verify-otp', (req, res) => {
     const user = {
       id: 'user_' + phone.replace(/[^0-9]/g, ''),
       name: displayName || `User ${phone.slice(-4)}`,
+      username: username || ('@' + (displayName ? displayName.toLowerCase().replace(/\s+/g, '_') : 'user_' + phone.slice(-4))),
       phone: phone,
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phone}`,
-      status: 'Hey there! I am using GitPit 🚀',
+      avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${phone}`,
+      bio: bio || 'Hey there! I am using ChatterPatter 🚀',
+      status: 'Hey there! I am using ChatterPatter 🚀',
       presence: 'online',
       createdAt: new Date().toISOString()
     };
-    db.saveUser(user);
-    return res.json({ success: true, user });
+    const saved = db.saveUser(user);
+    io.emit('user_registered', saved);
+    return res.json({ success: true, user: saved });
   }
 
   return res.status(400).json({ error: 'Invalid or expired OTP. Please try 123456 for testing.' });
@@ -379,10 +453,36 @@ io.on('connection', (socket) => {
     io.emit('read_receipt', data);
   });
 
+  // Edit Message
+  socket.on('edit_message', (data) => {
+    const updated = db.editMessage(data.id, data.text);
+    if (updated) {
+      io.emit('message_edited', updated);
+    }
+  });
+
+  // Delete Message
+  socket.on('delete_message', (data) => {
+    const deleted = db.deleteMessage(data.id, data.isForEveryone);
+    if (deleted) {
+      io.emit('message_deleted', { id: data.id, chatId: data.chatId, isForEveryone: data.isForEveryone });
+    }
+  });
+
+  // Delete Chat
+  socket.on('delete_chat', (data) => {
+    db.deleteChat(data.chatId);
+    io.emit('chat_deleted', { chatId: data.chatId });
+  });
+
   // WebRTC / Call Signaling
   socket.on('call_user', (callData) => {
     console.log(`[CALL] ${callData.callerName} is calling ${callData.recipientId} (${callData.callType})`);
     socket.broadcast.emit('incoming_call', callData);
+  });
+
+  socket.on('webrtc_signal', (data) => {
+    socket.broadcast.emit('webrtc_signal', data);
   });
 
   socket.on('accept_call', (data) => {

@@ -81,16 +81,24 @@
                 <span class="dropdown-item-icon">📱</span>
                 <span style="color: #22c55e; font-weight: 700;">Install Mobile App</span>
               </button>
+              <button class="dropdown-item" onclick="window.AuthManager && window.AuthManager.openLinkedDevicesModal()">
+                <span class="dropdown-item-icon">💻</span>
+                <span>Linked Devices</span>
+              </button>
+              <button class="dropdown-item" onclick="window.AuthManager && window.AuthManager.openContactSyncModal()">
+                <span class="dropdown-item-icon">👥</span>
+                <span>Sync Contacts</span>
+              </button>
               <div class="dropdown-divider"></div>
               <button class="dropdown-item" id="menu-opt-new-group">
-                <span class="dropdown-item-icon">👥</span>
+                <span class="dropdown-item-icon">💬</span>
                 <span>New Group</span>
               </button>
               <button class="dropdown-item" onclick="window.ChatterApp.toggleTheme()">
                 <span class="dropdown-item-icon">🌓</span>
                 <span>Switch Theme</span>
               </button>
-              <button class="dropdown-item" id="menu-opt-profile">
+              <button class="dropdown-item" onclick="window.AuthManager && window.AuthManager.openProfileModal()">
                 <span class="dropdown-item-icon">👤</span>
                 <span>My Profile</span>
               </button>
@@ -278,47 +286,43 @@
             </div>
 
             <div class="chat-header-actions" style="position: relative;">
-              <button class="header-icon-btn" id="btn-chat-disappearing-settings" title="Disappearing Messages Setting">⏳</button>
+              <button class="header-icon-btn" id="btn-jump-to-date" title="📅 Jump to Specific Date (Calendar)">📅</button>
               <button class="header-icon-btn" id="btn-chat-video-call" title="Start Video Call">📹</button>
               <button class="header-icon-btn" id="btn-chat-audio-call" title="Start Voice Call">📞</button>
               <button class="header-icon-btn" id="btn-chat-header-dots" title="More Options">⋮</button>
 
               <!-- Active Chat 3-Dots Dropdown Menu -->
               <div class="chat-header-dropdown" id="chat-header-dropdown-menu">
-                <button class="dropdown-item" id="menu-chat-toggle-video-block">
-                  <span class="dropdown-item-icon">📹</span>
-                  <span id="chat-video-block-text">Block Video Calls</span>
+                <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
+                  <span class="dropdown-item-icon">👤</span>
+                  <span>View Contact & Media</span>
                 </button>
-                <button class="dropdown-item" id="menu-chat-toggle-block">
-                  <span class="dropdown-item-icon">🚫</span>
-                  <span>Block Contact</span>
+                <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.openJumpToDateModal()">
+                  <span class="dropdown-item-icon">📅</span>
+                  <span>Jump to Date</span>
                 </button>
-                <button class="dropdown-item" id="menu-chat-clear">
+                <button class="dropdown-item" onclick="window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
                   <span class="dropdown-item-icon">🗑️</span>
-                  <span>Clear Chat</span>
+                  <span style="color: var(--brand-danger);">Delete Chat</span>
                 </button>
               </div>
             </div>
           </div>
 
           <!-- Messages Scroll View -->
-          <div class="chat-messages-container" id="chat-messages-scroll">
+          <div class="chat-messages-container" id="chat-messages-container">
             <!-- Messages rendered by chat.js -->
           </div>
 
           <!-- Blocked Contact Banner -->
-          <div class="chat-blocked-banner" id="chat-blocked-banner">
+          <div class="chat-blocked-banner" id="chat-blocked-banner" style="display: none;">
             <span>🚫 You have blocked this contact.</span>
             <button class="btn-unblock-pill" onclick="window.ChatEngine && window.ChatEngine.toggleBlockActiveContact()">Unblock Contact</button>
           </div>
 
           <!-- Quoted Reply Preview Bar -->
-          <div class="reply-preview-bar" id="chat-reply-preview-bar" style="display: none;">
-            <div class="reply-preview-info">
-              <div class="reply-preview-sender" id="reply-preview-sender">Sender Name</div>
-              <div class="reply-preview-text" id="reply-preview-text">Replying message text...</div>
-            </div>
-            <button class="reply-preview-close" id="btn-close-reply">✕</button>
+          <div class="reply-preview-bar" id="chat-reply-preview" style="display: none;">
+            <!-- Rendered by chat.js -->
           </div>
 
           <!-- Smart AI Quick Prompt Chips Bar (Shown in AI Chat) -->
@@ -338,41 +342,33 @@
             
             <!-- Emoji & Attachment Buttons -->
             <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis">😊</button>
-            <button class="input-action-btn" id="btn-attach-media" title="Attachment Options">📎</button>
-            <input type="file" id="chat-file-upload" accept="image/*" style="display: none;">
+            <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options">📎</button>
+            <input type="file" id="hidden-file-photo" accept="image/*" style="display: none;">
+            <input type="file" id="hidden-file-doc" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style="display: none;">
 
             <!-- Attachment Menu Dropdown -->
-            <div class="attachment-menu-popup" id="chat-attachment-menu">
-              <button class="attachment-option-btn" id="opt-attach-document">
+            <div class="attachment-menu-popup" id="chat-attach-popup">
+              <button class="attachment-option-btn" id="opt-attach-doc">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);">📄</div>
                 <span>Document / File</span>
               </button>
               <button class="attachment-option-btn" id="opt-attach-photo">
-                <div class="attachment-icon-circle icon-bg-photo">📷</div>
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #ec4899 0%, #be185d 100%);">📷</div>
                 <span>Photos & Media</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-screenshare" onclick="window.CallManager && window.CallManager.startCallWithScreenShare()">
+              <button class="attachment-option-btn" id="opt-attach-screenshare">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">🖥️</div>
                 <span>Share Screen</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-ai" onclick="window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
+              <button class="attachment-option-btn" id="opt-attach-ai">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">🤖</div>
                 <span>Ask AI Assistant</span>
               </button>
               <button class="attachment-option-btn" id="opt-attach-location">
-                <div class="attachment-icon-circle icon-bg-location">📍</div>
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f97316 0%, #c2410c 100%);">📍</div>
                 <span>Share Location</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-meeting">
-                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">📅</div>
-                <span>Fix a Meeting</span>
-              </button>
-              <button class="attachment-option-btn" id="opt-attach-email">
-                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">✉️</div>
-                <span>Quick Email Memo</span>
-              </button>
             </div>
-            <input type="file" id="chat-doc-upload" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style="display: none;">
 
             <!-- Text Input Wrapper -->
             <div class="chat-input-wrapper" id="chat-input-wrapper">
@@ -380,15 +376,20 @@
             </div>
 
             <!-- Voice Recording UI Bar -->
-            <div class="recording-bar" id="recording-bar-ui">
+            <div class="recording-bar" id="recording-bar-ui" style="display: none;">
               <div class="recording-indicator"></div>
               <span class="recording-time" id="recording-time-display">0:00</span>
               <button class="recording-cancel-btn" id="btn-cancel-recording">Cancel</button>
             </div>
 
-            <!-- Send / Voice Note Button -->
-            <button class="send-msg-btn" id="btn-send-message" title="Send or Record Voice Note">
+            <!-- Dedicated Voice Note Trigger Button -->
+            <button class="voice-record-btn" id="btn-voice-record-trigger" title="Record Voice Note">
               🎙️
+            </button>
+
+            <!-- Dedicated Send Arrow Button (➤) -->
+            <button class="send-msg-btn" id="btn-send-message" title="Send Message">
+              ➤
             </button>
 
             <!-- Emoji Picker Popup -->
@@ -1215,20 +1216,21 @@
         <div style="text-align: center; margin-bottom: 18px;">
           <div style="position: relative; display: inline-block;">
             <img id="profile-modal-avatar" style="width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid var(--brand-green); box-shadow: var(--shadow-md);" src="" alt="Avatar">
+            <button type="button" id="btn-profile-regen-avatar" title="Change / Randomize Avatar" style="position: absolute; bottom: 0; right: 0; background: var(--brand-blue); color: #fff; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px;">🔄</button>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Profile Picture</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Tap 🔄 to change avatar</div>
         </div>
 
         <form id="user-profile-edit-form" onsubmit="event.preventDefault(); window.AuthManager && window.AuthManager.saveUserProfile();">
           
           <div class="form-group">
             <label class="form-label">Full Name</label>
-            <input type="text" id="profile-name-input" class="auth-input" placeholder="e.g. Alex Johnson" required>
+            <input type="text" id="profile-name-input" class="auth-input" placeholder="e.g. Rahul Sharma" required>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Username (Optional)</label>
-            <input type="text" id="profile-username-input" class="auth-input" placeholder="e.g. @alex_j">
+            <label class="form-label">Username</label>
+            <input type="text" id="profile-username-input" class="auth-input" placeholder="e.g. @rahul_s">
           </div>
 
           <div class="form-group">
@@ -1243,49 +1245,41 @@
             </div>
             <div class="form-group">
               <label class="form-label">Email Address</label>
-              <input type="email" id="profile-email-input" class="auth-input" placeholder="name@gitpit.app">
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div class="form-group">
-              <label class="form-label">🎂 Date of Birth (DOB)</label>
-              <input type="date" id="profile-dob-input" class="auth-input">
-            </div>
-            <div class="form-group">
-              <label class="form-label">💍 Marriage Anniversary</label>
-              <input type="date" id="profile-anniversary-input" class="auth-input">
+              <input type="email" id="profile-email-input" class="auth-input" placeholder="name@domain.com">
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">🗓️ Other Important Date (Work / Milestone)</label>
-            <input type="date" id="profile-custom-date-input" class="auth-input">
+            <label class="form-label">🎂 Date of Birth (DOB)</label>
+            <input type="date" id="profile-dob-input" class="auth-input">
           </div>
 
-          <!-- 🟢 Activity / Presence Status -->
-          <div class="form-group">
-            <label class="form-label">🟢 Activity / Online Presence Status</label>
-            <select id="profile-presence-select" class="auth-input" style="cursor: pointer;" onchange="const customInput = document.getElementById('profile-custom-status-wrapper'); if (customInput) customInput.style.display = this.value === 'custom' ? 'block' : 'none';">
-              <option value="online" selected>🟢 Online (Available)</option>
-              <option value="busy">🔴 Busy (Do Not Disturb)</option>
-              <option value="meeting">📅 In a Meeting</option>
-              <option value="away">🏃 Away (Be Right Back)</option>
-              <option value="traveling">✈️ Traveling</option>
-              <option value="custom">✏️ Custom Status...</option>
-            </select>
-          </div>
-
-          <div class="form-group" id="profile-custom-status-wrapper" style="display: none;">
-            <label class="form-label">Custom Status Text</label>
-            <input type="text" id="profile-custom-status-text" class="auth-input" placeholder="e.g. Coding 💻, Gym 🏋️, Driving 🚗">
+          <!-- 🔒 Privacy Settings (Hide Sensitive Details from Others) -->
+          <div style="background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle); margin-top: 14px;">
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 13.5px; margin-bottom: 8px;">🔒 Privacy & Visibility Settings</div>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; cursor: pointer;">
+              <span>Hide Mobile Number from others</span>
+              <input type="checkbox" id="privacy-hide-phone" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; cursor: pointer;">
+              <span>Hide Email Address from others</span>
+              <input type="checkbox" id="privacy-hide-email" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; cursor: pointer;">
+              <span>Hide Date of Birth (DOB)</span>
+              <input type="checkbox" id="privacy-hide-dob" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
+              <span>Hide Last Seen / Online Status</span>
+              <input type="checkbox" id="privacy-hide-lastseen" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
           </div>
 
           <div style="display: flex; gap: 10px; margin-top: 18px;">
-            <button type="submit" class="auth-submit-btn" style="flex: 2;" id="btn-save-profile">
+            <button type="submit" class="auth-submit-btn" style="flex: 2;" id="btn-save-user-profile">
               Save Changes ✓
             </button>
-            <button type="button" class="auth-submit-btn" id="btn-logout-user" style="flex: 1; background: var(--brand-danger);" onclick="window.AuthManager && window.AuthManager.logout()">
+            <button type="button" class="auth-submit-btn btn-logout-account" style="flex: 1; background: var(--brand-danger);" onclick="window.AuthManager && window.AuthManager.logout()">
               Log Out
             </button>
           </div>
@@ -1410,6 +1404,154 @@
             Save Allowed File Senders ✓
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTACT PROFILE MODAL & SHARED MEDIA GALLERY -->
+  <div class="modal-overlay" id="contact-profile-modal">
+    <div class="modal-card" style="max-width: 520px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3 class="modal-title">Contact Profile 👤</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('contact-profile-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        
+        <!-- Contact Header Profile -->
+        <div style="text-align: center; margin-bottom: 20px;">
+          <img id="contact-profile-avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid var(--brand-blue); box-shadow: var(--shadow-md); margin-bottom: 8px;" src="" alt="Contact">
+          <h3 id="contact-profile-name" style="font-size: 19px; font-weight: 700; color: var(--text-primary); margin: 0 0 2px 0;">Contact Name</h3>
+          <div id="contact-profile-username" style="font-size: 13px; color: var(--brand-blue); font-weight: 600; margin-bottom: 6px;">@username</div>
+          <p id="contact-profile-status" style="font-size: 13.5px; color: var(--text-secondary); margin: 0 auto; max-width: 90%;">Hey there! I am using ChatterPatter 🚀</p>
+        </div>
+
+        <!-- Quick Call & Action Buttons -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.CallManager && window.CallManager.startCall(document.getElementById('contact-profile-name').textContent, document.getElementById('contact-profile-avatar').src, 'audio', window.ChatEngine.activeChatId)">
+            📞 Audio Call
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-blue); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.CallManager && window.CallManager.startCall(document.getElementById('contact-profile-name').textContent, document.getElementById('contact-profile-avatar').src, 'video', window.ChatEngine.activeChatId)">
+            📹 Video Call
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-danger); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
+            🗑️ Delete Chat
+          </button>
+        </div>
+
+        <!-- Contact Info Box -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Contact Info</div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13.5px;">
+            <span style="color: var(--text-secondary);">📱 Mobile:</span>
+            <span id="contact-profile-phone" style="font-weight: 600; color: var(--text-primary);">+91 98765 43210</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 13.5px;">
+            <span style="color: var(--text-secondary);">✉️ Email:</span>
+            <span id="contact-profile-email" style="font-weight: 600; color: var(--text-primary);">user@domain.com</span>
+          </div>
+        </div>
+
+        <!-- 📁 Shared Media, Photos & Documents Gallery -->
+        <div style="margin-top: 10px;">
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+            <span>📁 Shared Media & Files in this Chat</span>
+          </div>
+
+          <!-- Shared Photos Grid -->
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">🖼️ Photos & Images:</div>
+            <div class="shared-media-grid" id="shared-photos-grid">
+              <!-- Rendered by chat.js -->
+            </div>
+          </div>
+
+          <!-- Shared Documents List -->
+          <div>
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">📄 Documents & Files:</div>
+            <div class="shared-docs-container" id="shared-docs-list">
+              <!-- Rendered by chat.js -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- FULL-SCREEN MEDIA LIGHTBOX MODAL -->
+  <div class="media-lightbox-overlay" id="media-lightbox-modal" onclick="window.ChatEngine && window.ChatEngine.closeLightbox()">
+    <div class="lightbox-content-box" onclick="event.stopPropagation()">
+      <button class="lightbox-close-btn" onclick="window.ChatEngine && window.ChatEngine.closeLightbox()">✕</button>
+      <img id="lightbox-preview-img" src="" alt="Full Resolution Photo">
+      <div class="lightbox-toolbar">
+        <span id="lightbox-caption-text" class="lightbox-caption"></span>
+        <button id="lightbox-download-btn" class="lightbox-download-btn">⬇️ Download Photo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM-STYLE JUMP TO DATE MODAL -->
+  <div class="modal-overlay" id="jump-to-date-modal">
+    <div class="modal-card" style="max-width: 380px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">📅 Jump to Date</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('jump-to-date-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          Select Day, Month, and Year to jump to that day's chat messages:
+        </p>
+        <div class="form-group">
+          <input type="date" id="jump-calendar-input" class="auth-input" style="font-size: 15px; padding: 10px; font-weight: 600;">
+        </div>
+        <button class="auth-submit-btn" style="background: var(--brand-blue); margin-top: 10px;" onclick="window.ChatEngine && window.ChatEngine.jumpToSelectedDate()">
+          Go to Date 🚀
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LINKED DEVICES MODAL (QR CODE CONNECT) -->
+  <div class="modal-overlay" id="linked-devices-modal">
+    <div class="modal-card" style="max-width: 480px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">💻 Linked Devices</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('linked-devices-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <div style="text-align: center; margin-bottom: 16px; background: var(--bg-card); padding: 16px; border-radius: 8px;">
+          <div style="font-size: 40px; margin-bottom: 6px;">📲 ⇄ 💻</div>
+          <h4 style="color: var(--text-primary); margin: 0 0 4px 0;">Use ChatterPatter on Web & other Devices</h4>
+          <p style="font-size: 12.5px; color: var(--text-secondary); margin: 0;">Scan QR code or login with your phone number on any device.</p>
+          <button class="auth-submit-btn" style="margin-top: 12px; font-size: 13px; background: var(--brand-green);" onclick="alert('🔗 To link this device: Open live URL on your other phone/PC and login with your mobile number to sync chats in real time!')">
+            + Link a Device
+          </button>
+        </div>
+
+        <div style="font-weight: 700; font-size: 13px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Device Status</div>
+        <div id="linked-devices-list">
+          <!-- Populated by auth.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SYNC CONTACTS MODAL -->
+  <div class="modal-overlay" id="contact-sync-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">👥 Sync Phone Contacts</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('contact-sync-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 44px; margin-bottom: 10px;">📖</div>
+        <h4 style="color: var(--text-primary); margin-bottom: 6px;">Find Friends on ChatterPatter</h4>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 18px;">
+          Import contacts from your device phonebook to start chatting with your real friends instantly.
+        </p>
+        <button class="auth-submit-btn" style="background: var(--brand-green); margin-bottom: 10px;" onclick="window.AuthManager && window.AuthManager.syncPhoneContacts()">
+          📲 Sync Device Contacts
+        </button>
       </div>
     </div>
   </div>

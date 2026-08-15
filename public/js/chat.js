@@ -1,4 +1,4 @@
-// GitPit - Core Chat Engine & Messaging (with Block/Unblock, Group Chats, Edit, Delete, Meetings, Memos, Disappearing Messages)
+// ChatterPatter - Production Chat Engine with Real Users, Media Lightbox, Calendar Date Jump, Profile Media Gallery & Editing
 
 class ChatEngine {
   constructor() {
@@ -7,6 +7,7 @@ class ChatEngine {
     this.replyingToMessage = null;
     this.selectedMessageForAction = null;
     this.blockedContacts = [];
+    this.registeredUsers = [];
     this.init();
   }
 
@@ -22,7 +23,16 @@ class ChatEngine {
       this.chats = [...window.MOCK_DATA.initialChats];
     }
 
-    // Ensure AI Assistant is always present at top of list
+    // Clean any old dummy test users (Alex, Priya, Rahul, Sarah) from saved chats
+    this.chats = this.chats.filter(c => {
+      if (c.id === 'chat_ai' || c.isAi) return true;
+      if (['chat_priya', 'chat_rahul', 'chat_group_tech', 'user_alex', 'user_priya', 'user_rahul', 'user_sarah'].includes(c.id)) {
+        return false;
+      }
+      return true;
+    });
+
+    // Ensure AI Assistant is always present at the top
     const aiChatIndex = this.chats.findIndex(c => c.id === 'chat_ai' || c.isAi);
     const defaultAiChat = {
       id: 'chat_ai',
@@ -36,13 +46,16 @@ class ChatEngine {
       unreadCount: 1,
       pinned: true,
       online: true,
+      bio: 'Smart AI Bot • Powered by ChatterPatter Neural Intelligence',
       messages: [
         {
-          id: 'm1',
+          id: 'm_welcome',
           senderId: 'ai_assistant',
           senderName: 'ChatterPatter AI 🤖',
-          text: 'Namaste! 🙏 Main aapka Smart AI Assistant hoon.\n\nMujhse koi bhi sawaal poochein, emails ya leave application likhwayein, coding help lein ya chutkula sunein!',
+          senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
+          text: 'Namaste! 🙏 Main aapka Smart AI Assistant hoon.\n\nMujhse koi bhi sawaal poochein, emails ya leave application likhwayein, coding help lein, video calling tips lein ya chutkula sunein! ✨',
           timestamp: '10:00 AM',
+          createdAt: Date.now(),
           status: 'read'
         }
       ]
@@ -58,7 +71,7 @@ class ChatEngine {
       }
     }
 
-    const savedBlocked = localStorage.getItem('gitpit_blocked_contacts');
+    const savedBlocked = localStorage.getItem('chatterpatter_blocked_contacts') || localStorage.getItem('gitpit_blocked_contacts');
     if (savedBlocked) {
       try {
         this.blockedContacts = JSON.parse(savedBlocked);
@@ -69,6 +82,57 @@ class ChatEngine {
 
     this.bindEvents();
     this.renderChatList();
+    this.syncRegisteredUsers();
+  }
+
+  async syncRegisteredUsers() {
+    try {
+      const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : null;
+      const resp = await fetch(`/api/users${currentUserId ? '?userId=' + currentUserId : ''}`);
+      const users = await resp.json();
+      if (Array.isArray(users)) {
+        this.registeredUsers = users;
+        users.forEach(u => {
+          if (currentUserId && u.id === currentUserId) return;
+          const existing = this.chats.find(c => c.id === u.id || (u.phone && c.phone === u.phone));
+          if (!existing) {
+            this.chats.push({
+              id: u.id,
+              name: u.name,
+              username: u.username,
+              phone: u.phone || '',
+              email: u.email || '',
+              avatar: u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.id}`,
+              bio: u.bio || 'Hey there! I am using ChatterPatter 🚀',
+              online: u.online || false,
+              isGroup: false,
+              unreadCount: 0,
+              messages: []
+            });
+          } else {
+            existing.name = u.name;
+            existing.avatar = u.avatar || existing.avatar;
+            existing.online = u.online || existing.online;
+            existing.bio = u.bio || existing.bio;
+            if (u.phone) existing.phone = u.phone;
+            if (u.email) existing.email = u.email;
+          }
+        });
+        this.saveChats();
+        this.renderChatList();
+      }
+    } catch (e) {
+      console.warn('Could not sync registered users:', e);
+    }
+  }
+
+  saveChats() {
+    localStorage.setItem('chatterpatter_chats', JSON.stringify(this.chats));
+    localStorage.setItem('gitpit_chats', JSON.stringify(this.chats));
+  }
+
+  getActiveChat() {
+    return this.chats.find(c => c.id === this.activeChatId);
   }
 
   bindEvents() {
@@ -98,484 +162,159 @@ class ChatEngine {
       });
     }
 
-    // Send / Mic Button
+    // Dedicated Send Arrow Button (➤)
     const sendBtn = document.getElementById('btn-send-message');
     if (sendBtn) {
-      sendBtn.addEventListener('click', () => {
-        const text = textarea ? textarea.value.trim() : '';
-        if (text.length > 0) {
-          this.sendMessage();
-        } else {
-          this.toggleVoiceRecording();
-        }
-      });
+      sendBtn.addEventListener('click', () => this.sendMessage());
+    }
+
+    // Separate Mic / Voice Note Button
+    const voiceBtn = document.getElementById('btn-voice-record-trigger');
+    if (voiceBtn) {
+      voiceBtn.addEventListener('click', () => this.toggleVoiceRecording());
     }
 
     // Cancel Voice Recording
     const cancelRecBtn = document.getElementById('btn-cancel-recording');
     if (cancelRecBtn) {
       cancelRecBtn.addEventListener('click', () => {
-        window.VoiceRecorder.cancelRecording();
+        if (window.VoiceRecorder) window.VoiceRecorder.cancelRecording();
         this.resetRecordingUI();
       });
     }
 
-    // Emoji Picker Toggle
-    const emojiBtn = document.getElementById('btn-toggle-emoji');
-    const emojiPicker = document.getElementById('emoji-picker-container');
-    if (emojiBtn && emojiPicker) {
-      emojiBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        emojiPicker.classList.toggle('active');
-      });
-
-      emojiPicker.querySelectorAll('.emoji-btn').forEach(b => {
-        b.addEventListener('click', () => {
-          if (textarea) {
-            textarea.value += b.textContent;
-            textarea.focus();
-          }
-        });
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
-          emojiPicker.classList.remove('active');
-        }
-      });
-    }
-
-    // Attachment Menu Dropdown Toggle
-    const attachBtn = document.getElementById('btn-attach-media');
-    const attachMenu = document.getElementById('chat-attachment-menu');
-    const fileInput = document.getElementById('chat-file-upload');
-
-    if (attachBtn && attachMenu) {
+    // Attachment Menu Toggle
+    const attachBtn = document.getElementById('btn-chat-attach');
+    const attachPopup = document.getElementById('chat-attach-popup');
+    if (attachBtn && attachPopup) {
       attachBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        attachMenu.classList.toggle('active');
+        attachPopup.classList.toggle('active');
       });
 
       document.addEventListener('click', (e) => {
-        if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
-          attachMenu.classList.remove('active');
+        if (!attachPopup.contains(e.target) && e.target !== attachBtn) {
+          attachPopup.classList.remove('active');
         }
       });
     }
 
-    // Attachment Options Actions
-    const optDocument = document.getElementById('opt-attach-document');
+    // Attachment Options Handlers
     const optPhoto = document.getElementById('opt-attach-photo');
-    const optLocation = document.getElementById('opt-attach-location');
+    const optDoc = document.getElementById('opt-attach-doc');
     const optScreenshare = document.getElementById('opt-attach-screenshare');
     const optAi = document.getElementById('opt-attach-ai');
-    const optMeeting = document.getElementById('opt-attach-meeting');
-    const optEmail = document.getElementById('opt-attach-email');
-    const docInput = document.getElementById('chat-doc-upload');
+    const optLocation = document.getElementById('opt-attach-location');
 
-    if (optDocument && docInput) {
-      optDocument.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        docInput.click();
-      });
-      docInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) this.handleDocumentUpload(file);
+    if (optPhoto) {
+      optPhoto.addEventListener('click', () => {
+        if (attachPopup) attachPopup.classList.remove('active');
+        const fileInput = document.getElementById('hidden-file-photo');
+        if (fileInput) fileInput.click();
       });
     }
 
-    if (optPhoto && fileInput) {
-      optPhoto.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        fileInput.click();
-      });
-      fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) this.handleFileUpload(file);
+    if (optDoc) {
+      optDoc.addEventListener('click', () => {
+        if (attachPopup) attachPopup.classList.remove('active');
+        const fileInput = document.getElementById('hidden-file-doc');
+        if (fileInput) fileInput.click();
       });
     }
 
     if (optScreenshare) {
       optScreenshare.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        if (window.CallManager) window.CallManager.startCallWithScreenShare();
+        if (attachPopup) attachPopup.classList.remove('active');
+        const activeChat = this.getActiveChat();
+        if (window.CallManager) {
+          window.CallManager.startCallWithScreenShare(activeChat ? activeChat.name : 'User', activeChat ? activeChat.avatar : '', activeChat ? activeChat.id : '');
+        }
       });
     }
 
     if (optAi) {
       optAi.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
+        if (attachPopup) attachPopup.classList.remove('active');
         this.openChat('chat_ai');
       });
     }
 
     if (optLocation) {
       optLocation.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        if (window.LocationService) window.LocationService.shareCurrentLocation();
+        if (attachPopup) attachPopup.classList.remove('active');
+        if (window.LocationService) window.LocationService.openLocationModal();
       });
     }
 
-    if (optMeeting) {
-      optMeeting.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        this.openMeetingModal();
-      });
+    // Hidden File Upload Change Handlers
+    const photoInput = document.getElementById('hidden-file-photo');
+    if (photoInput) {
+      photoInput.addEventListener('change', (e) => this.handleImageUpload(e));
     }
 
-    if (optEmail) {
-      optEmail.addEventListener('click', () => {
-        if (attachMenu) attachMenu.classList.remove('active');
-        this.openEmailMemoModal();
-      });
+    const docInput = document.getElementById('hidden-file-doc');
+    if (docInput) {
+      docInput.addEventListener('change', (e) => this.handleDocUpload(e));
     }
 
-    // Close Reply Preview
-    const closeReplyBtn = document.getElementById('btn-close-reply');
-    if (closeReplyBtn) {
-      closeReplyBtn.addEventListener('click', () => this.clearReplyQuote());
-    }
-
-    // Mobile Back Button
-    const backBtn = document.getElementById('btn-chat-back-mobile');
+    // Back to Chats on Mobile
+    const backBtn = document.getElementById('btn-back-to-chats');
     if (backBtn) {
       backBtn.addEventListener('click', () => {
         document.getElementById('sidebar-container').classList.remove('mobile-hidden');
         document.getElementById('chat-main-area').classList.remove('mobile-active');
-        this.activeChatId = null;
       });
     }
 
-    // Header Call Buttons
-    const audioCallBtn = document.getElementById('btn-chat-audio-call');
-    const videoCallBtn = document.getElementById('btn-chat-video-call');
-    if (audioCallBtn) {
-      audioCallBtn.addEventListener('click', () => {
+    // Header Video & Audio Call Buttons
+    const callVideoBtn = document.getElementById('btn-header-call-video');
+    const callAudioBtn = document.getElementById('btn-header-call-audio');
+    if (callVideoBtn) {
+      callVideoBtn.addEventListener('click', () => {
         const activeChat = this.getActiveChat();
-        if (!activeChat) return;
-        if (this.isContactBlocked(activeChat.id)) {
-          alert('🚫 Cannot call a blocked contact. Please unblock first.');
-          return;
-        }
-        if (window.CallManager) {
-          window.CallManager.startCall(activeChat.name, activeChat.avatar, 'audio', activeChat.id);
-        }
-      });
-    }
-    if (videoCallBtn) {
-      videoCallBtn.addEventListener('click', () => {
-        const activeChat = this.getActiveChat();
-        if (!activeChat) return;
-        if (this.isContactBlocked(activeChat.id)) {
-          alert('🚫 Cannot video call a blocked contact. Please unblock first.');
-          return;
-        }
-        if (window.CallManager) {
+        if (activeChat && window.CallManager) {
           window.CallManager.startCall(activeChat.name, activeChat.avatar, 'video', activeChat.id);
         }
       });
     }
-
-    // Chat Header 3-Dots Dropdown
-    const chatThreeDotsBtn = document.getElementById('btn-chat-header-dots');
-    const chatDropdown = document.getElementById('chat-header-dropdown-menu');
-    if (chatThreeDotsBtn && chatDropdown) {
-      chatThreeDotsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        chatDropdown.classList.toggle('active');
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!chatDropdown.contains(e.target) && e.target !== chatThreeDotsBtn) {
-          chatDropdown.classList.remove('active');
+    if (callAudioBtn) {
+      callAudioBtn.addEventListener('click', () => {
+        const activeChat = this.getActiveChat();
+        if (activeChat && window.CallManager) {
+          window.CallManager.startCall(activeChat.name, activeChat.avatar, 'audio', activeChat.id);
         }
       });
     }
 
-    // Block / Unblock Video Calls Button inside Chat Menu
-    const toggleVideoBlockBtn = document.getElementById('menu-chat-toggle-video-block');
-    if (toggleVideoBlockBtn) {
-      toggleVideoBlockBtn.addEventListener('click', () => {
-        if (chatDropdown) chatDropdown.classList.remove('active');
-        this.toggleVideoBlockActiveContact();
-      });
+    // Chat Header Info Click -> Open Contact Profile Modal
+    const headerInfo = document.querySelector('.chat-header-info');
+    const headerAvatar = document.getElementById('active-chat-avatar');
+    if (headerInfo) {
+      headerInfo.addEventListener('click', () => this.openContactProfile(this.activeChatId));
+    }
+    if (headerAvatar) {
+      headerAvatar.addEventListener('click', () => this.openContactProfile(this.activeChatId));
     }
 
-    // Block / Unblock Button inside Chat Menu
-    const toggleBlockBtn = document.getElementById('menu-chat-toggle-block');
-    if (toggleBlockBtn) {
-      toggleBlockBtn.addEventListener('click', () => {
-        if (chatDropdown) chatDropdown.classList.remove('active');
-        this.toggleBlockActiveContact();
-      });
+    // Calendar Jump to Date button in Header
+    const jumpDateBtn = document.getElementById('btn-jump-to-date');
+    if (jumpDateBtn) {
+      jumpDateBtn.addEventListener('click', () => this.openJumpToDateModal());
     }
 
-    // Clear Chat inside Chat Menu
-    const clearChatBtn = document.getElementById('menu-chat-clear');
-    if (clearChatBtn) {
-      clearChatBtn.addEventListener('click', () => {
-        if (chatDropdown) chatDropdown.classList.remove('active');
-        this.clearActiveChatMessages();
-      });
-    }
-
-    // Disappearing Messages Settings Trigger
-    const disappearingBtn = document.getElementById('btn-chat-disappearing-settings');
-    const disappearingModal = document.getElementById('disappearing-settings-modal');
-    const closeDisappearingBtn = document.getElementById('btn-close-disappearing');
-
-    if (disappearingBtn && disappearingModal) {
-      disappearingBtn.addEventListener('click', () => disappearingModal.classList.add('active'));
-    }
-    if (closeDisappearingBtn && disappearingModal) {
-      closeDisappearingBtn.addEventListener('click', () => disappearingModal.classList.remove('active'));
-    }
-
-    // Disappearing Duration Radios
-    const durationRadios = document.querySelectorAll('input[name="disappearing-duration"]');
-    durationRadios.forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        this.setDisappearingDuration(e.target.value);
-      });
-    });
-
-    // Edit Message Modal Form
-    const saveEditBtn = document.getElementById('btn-save-edit-message');
-    const closeEditBtn = document.getElementById('btn-close-edit-modal');
+    // Confirm Edit Modal Handler
+    const saveEditBtn = document.getElementById('btn-confirm-edit-message');
     if (saveEditBtn) {
       saveEditBtn.addEventListener('click', () => this.confirmEditMessage());
     }
-    if (closeEditBtn) {
-      closeEditBtn.addEventListener('click', () => {
-        document.getElementById('edit-message-modal').classList.remove('active');
+
+    // Cancel Edit Handler
+    const cancelEditBtn = document.getElementById('btn-cancel-edit-message');
+    if (cancelEditBtn) {
+      cancelEditBtn.addEventListener('click', () => {
+        const modal = document.getElementById('edit-message-modal');
+        if (modal) modal.classList.remove('active');
       });
-    }
-
-    // Delete Message Modal Form
-    const delEveryoneBtn = document.getElementById('btn-delete-for-everyone');
-    const delForMeBtn = document.getElementById('btn-delete-for-me');
-    const closeDelBtn = document.getElementById('btn-close-delete-modal');
-
-    if (delEveryoneBtn) {
-      delEveryoneBtn.addEventListener('click', () => this.confirmDeleteMessage('everyone'));
-    }
-    if (delForMeBtn) {
-      delForMeBtn.addEventListener('click', () => this.confirmDeleteMessage('me'));
-    }
-    if (closeDelBtn) {
-      closeDelBtn.addEventListener('click', () => {
-        document.getElementById('delete-message-modal').classList.remove('active');
-      });
-    }
-
-    // Meeting Schedule Submit
-    const submitMeetingBtn = document.getElementById('btn-submit-schedule-meeting');
-    const closeMeetingBtn = document.getElementById('btn-close-meeting-modal');
-    if (submitMeetingBtn) {
-      submitMeetingBtn.addEventListener('click', () => this.confirmScheduleMeeting());
-    }
-    if (closeMeetingBtn) {
-      closeMeetingBtn.addEventListener('click', () => {
-        document.getElementById('schedule-meeting-modal').classList.remove('active');
-      });
-    }
-
-    // Email Memo Submit
-    const submitEmailBtn = document.getElementById('btn-submit-email-memo');
-    const closeEmailBtn = document.getElementById('btn-close-email-memo');
-    if (submitEmailBtn) {
-      submitEmailBtn.addEventListener('click', () => this.confirmSendEmailMemo());
-    }
-    if (closeEmailBtn) {
-      closeEmailBtn.addEventListener('click', () => {
-        document.getElementById('email-memo-modal').classList.remove('active');
-      });
-    }
-  }
-
-  isContactBlocked(chatId) {
-    return this.blockedContacts.includes(chatId);
-  }
-
-  toggleBlockActiveContact() {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-
-    if (this.isContactBlocked(activeChat.id)) {
-      this.unblockContact(activeChat.id);
-    } else {
-      this.blockContact(activeChat.id);
-    }
-  }
-
-  blockContact(chatId) {
-    if (!this.blockedContacts.includes(chatId)) {
-      this.blockedContacts.push(chatId);
-      localStorage.setItem('gitpit_blocked_contacts', JSON.stringify(this.blockedContacts));
-    }
-    const chat = this.chats.find(c => c.id === chatId);
-    const name = chat ? chat.name : 'Contact';
-    alert(`🚫 ${name} has been blocked.`);
-    this.updateBlockedStateUI();
-    this.renderSettingsBlockedList();
-  }
-
-  unblockContact(chatId) {
-    this.blockedContacts = this.blockedContacts.filter(id => id !== chatId);
-    localStorage.setItem('gitpit_blocked_contacts', JSON.stringify(this.blockedContacts));
-    const chat = this.chats.find(c => c.id === chatId);
-    const name = chat ? chat.name : 'Contact';
-    alert(`✅ ${name} has been unblocked.`);
-    this.updateBlockedStateUI();
-    this.renderSettingsBlockedList();
-  }
-
-  renderSettingsBlockedList() {
-    const container = document.getElementById('settings-blocked-list-container');
-    const badge = document.getElementById('blocked-count-badge');
-    if (!container) return;
-
-    if (badge) badge.textContent = this.blockedContacts.length;
-
-    if (this.blockedContacts.length === 0) {
-      container.innerHTML = `<p style="font-size: 12.5px; color: var(--text-muted); text-align: center; margin: 8px 0;">No contacts currently blocked.</p>`;
-      return;
-    }
-
-    container.innerHTML = this.blockedContacts.map(chatId => {
-      const chat = this.chats.find(c => c.id === chatId) || {
-        name: 'Blocked User',
-        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=blocked'
-      };
-      return `
-        <div class="settings-blocked-item">
-          <div class="blocked-item-info">
-            <img class="blocked-item-avatar" src="${chat.avatar}" alt="${chat.name}">
-            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-primary);">${chat.name}</span>
-          </div>
-          <button class="btn-unblock-item" onclick="window.ChatEngine.unblockContact('${chatId}')">
-            Unblock
-          </button>
-        </div>
-      `;
-    }).join('');
-  }
-
-  toggleVideoBlockActiveContact() {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-
-    if (this.isVideoBlocked(activeChat.id)) {
-      this.unblockVideoContact(activeChat.id);
-    } else {
-      this.blockVideoContact(activeChat.id);
-    }
-  }
-
-  isVideoBlocked(chatId) {
-    const list = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
-    return list.includes(chatId);
-  }
-
-  blockVideoContact(chatId) {
-    let list = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
-    if (!list.includes(chatId)) {
-      list.push(chatId);
-      localStorage.setItem('gitpit_video_blocked_contacts', JSON.stringify(list));
-    }
-    const chat = this.chats.find(c => c.id === chatId);
-    const name = chat ? chat.name : 'Contact';
-    alert(`📹 Video calls from ${name} are now BLOCKED. (Voice calls & text chat remain active)`);
-    this.updateVideoBlockedStateUI();
-    this.renderSettingsVideoBlockedList();
-  }
-
-  unblockVideoContact(chatId) {
-    let list = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
-    list = list.filter(id => id !== chatId);
-    localStorage.setItem('gitpit_video_blocked_contacts', JSON.stringify(list));
-    const chat = this.chats.find(c => c.id === chatId);
-    const name = chat ? chat.name : 'Contact';
-    alert(`📹 Video calls from ${name} are now UNBLOCKED.`);
-    this.updateVideoBlockedStateUI();
-    this.renderSettingsVideoBlockedList();
-  }
-
-  updateVideoBlockedStateUI() {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-
-    const isVideoBlocked = this.isVideoBlocked(activeChat.id);
-    const textElem = document.getElementById('chat-video-block-text');
-    if (textElem) {
-      textElem.textContent = isVideoBlocked ? 'Unblock Video Calls' : 'Block Video Calls';
-    }
-  }
-
-  renderSettingsVideoBlockedList() {
-    const container = document.getElementById('settings-video-blocked-list-container');
-    const badge = document.getElementById('video-blocked-count-badge');
-    if (!container) return;
-
-    const list = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
-    if (badge) badge.textContent = list.length;
-
-    if (list.length === 0) {
-      container.innerHTML = `<p style="font-size: 12.5px; color: var(--text-muted); text-align: center; margin: 8px 0;">No individual contacts video-blocked.</p>`;
-      return;
-    }
-
-    container.innerHTML = list.map(chatId => {
-      const chat = this.chats.find(c => c.id === chatId) || {
-        name: 'Contact',
-        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=videoblocked'
-      };
-      return `
-        <div class="settings-blocked-item">
-          <div class="blocked-item-info">
-            <img class="blocked-item-avatar" src="${chat.avatar}" alt="${chat.name}">
-            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-primary);">${chat.name}</span>
-          </div>
-          <button class="btn-unblock-item" style="background: var(--brand-orange);" onclick="window.ChatEngine.unblockVideoContact('${chatId}')">
-            Unblock Video
-          </button>
-        </div>
-      `;
-    }).join('');
-  }
-
-  updateBlockedStateUI() {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-
-    const isBlocked = this.isContactBlocked(activeChat.id);
-    const inputBar = document.getElementById('chat-input-bar-container');
-    const blockedBanner = document.getElementById('chat-blocked-banner');
-    const blockMenuItem = document.getElementById('menu-chat-toggle-block');
-
-    if (blockedBanner && inputBar) {
-      if (isBlocked) {
-        inputBar.style.display = 'none';
-        blockedBanner.classList.add('active');
-        if (blockMenuItem) blockMenuItem.innerHTML = `<span class="dropdown-item-icon">✅</span><span>Unblock Contact</span>`;
-      } else {
-        inputBar.style.display = 'flex';
-        blockedBanner.classList.remove('active');
-        if (blockMenuItem) blockMenuItem.innerHTML = `<span class="dropdown-item-icon">🚫</span><span>Block Contact</span>`;
-      }
-    }
-
-    this.updateVideoBlockedStateUI();
-  }
-
-  clearActiveChatMessages() {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-    if (confirm(`Are you sure you want to clear all messages with ${activeChat.name}?`)) {
-      activeChat.messages = [];
-      this.saveChats();
-      this.renderMessages();
-      this.renderChatList();
     }
   }
 
@@ -583,10 +322,23 @@ class ChatEngine {
     const listElem = document.getElementById('chat-list-items');
     if (!listElem) return;
 
+    if (this.chats.length === 0) {
+      listElem.innerHTML = `
+        <div style="text-align: center; color: var(--text-muted); padding: 40px 20px;">
+          <div style="font-size: 32px; margin-bottom: 8px;">💬</div>
+          <p>No active conversations yet.</p>
+          <button class="btn-action-primary" style="margin-top: 12px; font-size: 13px;" onclick="window.ChatEngine.syncRegisteredUsers()">
+            🔄 Refresh Contacts
+          </button>
+        </div>
+      `;
+      return;
+    }
+
     listElem.innerHTML = this.chats.map(chat => {
       const lastMsg = chat.messages && chat.messages.length > 0
         ? chat.messages[chat.messages.length - 1]
-        : { text: 'No messages yet', timestamp: '' };
+        : { text: 'Tap to chat', timestamp: '' };
 
       const unreadBadge = chat.unreadCount > 0
         ? `<div class="chat-item-badge">${chat.unreadCount}</div>`
@@ -597,26 +349,29 @@ class ChatEngine {
         : '';
 
       const isActive = chat.id === this.activeChatId ? 'active' : '';
-      const hasUnread = chat.unreadCount > 0 ? 'has-unread' : '';
+      const isPinned = chat.pinned ? '📌 ' : '';
 
       return `
-        <li class="chat-item ${isActive} ${hasUnread}" onclick="window.ChatEngine.openChat('${chat.id}')">
-          <div class="avatar-wrapper">
+        <li class="chat-item ${isActive}" onclick="window.ChatEngine.openChat('${chat.id}')">
+          <div class="avatar-wrapper" onclick="event.stopPropagation(); window.ChatEngine.openContactProfile('${chat.id}')">
             <img class="avatar-img" src="${chat.avatar}" alt="${chat.name}">
             ${onlineDot}
           </div>
           <div class="chat-item-info">
             <div class="chat-item-top">
-              <span class="chat-item-name">${chat.name}</span>
+              <span class="chat-item-name">${isPinned}${chat.name}</span>
               <span class="chat-item-time">${lastMsg.timestamp || ''}</span>
             </div>
             <div class="chat-item-bottom">
               <span class="chat-item-lastmsg">
-                ${lastMsg.isDeleted ? '🚫 This message was deleted' : (lastMsg.type === 'voice' ? '🎙️ Voice note' : (lastMsg.type === 'image' ? '📷 Photo' : (lastMsg.type === 'location' ? '📍 Location' : (lastMsg.type === 'payment' ? '💸 Payment' : (lastMsg.type === 'meeting' ? '📅 Meeting' : (lastMsg.type === 'email_memo' ? '✉️ ' + lastMsg.emailSubject : (lastMsg.type === 'news' ? '📰 ' + lastMsg.newsTitle : lastMsg.text)))))))}
+                ${lastMsg.isDeleted ? '🚫 This message was deleted' : (lastMsg.type === 'voice' ? '🎙️ Voice note' : (lastMsg.type === 'image' ? '📷 Photo' : (lastMsg.type === 'document' ? '📄 ' + (lastMsg.fileName || 'Document') : lastMsg.text || 'Tap to chat')))}
               </span>
               ${unreadBadge}
             </div>
           </div>
+          <button class="chat-item-delete-btn" title="Delete Chat" onclick="event.stopPropagation(); window.ChatEngine.deleteChat('${chat.id}')">
+            🗑️
+          </button>
         </li>
       `;
     }).join('');
@@ -628,19 +383,13 @@ class ChatEngine {
       return;
     }
     const cleanQuery = query.toLowerCase().trim();
-    const cleanDigits = cleanQuery.replace(/\D/g, ''); // Numbers only for phone search
-
     const filtered = this.chats.filter(c => {
       const matchName = (c.name || '').toLowerCase().includes(cleanQuery);
       const matchUsername = (c.username || '').toLowerCase().includes(cleanQuery);
+      const matchPhone = (c.phone || '').includes(cleanQuery);
       const matchEmail = (c.email || '').toLowerCase().includes(cleanQuery);
-      
-      const phoneDigits = (c.phone || '').replace(/\D/g, '');
-      const matchPhone = cleanDigits.length >= 3 && phoneDigits.includes(cleanDigits);
-
       const matchMessages = (c.messages || []).some(m => (m.text || '').toLowerCase().includes(cleanQuery));
-
-      return matchName || matchUsername || matchEmail || matchPhone || matchMessages;
+      return matchName || matchUsername || matchPhone || matchEmail || matchMessages;
     });
 
     const listElem = document.getElementById('chat-list-items');
@@ -649,7 +398,7 @@ class ChatEngine {
     if (filtered.length === 0) {
       listElem.innerHTML = `
         <div style="text-align: center; color: var(--text-muted); padding: 30px; font-size: 13.5px;">
-          🔍 No contacts or messages found matching "<b>${query}</b>"<br>
+          🔍 No contacts found matching "<b>${query}</b>"<br>
           <button class="btn-action-primary" style="margin-top: 14px; font-size: 12px;" onclick="window.ChatEngine.startNewChatWithSearch('${query.replace(/'/g, "\\'")}')">
             💬 Start New Chat with "${query}"
           </button>
@@ -658,41 +407,32 @@ class ChatEngine {
       return;
     }
 
-    listElem.innerHTML = filtered.map(chat => {
-      const lastMsg = chat.messages[chat.messages.length - 1] || { text: '' };
-      const phoneTag = chat.phone ? `<span style="font-size: 11px; color: var(--brand-blue); background: var(--bg-card); padding: 1px 6px; border-radius: 4px; margin-right: 4px;">📱 ${chat.phone}</span>` : '';
-      const emailTag = chat.email ? `<span style="font-size: 11px; color: var(--brand-orange); background: var(--bg-card); padding: 1px 6px; border-radius: 4px;">✉️ ${chat.email}</span>` : '';
-
-      return `
-        <li class="chat-item ${chat.id === this.activeChatId ? 'active' : ''}" onclick="window.ChatEngine.openChat('${chat.id}')">
-          <div class="avatar-wrapper">
-            <img class="avatar-img" src="${chat.avatar}" alt="${chat.name}">
+    listElem.innerHTML = filtered.map(chat => `
+      <li class="chat-item ${chat.id === this.activeChatId ? 'active' : ''}" onclick="window.ChatEngine.openChat('${chat.id}')">
+        <div class="avatar-wrapper">
+          <img class="avatar-img" src="${chat.avatar}" alt="${chat.name}">
+        </div>
+        <div class="chat-item-info">
+          <div class="chat-item-top">
+            <span class="chat-item-name">${chat.name}</span>
           </div>
-          <div class="chat-item-info">
-            <div class="chat-item-top">
-              <span class="chat-item-name">${chat.name}</span>
-              <span class="chat-item-time">${lastMsg.timestamp || ''}</span>
-            </div>
-            <div style="margin: 2px 0;">
-              ${phoneTag} ${emailTag}
-            </div>
-            <div class="chat-item-bottom">
-              <span class="chat-item-lastmsg">${lastMsg.text || 'Tap to chat'}</span>
-            </div>
+          <div class="chat-item-bottom">
+            <span class="chat-item-lastmsg">${chat.phone ? '📱 ' + chat.phone : (chat.username || 'Tap to chat')}</span>
           </div>
-        </li>
-      `;
-    }).join('');
+        </div>
+      </li>
+    `).join('');
   }
 
   startNewChatWithSearch(target) {
     const newContact = {
-      id: 'chat_' + Date.now(),
+      id: 'user_' + Date.now(),
       name: target,
       phone: target.includes('@') ? '' : target,
       email: target.includes('@') ? target : '',
       username: '@' + target.toLowerCase().replace(/[^a-z0-9_]/g, ''),
-      avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(target)}`,
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(target)}`,
+      bio: 'ChatterPatter Member 🚀',
       messages: [],
       unreadCount: 0,
       online: true
@@ -709,7 +449,6 @@ class ChatEngine {
     if (!chat) return;
 
     chat.unreadCount = 0;
-    this.cleanDisappearingMessages(chat);
     this.saveChats();
     this.renderChatList();
 
@@ -727,11 +466,11 @@ class ChatEngine {
     statusElem.textContent = isAi
       ? '🤖 Smart AI Assistant • Always Active'
       : (chat.isGroup
-        ? `${(chat.members || []).length} members: ${(chat.members || []).slice(0, 3).join(', ')}...`
-        : (chat.online ? 'Online' : (chat.lastSeen ? `Last seen ${chat.lastSeen}` : 'GitPit')));
+        ? `${(chat.members || []).length} members`
+        : (chat.online ? 'Online' : (chat.lastSeen ? `Last seen ${chat.lastSeen}` : 'ChatterPatter')));
     statusElem.className = 'status-text';
 
-    // Toggle AI Quick Prompt Suggestion Chips Bar
+    // Toggle AI Prompt Chips
     const aiChipsBar = document.getElementById('ai-prompt-chips-bar');
     if (aiChipsBar) {
       aiChipsBar.style.display = isAi ? 'block' : 'none';
@@ -750,65 +489,31 @@ class ChatEngine {
     this.sendMessage();
   }
 
-  cleanDisappearingMessages(chat) {
-    if (!chat.disappearing || chat.disappearing === 'never') return;
-
-    const now = Date.now();
-    let maxAgeMs = 24 * 60 * 60 * 1000;
-    if (chat.disappearing === '7d') maxAgeMs = 7 * 24 * 60 * 60 * 1000;
-    if (chat.disappearing === '90d') maxAgeMs = 90 * 24 * 60 * 60 * 1000;
-
-    chat.messages = chat.messages.filter(m => {
-      if (!m.createdAt) return true;
-      return (now - m.createdAt) < maxAgeMs;
-    });
-  }
-
-  setDisappearingDuration(duration) {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-
-    activeChat.disappearing = duration;
-    this.saveChats();
-    this.renderMessages();
-
-    const modal = document.getElementById('disappearing-settings-modal');
-    if (modal) modal.classList.remove('active');
-
-    alert(`⏳ Disappearing messages set to: ${duration === 'never' ? 'Off' : duration}`);
-  }
-
-  getActiveChat() {
-    return this.chats.find(c => c.id === this.activeChatId);
-  }
-
   renderMessages() {
     const activeChat = this.getActiveChat();
-    const container = document.getElementById('chat-messages-scroll');
-    if (!activeChat || !container) return;
+    const container = document.getElementById('chat-messages-container');
+    if (!container || !activeChat) return;
 
-    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
-    const currentUserId = currentUser ? currentUser.id : 'me';
+    const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : 'me';
 
-    let disappearingHtml = '';
-    if (activeChat.disappearing && activeChat.disappearing !== 'never') {
-      disappearingHtml = `
-        <div class="disappearing-banner">
-          ⏳ Disappearing messages are active (${activeChat.disappearing}). Messages will automatically vanish.
+    if (activeChat.messages.length === 0) {
+      container.innerHTML = `
+        <div class="empty-chat-placeholder">
+          <div class="empty-icon">👋</div>
+          <p>Start a conversation with <b>${activeChat.name}</b></p>
+          <span style="font-size: 12px; color: var(--text-muted);">End-to-end encrypted messaging</span>
         </div>
       `;
+      return;
     }
 
     let html = `
       <div class="date-divider">
-        <span class="date-badge">TODAY</span>
+        <span class="date-badge">CHATS & MEDIA</span>
       </div>
-      ${disappearingHtml}
     `;
 
-    const colors = ['sender-color-1', 'sender-color-2', 'sender-color-3', 'sender-color-4', 'sender-color-5'];
-
-    activeChat.messages.forEach((msg, idx) => {
+    activeChat.messages.forEach((msg) => {
       const isOutgoing = msg.senderId === currentUserId || msg.senderId === 'me';
       const wrapperClass = isOutgoing ? 'msg-outgoing' : 'msg-incoming';
 
@@ -816,14 +521,7 @@ class ChatEngine {
         ? `<span class="msg-ticks ${msg.status === 'read' ? 'ticks-read' : 'ticks-sent'}">✓✓</span>`
         : '';
 
-      const editedBadge = msg.isEdited ? `<span class="msg-edited-tag">Edited</span>` : '';
-
-      // Group Sender Tag
-      let groupSenderHeader = '';
-      if (activeChat.isGroup && !isOutgoing && msg.senderName) {
-        const colorClass = colors[idx % colors.length];
-        groupSenderHeader = `<span class="group-sender-tag ${colorClass}">${msg.senderName}</span>`;
-      }
+      const editedBadge = msg.edited ? `<span class="msg-edited-tag">(edited)</span>` : '';
 
       let quotedHtml = '';
       if (msg.quote) {
@@ -841,16 +539,13 @@ class ChatEngine {
       } else if (msg.type === 'voice') {
         bodyHtml = `
           <div class="voice-note-card">
-            <button class="voice-play-btn" onclick="window.VoiceRecorder.playVoiceNote(this, '${msg.audioUrl || ''}', '${msg.duration || '0:05'}')">▶</button>
+            <button class="voice-play-btn" onclick="window.VoiceRecorder && window.VoiceRecorder.playVoiceNote(this, '${msg.audioUrl || ''}', '${msg.duration || '0:05'}')">▶</button>
             <div class="voice-waveform-container">
               <div class="waveform-bars">
                 <div class="wave-bar" style="height: 8px"></div>
                 <div class="wave-bar" style="height: 18px"></div>
                 <div class="wave-bar" style="height: 12px"></div>
                 <div class="wave-bar" style="height: 22px"></div>
-                <div class="wave-bar" style="height: 16px"></div>
-                <div class="wave-bar" style="height: 10px"></div>
-                <div class="wave-bar" style="height: 20px"></div>
                 <div class="wave-bar" style="height: 14px"></div>
               </div>
               <span class="voice-duration">${msg.duration || '0:05'}</span>
@@ -859,161 +554,61 @@ class ChatEngine {
         `;
       } else if (msg.type === 'image') {
         bodyHtml = `
-          <div class="msg-media-preview" onclick="window.open('${msg.mediaUrl}', '_blank')">
-            <img src="${msg.mediaUrl}" alt="Photo">
+          <div class="msg-media-preview" onclick="window.ChatEngine.openLightbox('${msg.mediaUrl}', '${(msg.text || '').replace(/'/g, "\\'")}')">
+            <img src="${msg.mediaUrl}" alt="Photo" class="chat-photo-thumbnail">
           </div>
-          ${msg.text ? `<div>${this.formatText(msg.text)}</div>` : ''}
+          ${msg.text ? `<div class="msg-caption">${this.formatText(msg.text)}</div>` : ''}
+        `;
+      } else if (msg.type === 'document') {
+        const ext = (msg.fileName || '').split('.').pop().toLowerCase();
+        bodyHtml = `
+          <div class="document-bubble-card" onclick="window.ChatEngine.downloadDocument('${(msg.fileName || 'file').replace(/'/g, "\\'")}', '${msg.mediaUrl || msg.fileUrl || ''}')">
+            <div class="doc-icon-badge">📄</div>
+            <div class="doc-meta">
+              <div class="doc-filename">${msg.fileName || 'Document'}</div>
+              <div class="doc-details">${msg.fileSize || 'File'} • Click to Download ⬇️</div>
+            </div>
+          </div>
+          ${msg.text && msg.text !== msg.fileName ? `<div>${this.formatText(msg.text)}</div>` : ''}
         `;
       } else if (msg.type === 'location') {
         bodyHtml = `
           <div class="location-bubble-card">
-            <div class="location-map-preview">
-              <span class="location-pin-marker">📍</span>
-            </div>
-            <div class="location-body">
-              <div class="location-title">${msg.locationTitle || 'Live Location'}</div>
-              <div class="location-address">${msg.locationAddress || 'Current Location Coordinates'}</div>
-              <a href="${msg.mapUrl || '#'}" target="_blank" class="location-btn-open">
-                🗺️ Open in Google Maps ↗
-              </a>
-            </div>
+            <div class="location-title">📍 ${msg.locationTitle || 'Live Location'}</div>
+            <div class="location-address">${msg.locationAddress || 'Location Coordinates'}</div>
+            <a href="${msg.mapUrl || '#'}" target="_blank" class="location-btn-open">Open Map ↗</a>
           </div>
-        `;
-      } else if (msg.type === 'document') {
-        const ext = (msg.fileName || '').split('.').pop().toLowerCase();
-        let badgeClass = 'doc-badge-generic';
-        let iconEmoji = '📄';
-
-        if (ext === 'pdf') {
-          badgeClass = 'doc-badge-pdf';
-          iconEmoji = '📕';
-        } else if (ext === 'doc' || ext === 'docx') {
-          badgeClass = 'doc-badge-word';
-          iconEmoji = '📘';
-        } else if (ext === 'xls' || ext === 'xlsx') {
-          badgeClass = 'doc-badge-excel';
-          iconEmoji = '📗';
-        } else if (ext === 'zip' || ext === 'rar') {
-          badgeClass = 'doc-badge-zip';
-          iconEmoji = '📦';
-        }
-
-        bodyHtml = `
-          <div class="document-bubble-card">
-            <div class="doc-icon-badge ${badgeClass}">${iconEmoji}</div>
-            <div class="doc-meta">
-              <div class="doc-filename" title="${msg.fileName}">${msg.fileName}</div>
-              <div class="doc-details">${msg.fileSize || 'Document'} • ${ext.toUpperCase()}</div>
-            </div>
-            <button class="doc-download-btn" title="Download Document" onclick="window.ChatEngine.downloadDocument('${msg.fileName.replace(/'/g, "\\'")}', '${msg.fileUrl || ''}')">
-              ⬇️
-            </button>
-          </div>
-          ${msg.text && msg.text !== msg.fileName ? `<div>${this.formatText(msg.text)}</div>` : ''}
-        `;
-      } else if (msg.type === 'attachment_blocked') {
-        bodyHtml = `
-          <div class="attachment-blocked-card">
-            <div class="blocked-card-title">
-              <span>🔒</span>
-              <span>Attachment Blocked (Unknown Sender)</span>
-            </div>
-            <div class="blocked-card-desc">
-              A file attachment from an unsaved number was blocked by your Privacy Settings.
-            </div>
-            <button class="btn-trust-contact" onclick="window.ChatEngine.trustContact('${activeChat.id}')">
-              🛡️ Trust & Save Contact
-            </button>
-          </div>
-        `;
-      } else if (msg.type === 'payment') {
-        bodyHtml = `
-          <div class="payment-bubble-card">
-            <div class="payment-bubble-header">
-              <span class="upi-badge-logo">⚡ UPI PAYMENT</span>
-              <span class="payment-status-pill">✓ SUCCESS</span>
-            </div>
-            <div class="payment-amount-display">₹${msg.amount || '0'}</div>
-            <div class="payment-note-text">${msg.note || 'GitPit Payment'}</div>
-            <div class="payment-txn-id">Ref ID: ${msg.txnId || 'UPI12345678'}</div>
-          </div>
-        `;
-      } else if (msg.type === 'meeting') {
-        bodyHtml = `
-          <div class="meeting-bubble-card">
-            <div class="meeting-header">
-              <span class="meeting-badge">📅 SCHEDULED MEETING</span>
-              <span style="font-size: 11px; color: var(--text-muted);">${msg.meetingDuration || '30 mins'}</span>
-            </div>
-            <div class="meeting-title">${msg.meetingTitle}</div>
-            <div class="meeting-datetime">🕒 ${msg.meetingDate} at ${msg.meetingTime}</div>
-            <button class="meeting-join-btn" onclick="window.CallManager && window.CallManager.startCall('${activeChat.name}', '${activeChat.avatar}', 'video', '${activeChat.id}')">
-              📹 Join Video Meeting
-            </button>
-          </div>
-        `;
-      } else if (msg.type === 'email_memo') {
-        bodyHtml = `
-          <div class="email-memo-bubble-card">
-            <div class="email-memo-header">
-              <span>✉️ QUICK EMAIL / MEMO</span>
-              <span class="email-priority-pill ${msg.emailPriority === 'urgent' ? 'priority-urgent' : 'priority-normal'}">${msg.emailPriority}</span>
-            </div>
-            <div class="email-memo-subject">${msg.emailSubject}</div>
-            <div class="email-memo-body">${this.formatText(msg.text)}</div>
-          </div>
-        `;
-      } else if (msg.type === 'news') {
-        bodyHtml = `
-          <div class="news-bubble-card" onclick="window.NewsService && window.NewsService.openArticleModal('${msg.newsId}')">
-            ${msg.newsImage ? `<img class="news-bubble-img" src="${msg.newsImage}" alt="News">` : ''}
-            <div class="news-bubble-body">
-              <div class="news-bubble-source">${msg.newsSource || 'GitPit Flash News'}</div>
-              <div class="news-bubble-title">${msg.newsTitle}</div>
-            </div>
-          </div>
-          ${msg.text ? `<div>${this.formatText(msg.text)}</div>` : ''}
         `;
       } else {
         bodyHtml = `<div>${this.formatText(msg.text)}</div>`;
       }
 
-      let reactionHtml = '';
-      if (msg.reactions && msg.reactions.length > 0) {
-        reactionHtml = `
-          <div class="msg-reactions">
-            ${msg.reactions.map(r => `<span>${r.emoji}</span>`).join('')}
+      // Message Action dropdown trigger
+      const canEdit = isOutgoing && !msg.isDeleted && !msg.type;
+      const actionsMenuHtml = `
+        <div class="msg-action-dropdown-wrapper">
+          <button class="btn-msg-more" onclick="event.stopPropagation(); window.ChatEngine.toggleMsgMenu('${msg.id}')">⋮</button>
+          <div class="msg-action-menu" id="msg-menu-${msg.id}">
+            <button class="msg-action-item" onclick="window.ChatEngine.setReplyQuote('${msg.id}')">↩️ Reply</button>
+            <button class="msg-action-item" onclick="window.ChatEngine.copyMsgText('${msg.id}')">📋 Copy</button>
+            ${canEdit ? `<button class="msg-action-item" onclick="window.ChatEngine.openEditModal('${msg.id}')">✏️ Edit</button>` : ''}
+            <button class="msg-action-item text-danger" onclick="window.ChatEngine.deleteMessage('${msg.id}')">🗑️ Delete</button>
           </div>
-        `;
-      }
-
-      const now = Date.now();
-      const isWithin15Min = (now - (msg.createdAt || now)) < (15 * 60 * 1000);
-      const canEdit = isOutgoing && !msg.isDeleted && isWithin15Min && !msg.type;
+        </div>
+      `;
 
       html += `
         <div class="msg-wrapper ${wrapperClass}" id="msg-${msg.id}">
-          <div class="reaction-bar-popup">
-            <button class="react-emoji-btn" onclick="window.ChatEngine.addReaction('${msg.id}', '❤️')">❤️</button>
-            <button class="react-emoji-btn" onclick="window.ChatEngine.addReaction('${msg.id}', '👍')">👍</button>
-            <button class="react-emoji-btn" onclick="window.ChatEngine.addReaction('${msg.id}', '😂')">😂</button>
-            <button class="react-emoji-btn" onclick="window.ChatEngine.addReaction('${msg.id}', '😮')">😮</button>
-            <button class="react-emoji-btn" onclick="window.ChatEngine.setReplyQuote('${msg.id}')" title="Reply">↩️</button>
-            ${canEdit ? `<button class="react-emoji-btn" onclick="window.ChatEngine.openEditModal('${msg.id}')" title="Edit message (15 mins)">✏️</button>` : ''}
-            <button class="react-emoji-btn" onclick="window.ChatEngine.openDeleteModal('${msg.id}')" title="Delete message">🗑️</button>
-            <button class="react-emoji-btn" onclick="window.ReminderManager.openReminderModal({ text: '${msg.text ? msg.text.replace(/'/g, "\\'") : 'Message Reminder'}', title: 'Chat Reminder' })" title="Set Reminder">⏰</button>
-          </div>
           <div class="msg-bubble">
-            ${groupSenderHeader}
             ${quotedHtml}
             ${bodyHtml}
             <div class="msg-meta">
               ${editedBadge}
               <span>${msg.timestamp}</span>
               ${ticks}
+              ${actionsMenuHtml}
             </div>
           </div>
-          ${reactionHtml}
         </div>
       `;
     });
@@ -1021,66 +616,268 @@ class ChatEngine {
     container.innerHTML = html;
   }
 
-  formatText(text) {
-    if (!text) return '';
-    let formatted = text
-      .replace(/```([\s\S]*?)```/g, '<pre style="background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 12px; margin: 6px 0; border: 1px solid var(--border-subtle); color: #38bdf8;"><code>$1</code></pre>')
-      .replace(/`([^`]+)`/g, '<code style="background: rgba(0,0,0,0.2); padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #38bdf8;">$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<b style="color: var(--text-primary);">$1</b>')
-      .replace(/\*([^*]+)\*/g, '<i>$1</i>')
-      .replace(/\n/g, '<br>');
-    return formatted;
+  toggleMsgMenu(msgId) {
+    document.querySelectorAll('.msg-action-menu.active').forEach(m => {
+      if (m.id !== `msg-menu-${msgId}`) m.classList.remove('active');
+    });
+    const menu = document.getElementById(`msg-menu-${msgId}`);
+    if (menu) menu.classList.toggle('active');
   }
 
-  scrollToBottom() {
-    const container = document.getElementById('chat-messages-scroll');
-    if (container) {
-      container.scrollTop = container.scrollHeight;
+  // ================= EDIT & DELETE MESSAGES =================
+  openEditModal(msgId) {
+    const activeChat = this.getActiveChat();
+    if (!activeChat) return;
+    const msg = activeChat.messages.find(m => m.id === msgId);
+    if (!msg) return;
+
+    this.selectedMessageForAction = msg;
+    const input = document.getElementById('edit-message-input');
+    if (input) input.value = msg.text || '';
+
+    const modal = document.getElementById('edit-message-modal');
+    if (modal) modal.classList.add('active');
+  }
+
+  async confirmEditMessage() {
+    if (!this.selectedMessageForAction) return;
+    const input = document.getElementById('edit-message-input');
+    const newText = input ? input.value.trim() : '';
+    if (!newText) return;
+
+    const msgId = this.selectedMessageForAction.id;
+    this.selectedMessageForAction.text = newText;
+    this.selectedMessageForAction.edited = true;
+    this.selectedMessageForAction.editedAt = Date.now();
+
+    this.saveChats();
+    this.renderMessages();
+    this.renderChatList();
+
+    const modal = document.getElementById('edit-message-modal');
+    if (modal) modal.classList.remove('active');
+
+    // Sync via socket and API
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('edit_message', { id: msgId, text: newText });
     }
+    try {
+      await fetch(`/api/messages/${msgId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: newText })
+      });
+    } catch (e) {}
   }
 
-  sendMessage(customPayload = null) {
+  async deleteMessage(msgId) {
     const activeChat = this.getActiveChat();
     if (!activeChat) return;
 
-    if (this.isContactBlocked(activeChat.id)) {
-      alert('🚫 You cannot send messages to a blocked contact. Please unblock first.');
+    const isEveryone = confirm('Delete this message for everyone? (Click Cancel to delete for yourself only)');
+    const msgIndex = activeChat.messages.findIndex(m => m.id === msgId);
+    if (msgIndex === -1) return;
+
+    if (isEveryone) {
+      activeChat.messages[msgIndex].isDeleted = true;
+      activeChat.messages[msgIndex].text = '🚫 This message was deleted';
+      activeChat.messages[msgIndex].mediaUrl = null;
+    } else {
+      activeChat.messages.splice(msgIndex, 1);
+    }
+
+    this.saveChats();
+    this.renderMessages();
+    this.renderChatList();
+
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('delete_message', { id: msgId, chatId: activeChat.id, isForEveryone: isEveryone });
+    }
+    try {
+      await fetch(`/api/messages/${msgId}?everyone=${isEveryone}`, { method: 'DELETE' });
+    } catch (e) {}
+  }
+
+  async deleteChat(chatId) {
+    const targetChat = this.chats.find(c => c.id === chatId);
+    if (!targetChat) return;
+
+    if (!confirm(`Are you sure you want to delete conversation with ${targetChat.name}?`)) {
       return;
     }
 
-    const isSavedContact = window.MOCK_DATA.demoUsers.some(u => u.name === activeChat.name) || activeChat.id === 'chat_ai' || activeChat.id.startsWith('group_');
-    const isUnknownContact = !isSavedContact && (activeChat.id.includes('unknown') || activeChat.id.startsWith('chat_user_'));
+    this.chats = this.chats.filter(c => c.id !== chatId);
+    this.saveChats();
+    this.renderChatList();
 
-    // 🛡️ 1. Anti-Fraud Stranger Shield (Only Text & Location Allowed from Unknown)
-    const strangerShieldActive = localStorage.getItem('gitpit_restrict_unknown_media') !== 'false';
-    if (customPayload && isUnknownContact && strangerShieldActive) {
-      if (customPayload.type !== 'text' && customPayload.type !== 'location') {
-        alert('🛡️ Anti-Fraud Shield Active: Only plain text & 📍 Location are allowed with unknown contacts. File attachments, photos, audio & payments are blocked to protect against fraud.');
-        return;
+    if (this.activeChatId === chatId) {
+      this.activeChatId = null;
+      document.getElementById('chat-empty-state').style.display = 'flex';
+      document.getElementById('chat-active-view').style.display = 'none';
+    }
+
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('delete_chat', { chatId });
+    }
+    try {
+      await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+    } catch (e) {}
+  }
+
+  copyMsgText(msgId) {
+    const activeChat = this.getActiveChat();
+    if (!activeChat) return;
+    const msg = activeChat.messages.find(m => m.id === msgId);
+    if (msg && msg.text) {
+      navigator.clipboard.writeText(msg.text);
+      alert('📋 Message text copied to clipboard!');
+    }
+  }
+
+  // ================= TELEGRAM-STYLE JUMP TO DATE =================
+  openJumpToDateModal() {
+    const modal = document.getElementById('jump-to-date-modal');
+    if (!modal) return;
+
+    const datePicker = document.getElementById('jump-calendar-input');
+    if (datePicker) {
+      datePicker.value = new Date().toISOString().split('T')[0];
+    }
+    modal.classList.add('active');
+  }
+
+  jumpToSelectedDate() {
+    const datePicker = document.getElementById('jump-calendar-input');
+    if (!datePicker || !datePicker.value) return;
+
+    const selectedDateStr = datePicker.value; // e.g. "2026-08-15"
+    const activeChat = this.getActiveChat();
+    if (!activeChat) return;
+
+    const modal = document.getElementById('jump-to-date-modal');
+    if (modal) modal.classList.remove('active');
+
+    // Search messages for matching date
+    const targetMsg = activeChat.messages.find(m => {
+      if (m.date && m.date.startsWith(selectedDateStr)) return true;
+      if (m.createdAt) {
+        const msgDateStr = new Date(m.createdAt).toISOString().split('T')[0];
+        return msgDateStr === selectedDateStr;
+      }
+      return false;
+    });
+
+    if (targetMsg) {
+      const msgElem = document.getElementById(`msg-${targetMsg.id}`);
+      if (msgElem) {
+        msgElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        msgElem.classList.add('highlight-jump-msg');
+        setTimeout(() => msgElem.classList.remove('highlight-jump-msg'), 3000);
+      }
+    } else {
+      alert(`📅 No messages found on ${selectedDateStr}.`);
+    }
+  }
+
+  // ================= MEDIA LIGHTBOX MODAL =================
+  openLightbox(imageUrl, caption = '') {
+    const modal = document.getElementById('media-lightbox-modal');
+    const imgElem = document.getElementById('lightbox-preview-img');
+    const captionElem = document.getElementById('lightbox-caption-text');
+    const downloadBtn = document.getElementById('lightbox-download-btn');
+
+    if (!modal || !imgElem) return;
+
+    imgElem.src = imageUrl;
+    if (captionElem) captionElem.textContent = caption || '';
+    if (downloadBtn) {
+      downloadBtn.onclick = () => this.downloadDocument('ChatterPatter_Image_' + Date.now() + '.jpg', imageUrl);
+    }
+
+    modal.classList.add('active');
+  }
+
+  closeLightbox() {
+    const modal = document.getElementById('media-lightbox-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  downloadDocument(fileName, fileUrl) {
+    const a = document.createElement('a');
+    a.href = fileUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  // ================= CONTACT PROFILE MODAL & SHARED FILES =================
+  openContactProfile(contactId) {
+    const contact = this.chats.find(c => c.id === contactId) || this.registeredUsers.find(u => u.id === contactId);
+    if (!contact) return;
+
+    const modal = document.getElementById('contact-profile-modal');
+    if (!modal) return;
+
+    document.getElementById('contact-profile-avatar').src = contact.avatar;
+    document.getElementById('contact-profile-name').textContent = contact.name;
+    document.getElementById('contact-profile-username').textContent = contact.username || '@user';
+    document.getElementById('contact-profile-status').textContent = contact.bio || contact.status || 'ChatterPatter Member';
+    
+    // Privacy respecting phone & email
+    const phoneElem = document.getElementById('contact-profile-phone');
+    const emailElem = document.getElementById('contact-profile-email');
+    if (phoneElem) phoneElem.textContent = contact.phone || '🔒 Hidden by User';
+    if (emailElem) emailElem.textContent = contact.email || '🔒 Hidden by User';
+
+    // Shared Media Gallery (Photos, Docs, Audio)
+    const activeChat = this.chats.find(c => c.id === contactId);
+    const messages = activeChat ? activeChat.messages : [];
+
+    const photos = messages.filter(m => m.type === 'image' && m.mediaUrl);
+    const docs = messages.filter(m => m.type === 'document');
+    const audios = messages.filter(m => m.type === 'voice');
+
+    // Populate Shared Photos Grid
+    const photosGrid = document.getElementById('shared-photos-grid');
+    if (photosGrid) {
+      if (photos.length === 0) {
+        photosGrid.innerHTML = `<div class="empty-media-msg">No shared photos yet.</div>`;
+      } else {
+        photosGrid.innerHTML = photos.map(p => `
+          <div class="shared-media-thumb" onclick="window.ChatEngine.openLightbox('${p.mediaUrl}')">
+            <img src="${p.mediaUrl}" alt="Photo">
+          </div>
+        `).join('');
       }
     }
 
-    // 📁 2. 4-Tier File & Document Receiving/Sending Privacy
-    const filePrivacy = localStorage.getItem('gitpit_file_receiving_privacy') || 'contacts';
-    const isFilePayload = customPayload && (customPayload.type === 'document' || customPayload.type === 'image' || customPayload.type === 'voice' || customPayload.type === 'file');
-
-    if (isFilePayload) {
-      if (filePrivacy === 'nobody') {
-        alert('🚫 File & Attachment transfers are completely disabled in your Privacy Settings (Text Only Mode).');
-        return;
-      }
-      if (filePrivacy === 'selected') {
-        const allowedFiles = JSON.parse(localStorage.getItem('gitpit_allowed_file_contacts') || '[]');
-        if (!allowedFiles.includes(activeChat.id)) {
-          alert('🚫 File & Attachment transfers are restricted to Selected Persons Only in your Privacy Settings.');
-          return;
-        }
-      }
-      if (filePrivacy === 'contacts' && isUnknownContact) {
-        alert('⚠️ File attachments with unknown contacts are restricted in your Privacy Settings.');
-        return;
+    // Populate Shared Documents List
+    const docsList = document.getElementById('shared-docs-list');
+    if (docsList) {
+      if (docs.length === 0) {
+        docsList.innerHTML = `<div class="empty-media-msg">No shared documents.</div>`;
+      } else {
+        docsList.innerHTML = docs.map(d => `
+          <div class="shared-doc-item" onclick="window.ChatEngine.downloadDocument('${(d.fileName || 'file').replace(/'/g, "\\'")}', '${d.mediaUrl || d.fileUrl || ''}')">
+            <span class="shared-doc-icon">📄</span>
+            <div class="shared-doc-info">
+              <div class="shared-doc-title">${d.fileName || 'Document'}</div>
+              <div class="shared-doc-sub">${d.fileSize || 'File'} • ${d.timestamp || ''}</div>
+            </div>
+            <button class="btn-download-shared-doc">⬇️</button>
+          </div>
+        `).join('');
       }
     }
+
+    modal.classList.add('active');
+  }
+
+  // ================= SENDING MESSAGES =================
+  sendMessage(customPayload = null) {
+    const activeChat = this.getActiveChat();
+    if (!activeChat) return;
 
     const textarea = document.getElementById('chat-input-textarea');
     let text = textarea ? textarea.value.trim() : '';
@@ -1090,12 +887,14 @@ class ChatEngine {
     const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
     const senderId = currentUser ? currentUser.id : 'me';
     const senderName = currentUser ? currentUser.name : 'You';
+    const senderAvatar = currentUser ? currentUser.avatar : '';
 
     const newMsg = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       chatId: activeChat.id,
       senderId: senderId,
       senderName: senderName,
+      senderAvatar: senderAvatar,
       text: text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       createdAt: Date.now(),
@@ -1118,6 +917,7 @@ class ChatEngine {
 
     this.playAudioPop();
 
+    // Broadcast over Socket.io
     if (window.ChatterApp && window.ChatterApp.socket && window.ChatterApp.socket.connected) {
       window.ChatterApp.socket.emit('send_message', {
         ...newMsg,
@@ -1148,7 +948,7 @@ class ChatEngine {
       const query = (userText || '').trim().toLowerCase();
       let answer = '';
 
-      // Math calculations
+      // Math
       const mathMatch = (userText || '').match(/^[\d\s\+\-\*\/\(\)\.\^\%]+$/);
       if (mathMatch && (userText || '').match(/[\+\-\*\/]/)) {
         try {
@@ -1160,21 +960,13 @@ class ChatEngine {
 
       if (!answer) {
         if (/leave application|chhutti|resignation|formal email|write an email|letter/i.test(query)) {
-          answer = `📝 **Professional Draft (Aapke liye):**\n\n**Subject:** Application for Leave / Urgent Work\n\nRespected Sir/Madam,\n\nI am writing to formally request leave of absence from [Start Date] to [End Date] due to [urgent personal work / health reason]. I will ensure that all my pending tasks are coordinated and I remain reachable via email for urgent matters.\n\nKindly grant me leave for the specified duration.\n\nThanking you,\nYours sincerely,\n**${userName || 'Friend'}**`;
-        } else if (/joke|chutkula|hasao|shayari|funny|comedy/i.test(query)) {
-          const jokes = [
-            `😂 **Chutkula:**\n\nTeacher: "Batao, sabse zyada bijli kahan banti hai?"\nStudent: "Sir, hamare padosi ke ghar me!"\nTeacher: "Kaise?"\nStudent: "Kyunki wahan din-raat 'shanti' naam ki ladki chalti hai aur sab kehte hain 'Shanti me bahut power hai!' 🤣⚡`,
-            `✨ **Shayari:**\n\n*Manzil unhi ko milti hai, jinke sapno me jaan hoti hai...*\n*Pankho se kuch nahi hota, hauslo se udaan hoti hai!* 🦅🔥`
-          ];
-          answer = jokes[Math.floor(Math.random() * jokes.length)];
-        } else if (/hi|hello|hey|namaste|kem cho|pranam/i.test(query)) {
+          answer = `📝 **Professional Draft:**\n\n**Subject:** Application for Leave / Urgent Work\n\nRespected Sir/Madam,\n\nI am writing to formally request leave of absence from [Start Date] to [End Date] due to [urgent personal work]. I will ensure all pending responsibilities are covered.\n\nThanking you,\nYours sincerely,\n**${userName || 'Friend'}**`;
+        } else if (/joke|chutkula|hasao|shayari|funny/i.test(query)) {
+          answer = `😂 **Chutkula:**\n\nTeacher: "Batao, sabse zyada bijli kahan banti hai?"\nStudent: "Sir, hamare padosi ke ghar me!"\nTeacher: "Kaise?"\nStudent: "Kyunki wahan din-raat 'shanti' chalti hai aur sab kehte hain 'Shanti me bahut power hai!' 🤣⚡`;
+        } else if (/hi|hello|hey|namaste/i.test(query)) {
           answer = `Namaste ${userName || 'Friend'}! 🙏✨\n\nMain aapka **Smart AI Assistant** hoon. Main aapke kisi bhi sawaal ka jawaab de sakta hoon:\n\n• 💡 **Sawaal-Jawaab & General Knowledge**\n• ✍️ **Emails, Applications & Letters likhna**\n• 💻 **Programming & Coding Help**\n• 🌐 **Language Translation (Hindi/English)**\n• 📞 **Audio/Video Calling & Screen Sharing Help**\n\nAap mujhse abhi kya poochna chahte hain?`;
-        } else if (/video call|screen share|screen sharing/i.test(query)) {
-          answer = `📹 **Video Calling & Screen Sharing Guide:**\n\n• **Video Call:** Chat header me **📹 Video Icon** par tap karein.\n• **Screen Share:** Call ke dauran neeche **🖥️ Screen Share** button dabayein aur window choose karein!\n• **Mic/Camera:** Call ke waqt aap **🎤 Mic** aur **📹 Camera** aasani se toggle kar sakte hain.`;
-        } else if (/code|javascript|python|html|css|react/i.test(query)) {
-          answer = `💻 **Coding Assistant:**\n\nYeh raha ek clean example:\n\`\`\`javascript\n// Quick Search Filter Function\nfunction filterItems(items, query) {\n  return items.filter(item => \n    item.name.toLowerCase().includes(query.toLowerCase())\n  );\n}\n\`\`\`\nAap kisi bhi specific language me coding sawal pooch sakte hain!`;
         } else {
-          answer = `🤖 **Smart AI Answer:**\n\nAapke sawaal *"**${userText}**"* ke baare me:\n\n• Yeh ek bahut badiya topic hai. Main ispar aapko poori jankari aur guidance de sakta hoon.\n• Aap mujhse leave applications, programming code, jokes, translation ya calculation bhi karwa sakte hain! 💡`;
+          answer = `🤖 **Smart AI Answer:**\n\nAapke sawaal *"**${userText}**"* ke sandarbh me:\n\n• Yeh ek mahatvapoorna topic hai. Main ispar poori madad kar sakta hoon.\n• Aap mujhse coding, email writing, math calculations ya translation bhi karwa sakte hain! 💡`;
         }
       }
 
@@ -1196,127 +988,42 @@ class ChatEngine {
       this.renderChatList();
       this.scrollToBottom();
       this.playAudioPop();
-    }, 600);
+    }, 700);
   }
 
-  openEditModal(msgId) {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-    const msg = activeChat.messages.find(m => m.id === msgId);
-    if (!msg) return;
+  handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    this.selectedMessageForAction = msg;
-    const input = document.getElementById('edit-message-input');
-    if (input) input.value = msg.text || '';
-
-    const modal = document.getElementById('edit-message-modal');
-    if (modal) modal.classList.add('active');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      this.sendMessage({
+        type: 'image',
+        mediaUrl: event.target.result,
+        fileName: file.name,
+        fileSize: (file.size / 1024).toFixed(1) + ' KB'
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   }
 
-  confirmEditMessage() {
-    if (!this.selectedMessageForAction) return;
+  handleDocUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    const input = document.getElementById('edit-message-input');
-    const newText = input ? input.value.trim() : '';
-    if (!newText) {
-      alert('Message cannot be empty!');
-      return;
-    }
-
-    this.selectedMessageForAction.text = newText;
-    this.selectedMessageForAction.isEdited = true;
-    this.saveChats();
-    this.renderMessages();
-
-    const modal = document.getElementById('edit-message-modal');
-    if (modal) modal.classList.remove('active');
-  }
-
-  openDeleteModal(msgId) {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-    const msg = activeChat.messages.find(m => m.id === msgId);
-    if (!msg) return;
-
-    this.selectedMessageForAction = msg;
-    const modal = document.getElementById('delete-message-modal');
-    if (modal) modal.classList.add('active');
-  }
-
-  confirmDeleteMessage(type = 'everyone') {
-    const activeChat = this.getActiveChat();
-    if (!activeChat || !this.selectedMessageForAction) return;
-
-    if (type === 'everyone') {
-      this.selectedMessageForAction.isDeleted = true;
-      this.selectedMessageForAction.text = '🚫 This message was deleted';
-    } else {
-      activeChat.messages = activeChat.messages.filter(m => m.id !== this.selectedMessageForAction.id);
-    }
-
-    this.saveChats();
-    this.renderMessages();
-    this.renderChatList();
-
-    const modal = document.getElementById('delete-message-modal');
-    if (modal) modal.classList.remove('active');
-  }
-
-  openMeetingModal() {
-    const modal = document.getElementById('schedule-meeting-modal');
-    if (!modal) return;
-    
-    const dateInput = document.getElementById('meeting-date-input');
-    const timeInput = document.getElementById('meeting-time-input');
-    if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
-    if (timeInput) timeInput.value = '16:00';
-
-    modal.classList.add('active');
-  }
-
-  confirmScheduleMeeting() {
-    const title = document.getElementById('meeting-title-input').value.trim() || 'GitPit Project Sync';
-    const date = document.getElementById('meeting-date-input').value;
-    const time = document.getElementById('meeting-time-input').value;
-    const duration = document.getElementById('meeting-duration-select').value;
-
-    this.sendMessage({
-      type: 'meeting',
-      meetingTitle: title,
-      meetingDate: date,
-      meetingTime: time,
-      meetingDuration: duration,
-      text: `📅 Scheduled Meeting: ${title} on ${date} at ${time}`
-    });
-
-    const modal = document.getElementById('schedule-meeting-modal');
-    if (modal) modal.classList.remove('active');
-  }
-
-  openEmailMemoModal() {
-    const modal = document.getElementById('email-memo-modal');
-    if (modal) modal.classList.add('active');
-  }
-
-  confirmSendEmailMemo() {
-    const subject = document.getElementById('email-subject-input').value.trim() || 'GitPit Memo';
-    const priority = document.querySelector('input[name="email-priority"]:checked')?.value || 'normal';
-    const body = document.getElementById('email-body-input').value.trim();
-
-    if (!body) {
-      alert('Please enter your memo body text');
-      return;
-    }
-
-    this.sendMessage({
-      type: 'email_memo',
-      emailSubject: subject,
-      emailPriority: priority,
-      text: body
-    });
-
-    const modal = document.getElementById('email-memo-modal');
-    if (modal) modal.classList.remove('active');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      this.sendMessage({
+        type: 'document',
+        mediaUrl: event.target.result,
+        fileUrl: event.target.result,
+        fileName: file.name,
+        fileSize: (file.size / 1024).toFixed(1) + ' KB'
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   }
 
   setReplyQuote(msgId) {
@@ -1325,157 +1032,34 @@ class ChatEngine {
     const msg = activeChat.messages.find(m => m.id === msgId);
     if (!msg) return;
 
-    this.replyingToMessage = {
-      id: msg.id,
-      senderName: msg.senderName || 'Contact',
-      text: msg.text || (msg.type === 'voice' ? 'Voice note' : 'Photo')
-    };
-
-    const replyBar = document.getElementById('chat-reply-preview-bar');
-    if (replyBar) {
-      replyBar.style.display = 'flex';
-      document.getElementById('reply-preview-sender').textContent = this.replyingToMessage.senderName;
-      document.getElementById('reply-preview-text').textContent = this.replyingToMessage.text;
+    this.replyingToMessage = msg;
+    const preview = document.getElementById('chat-reply-preview');
+    if (preview) {
+      preview.innerHTML = `
+        <div class="reply-preview-content">
+          <span class="reply-preview-author">${msg.senderName}</span>
+          <span class="reply-preview-text">${msg.text || (msg.type ? `[${msg.type}]` : '')}</span>
+        </div>
+        <button class="reply-preview-close" onclick="window.ChatEngine.clearReplyQuote()">✕</button>
+      `;
+      preview.style.display = 'flex';
     }
-
-    const textarea = document.getElementById('chat-input-textarea');
-    if (textarea) textarea.focus();
+    document.getElementById('chat-input-textarea')?.focus();
   }
 
   clearReplyQuote() {
     this.replyingToMessage = null;
-    const replyBar = document.getElementById('chat-reply-preview-bar');
-    if (replyBar) replyBar.style.display = 'none';
-  }
-
-  addReaction(msgId, emoji) {
-    const activeChat = this.getActiveChat();
-    if (!activeChat) return;
-    const msg = activeChat.messages.find(m => m.id === msgId);
-    if (!msg) return;
-
-    if (!msg.reactions) msg.reactions = [];
-    msg.reactions.push({ emoji });
-    this.saveChats();
-    this.renderMessages();
-  }
-
-  handleFileUpload(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target.result;
-      this.sendMessage({
-        type: 'image',
-        mediaUrl: dataUrl,
-        text: file.name
-      });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  handleDocumentUpload(file) {
-    const sizeInKb = file.size / 1024;
-    const formattedSize = sizeInKb > 1024
-      ? (sizeInKb / 1024).toFixed(1) + ' MB'
-      : Math.round(sizeInKb) + ' KB';
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target.result;
-      this.sendMessage({
-        type: 'document',
-        fileName: file.name,
-        fileSize: formattedSize,
-        fileUrl: dataUrl,
-        text: file.name
-      });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  downloadDocument(fileName, fileUrl) {
-    if (fileUrl && fileUrl.startsWith('data:')) {
-      const a = document.createElement('a');
-      a.href = fileUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      alert(`⬇️ Downloading "${fileName}"...`);
-    }
-  }
-
-  trustContact(chatId) {
-    const chat = this.chats.find(c => c.id === chatId);
-    if (!chat) return;
-    alert(`🛡️ ${chat.name} has been added to your trusted contacts. Attachments and media are now enabled!`);
-    this.renderMessages();
-  }
-
-  toggleVoiceRecording() {
-    const sendBtn = document.getElementById('btn-send-message');
-    const recBar = document.getElementById('recording-bar-ui');
-    const inputWrapper = document.getElementById('chat-input-wrapper');
-
-    if (!window.VoiceRecorder.isRecording) {
-      sendBtn.classList.add('recording');
-      recBar.classList.add('active');
-      inputWrapper.style.display = 'none';
-
-      window.VoiceRecorder.startRecording(
-        (timeStr) => {
-          document.getElementById('recording-time-display').textContent = timeStr;
-        },
-        (result) => {
-          this.sendMessage({
-            type: 'voice',
-            audioUrl: result.audioUrl,
-            duration: result.duration
-          });
-        }
-      );
-    } else {
-      window.VoiceRecorder.stopRecording((result) => {
-        this.sendMessage({
-          type: 'voice',
-          audioUrl: result.audioUrl,
-          duration: result.duration
-        });
-      });
-      this.resetRecordingUI();
-    }
-  }
-
-  resetRecordingUI() {
-    const sendBtn = document.getElementById('btn-send-message');
-    const recBar = document.getElementById('recording-bar-ui');
-    const inputWrapper = document.getElementById('chat-input-wrapper');
-
-    if (sendBtn) sendBtn.classList.remove('recording');
-    if (recBar) recBar.classList.remove('active');
-    if (inputWrapper) inputWrapper.style.display = 'flex';
-  }
-
-  handleTyping() {
-    const activeChat = this.getActiveChat();
-    if (activeChat && window.ChatterApp && window.ChatterApp.socket) {
-      window.ChatterApp.socket.emit('typing', { chatId: activeChat.id, isTyping: true });
-    }
+    const preview = document.getElementById('chat-reply-preview');
+    if (preview) preview.style.display = 'none';
   }
 
   onReceiveMessage(msg) {
-    if (this.isContactBlocked(msg.chatId) || this.isContactBlocked(msg.senderId)) {
-      console.log('Ignored message from blocked contact');
-      return;
-    }
-
-    let chat = this.chats.find(c => c.id === msg.chatId || (c.isAi && msg.senderId === 'ai_assistant'));
+    let chat = this.chats.find(c => c.id === msg.chatId);
     if (!chat) {
       chat = {
-        id: msg.chatId || 'chat_' + msg.senderId,
-        name: msg.senderName || 'New Contact',
-        avatar: msg.senderAvatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=new',
+        id: msg.chatId,
+        name: msg.senderName || 'Chatter User',
+        avatar: msg.senderAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${msg.chatId}`,
         messages: [],
         unreadCount: 0,
         online: true
@@ -1483,39 +1067,53 @@ class ChatEngine {
       this.chats.unshift(chat);
     }
 
+    // Check duplicate
     if (!chat.messages.some(m => m.id === msg.id)) {
       chat.messages.push(msg);
-      if (this.activeChatId !== chat.id) {
+      if (this.activeChatId !== msg.chatId) {
         chat.unreadCount = (chat.unreadCount || 0) + 1;
       }
-      this.saveChats();
-      this.renderChatList();
-      if (this.activeChatId === chat.id) {
-        this.renderMessages();
-        this.scrollToBottom();
-      }
-      this.playAudioPop();
+    }
+
+    this.saveChats();
+    this.renderChatList();
+    if (this.activeChatId === msg.chatId) {
+      this.renderMessages();
+      this.scrollToBottom();
+    }
+    this.playAudioPop();
+  }
+
+  scrollToBottom() {
+    const container = document.getElementById('chat-messages-container');
+    if (container) {
+      setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+      }, 50);
     }
   }
 
-  shareNewsToChat(article, targetChatId) {
-    let chat = this.chats.find(c => c.id === targetChatId);
-    if (!chat) return;
+  formatText(str) {
+    if (!str) return '';
+    let formatted = str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
 
-    this.openChat(targetChatId);
-    this.sendMessage({
-      type: 'news',
-      newsId: article.id,
-      newsTitle: article.title,
-      newsSource: article.source,
-      newsImage: article.image,
-      text: `📰 Shared from GitPit Flash News:\n${article.title}`
-    });
-  }
+    // Code blocks ```code```
+    formatted = formatted.replace(/```([\s\S]*?)```/g, '<pre class="code-block"><code>$1</code></pre>');
+    // Inline code `code`
+    formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Bold **text**
+    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    // Italic *text*
+    formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // URLs to links
+    formatted = formatted.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    // Line breaks
+    formatted = formatted.replace(/\n/g, '<br>');
 
-  saveChats() {
-    localStorage.setItem('gitpit_chats', JSON.stringify(this.chats));
-    localStorage.setItem('chatterpatter_chats', JSON.stringify(this.chats));
+    return formatted;
   }
 
   playAudioPop() {
@@ -1524,18 +1122,49 @@ class ChatEngine {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(600, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.08);
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.08);
       gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+      gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.08);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.08);
-    } catch (e) {}
+    } catch(e) {}
+  }
+
+  updateBlockedStateUI() {
+    const activeChat = this.getActiveChat();
+    const inputArea = document.querySelector('.chat-input-wrapper');
+    const blockedBanner = document.getElementById('chat-blocked-banner');
+
+    if (!activeChat || !inputArea) return;
+    const isBlocked = this.blockedContacts.includes(activeChat.id);
+
+    if (isBlocked) {
+      inputArea.style.display = 'none';
+      if (blockedBanner) blockedBanner.style.display = 'block';
+    } else {
+      inputArea.style.display = 'flex';
+      if (blockedBanner) blockedBanner.style.display = 'none';
+    }
+  }
+
+  toggleVoiceRecording() {
+    if (window.VoiceRecorder) {
+      window.VoiceRecorder.toggleRecording();
+    }
+  }
+
+  resetRecordingUI() {
+    const bar = document.getElementById('chat-input-bar-normal');
+    const recBar = document.getElementById('chat-input-bar-recording');
+    if (bar) bar.style.display = 'flex';
+    if (recBar) recBar.style.display = 'none';
   }
 }
 
+// Global instance
 window.addEventListener('DOMContentLoaded', () => {
   window.ChatEngine = new ChatEngine();
 });

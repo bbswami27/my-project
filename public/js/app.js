@@ -97,10 +97,74 @@ class ChatterApp {
           if (window.ChatEngine) window.ChatEngine.onReceiveMessage(msg);
         });
 
+        this.socket.on('message_edited', (msg) => {
+          if (window.ChatEngine) {
+            const chat = window.ChatEngine.chats.find(c => c.id === msg.chatId);
+            if (chat) {
+              const m = chat.messages.find(item => item.id === msg.id);
+              if (m) {
+                m.text = msg.text;
+                m.edited = true;
+                if (window.ChatEngine.activeChatId === msg.chatId) {
+                  window.ChatEngine.renderMessages();
+                }
+                window.ChatEngine.renderChatList();
+              }
+            }
+          }
+        });
+
+        this.socket.on('message_deleted', (data) => {
+          if (window.ChatEngine) {
+            window.ChatEngine.chats.forEach(chat => {
+              const idx = chat.messages.findIndex(m => m.id === data.id);
+              if (idx !== -1) {
+                if (data.isForEveryone) {
+                  chat.messages[idx].isDeleted = true;
+                  chat.messages[idx].text = '🚫 This message was deleted';
+                  chat.messages[idx].mediaUrl = null;
+                } else {
+                  chat.messages.splice(idx, 1);
+                }
+              }
+            });
+            window.ChatEngine.renderMessages();
+            window.ChatEngine.renderChatList();
+          }
+        });
+
+        this.socket.on('chat_deleted', (data) => {
+          if (window.ChatEngine) {
+            window.ChatEngine.chats = window.ChatEngine.chats.filter(c => c.id !== data.chatId);
+            window.ChatEngine.saveChats();
+            window.ChatEngine.renderChatList();
+            if (window.ChatEngine.activeChatId === data.chatId) {
+              window.ChatEngine.activeChatId = null;
+              document.getElementById('chat-empty-state').style.display = 'flex';
+              document.getElementById('chat-active-view').style.display = 'none';
+            }
+          }
+        });
+
+        this.socket.on('user_registered', () => {
+          if (window.ChatEngine) window.ChatEngine.syncRegisteredUsers();
+        });
+
+        this.socket.on('online_users', (users) => {
+          if (window.ChatEngine && Array.isArray(users)) {
+            window.ChatEngine.chats.forEach(c => {
+              if (c.id === 'chat_ai') return;
+              const match = users.find(u => u.id === c.id || (u.phone && u.phone === c.phone));
+              c.online = !!match;
+            });
+            window.ChatEngine.renderChatList();
+          }
+        });
+
         this.socket.on('news_flash_update', (news) => {
           const textElem = document.getElementById('ticker-headline-text');
           if (textElem) {
-            textElem.textContent = `🚨 ${news.title} (${news.source})`;
+            textElem.textContent = `🚨 ${news.title} (${news.source || 'ChatterPatter'})`;
           }
         });
       }

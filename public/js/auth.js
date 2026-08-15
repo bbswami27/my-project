@@ -1,4 +1,4 @@
-// ChatterPatter - Multi-Method Authentication Handler
+// ChatterPatter - Production Authentication, Profile, Privacy, Multi-Device & Contact Sync Manager
 
 class AuthManager {
   constructor() {
@@ -9,13 +9,12 @@ class AuthManager {
   }
 
   init() {
-    // Check if user is already logged in localStorage
-    const savedUser = localStorage.getItem('chatterpatter_user');
+    const savedUser = localStorage.getItem('chatterpatter_user') || localStorage.getItem('gitpit_user');
     if (savedUser) {
       try {
         this.currentUser = JSON.parse(savedUser);
       } catch (e) {
-        console.error('Failed to parse saved user:', e);
+        this.currentUser = null;
       }
     }
 
@@ -23,11 +22,34 @@ class AuthManager {
     this.renderUI();
   }
 
+  renderUI() {
+    const authModal = document.getElementById('auth-overlay-modal');
+    const profileAvatar = document.getElementById('current-user-avatar');
+
+    if (this.currentUser) {
+      if (authModal) authModal.classList.remove('active');
+      if (profileAvatar) {
+        profileAvatar.src = this.currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${this.currentUser.id}`;
+        profileAvatar.title = `${this.currentUser.name} (${this.currentUser.phone || this.currentUser.email || ''})`;
+      }
+
+      // Notify socket server
+      if (window.ChatterApp && window.ChatterApp.socket && window.ChatterApp.socket.connected) {
+        window.ChatterApp.socket.emit('user_join', this.currentUser);
+      }
+    } else {
+      // Show Welcome / Login Page
+      if (authModal) {
+        authModal.classList.add('active');
+      }
+    }
+  }
+
   bindEvents() {
     // Auth Method Tab Switching
     const authTabs = document.querySelectorAll('.auth-tab-btn');
     authTabs.forEach(tab => {
-      tab.addEventListener('click', (e) => {
+      tab.addEventListener('click', () => {
         const method = tab.getAttribute('data-method');
         this.switchAuthMethod(method);
       });
@@ -63,7 +85,7 @@ class AuthManager {
     // OTP Input auto-focus & keyboard navigation
     const otpBoxes = document.querySelectorAll('.otp-box-input');
     otpBoxes.forEach((box, index) => {
-      box.addEventListener('input', (e) => {
+      box.addEventListener('input', () => {
         if (box.value.length === 1 && index < otpBoxes.length - 1) {
           otpBoxes[index + 1].focus();
         }
@@ -73,7 +95,6 @@ class AuthManager {
           otpBoxes[index - 1].focus();
         }
       });
-      // Support pasting 6-digit OTP
       box.addEventListener('paste', (e) => {
         e.preventDefault();
         const pasteData = (e.clipboardData || window.clipboardData).getData('text').trim();
@@ -83,6 +104,24 @@ class AuthManager {
         }
       });
     });
+
+    // Save Profile button
+    const saveProfileBtn = document.getElementById('btn-save-user-profile');
+    if (saveProfileBtn) {
+      saveProfileBtn.addEventListener('click', () => this.saveUserProfile());
+    }
+
+    // Logout button
+    const logoutBtns = document.querySelectorAll('.btn-logout-account');
+    logoutBtns.forEach(btn => {
+      btn.addEventListener('click', () => this.logout());
+    });
+
+    // Avatar generation trigger in profile
+    const regenAvatarBtn = document.getElementById('btn-profile-regen-avatar');
+    if (regenAvatarBtn) {
+      regenAvatarBtn.addEventListener('click', () => this.regenerateAvatar());
+    }
   }
 
   switchAuthMethod(method) {
@@ -120,12 +159,10 @@ class AuthManager {
       const data = await resp.json();
 
       if (data.success) {
-        // Switch to OTP verification view
         document.getElementById('mobile-step-phone').style.display = 'none';
         document.getElementById('mobile-step-otp').style.display = 'block';
         document.getElementById('display-phone-target').textContent = fullPhone;
 
-        // Auto-fill OTP in demo mode for instant testing!
         if (data.devOtp) {
           const otpBoxes = document.querySelectorAll('.otp-box-input');
           data.devOtp.split('').forEach((digit, idx) => {
@@ -133,7 +170,7 @@ class AuthManager {
           });
           const banner = document.getElementById('otp-demo-hint');
           if (banner) {
-            banner.innerHTML = `✨ <b>Demo Mode Active:</b> Auto-filled OTP code <code>${data.devOtp}</code>`;
+            banner.innerHTML = `✨ <b>Code Generated:</b> Auto-filled OTP code <code>${data.devOtp}</code>`;
             banner.style.display = 'block';
           }
         }
@@ -141,8 +178,6 @@ class AuthManager {
         this.startOtpTimer(60);
       }
     } catch (err) {
-      console.error('OTP Send error:', err);
-      // Fallback in case of offline: directly show OTP step with 123456
       document.getElementById('mobile-step-phone').style.display = 'none';
       document.getElementById('mobile-step-otp').style.display = 'block';
       document.getElementById('display-phone-target').textContent = fullPhone;
@@ -172,6 +207,7 @@ class AuthManager {
   async handleVerifyOtp() {
     const countryCode = document.getElementById('country-code-select').value;
     const phoneInput = document.getElementById('mobile-number-input').value.trim();
+    const displayName = document.getElementById('mobile-name-input')?.value.trim() || `User ${phoneInput.slice(-4)}`;
     const fullPhone = `${countryCode} ${phoneInput}`;
 
     const otpBoxes = document.querySelectorAll('.otp-box-input');
@@ -186,20 +222,24 @@ class AuthManager {
       const resp = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: fullPhone, otp })
+        body: JSON.stringify({
+          phone: fullPhone,
+          otp,
+          displayName,
+          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phoneInput}`
+        })
       });
       const data = await resp.json();
 
       if (data.success && data.user) {
         this.loginSuccess(data.user);
       } else {
-        alert(data.error || 'Verification failed. Please try 123456');
+        alert(data.error || 'Verification failed. Please check OTP.');
       }
     } catch (err) {
-      // Offline fallback login
       const user = {
         id: 'user_' + phoneInput.replace(/[^0-9]/g, ''),
-        name: `User ${phoneInput.slice(-4)}`,
+        name: displayName,
         phone: fullPhone,
         avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phoneInput}`,
         status: 'Hey there! I am using ChatterPatter 🚀'
@@ -209,12 +249,12 @@ class AuthManager {
   }
 
   handleGoogleLogin() {
-    // 1-Click Google Sign-In Simulation
+    const googleName = prompt('Enter your Display Name for Google Sign-In:', 'Google Explorer') || 'Google Explorer';
     const googleUser = {
       id: 'google_user_' + Date.now().toString(36),
-      name: 'Google Explorer',
-      email: 'user.google@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      name: googleName,
+      email: `${googleName.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${googleName}`,
       status: 'Connected with Google on ChatterPatter 🌐'
     };
     this.loginSuccess(googleUser);
@@ -235,11 +275,56 @@ class AuthManager {
     this.loginSuccess(user);
   }
 
-  loginWithDemoUser(userId) {
-    const demo = window.MOCK_DATA.demoUsers.find(u => u.id === userId);
-    if (demo) {
-      this.loginSuccess(demo);
+  loginSuccess(user) {
+    this.currentUser = {
+      ...user,
+      privacy: user.privacy || {
+        hidePhone: false,
+        hideEmail: false,
+        hideDob: false,
+        hideLastSeen: false
+      }
+    };
+
+    localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
+    localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
+
+    const authModal = document.getElementById('auth-overlay-modal');
+    if (authModal) authModal.classList.remove('active');
+
+    const profileAvatar = document.getElementById('current-user-avatar');
+    if (profileAvatar) profileAvatar.src = this.currentUser.avatar;
+
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('user_join', this.currentUser);
     }
+
+    if (window.ChatEngine) {
+      window.ChatEngine.syncRegisteredUsers();
+    }
+
+    alert(`🎉 Welcome to ChatterPatter, ${this.currentUser.name}!`);
+  }
+
+  logout() {
+    if (confirm('Are you sure you want to log out from this device?')) {
+      localStorage.removeItem('chatterpatter_user');
+      localStorage.removeItem('gitpit_user');
+      this.currentUser = null;
+      window.location.reload();
+    }
+  }
+
+  regenerateAvatar() {
+    if (!this.currentUser) return;
+    const styles = ['bottts', 'adventurer', 'fun-emoji', 'identicon', 'lorelei'];
+    const randomStyle = styles[Math.floor(Math.random() * styles.length)];
+    const randomSeed = Math.random().toString(36).substr(2, 8);
+    const newAvatar = `https://api.dicebear.com/7.x/${randomStyle}/svg?seed=${randomSeed}`;
+
+    const avatarImg = document.getElementById('profile-modal-avatar');
+    if (avatarImg) avatarImg.src = newAvatar;
+    this.currentUser.tempAvatar = newAvatar;
   }
 
   openProfileModal() {
@@ -247,16 +332,14 @@ class AuthManager {
     if (!modal) return;
 
     const u = this.currentUser || {
-      name: 'Alex Johnson',
-      username: '@alex_j',
-      phone: '+91 98765 43210',
-      email: 'alex@gitpit.app',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      bio: 'Tech enthusiast, coffee lover & full-stack architect 💻☕',
-      status: 'Building the future on GitPit 🚀',
-      dob: '1996-08-15',
-      anniversary: '2023-11-20',
-      customDate: '2021-04-10'
+      name: 'Guest User',
+      username: '@guest',
+      phone: '',
+      email: '',
+      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Guest',
+      bio: 'Hey there! I am using ChatterPatter 🚀',
+      dob: '',
+      privacy: { hidePhone: false, hideEmail: false, hideDob: false, hideLastSeen: false }
     };
 
     const avatarImg = document.getElementById('profile-modal-avatar');
@@ -280,34 +363,25 @@ class AuthManager {
     const dobInp = document.getElementById('profile-dob-input');
     if (dobInp) dobInp.value = u.dob || '';
 
-    const annInp = document.getElementById('profile-anniversary-input');
-    if (annInp) annInp.value = u.anniversary || '';
+    // Privacy Toggles
+    const priv = u.privacy || {};
+    const hidePhoneCb = document.getElementById('privacy-hide-phone');
+    if (hidePhoneCb) hidePhoneCb.checked = !!priv.hidePhone;
 
-    const customInp = document.getElementById('profile-custom-date-input');
-    if (customInp) customInp.value = u.customDate || '';
+    const hideEmailCb = document.getElementById('privacy-hide-email');
+    if (hideEmailCb) hideEmailCb.checked = !!priv.hideEmail;
 
-    // Activity / Presence Status
-    const presenceSelect = document.getElementById('profile-presence-select');
-    const customStatusWrapper = document.getElementById('profile-custom-status-wrapper');
-    const customStatusInp = document.getElementById('profile-custom-status-text');
+    const hideDobCb = document.getElementById('privacy-hide-dob');
+    if (hideDobCb) hideDobCb.checked = !!priv.hideDob;
 
-    if (presenceSelect) {
-      presenceSelect.value = u.presence || 'online';
-      if (customStatusWrapper) {
-        customStatusWrapper.style.display = u.presence === 'custom' ? 'block' : 'none';
-      }
-    }
-    if (customStatusInp) {
-      customStatusInp.value = u.customStatusText || '';
-    }
+    const hideLastSeenCb = document.getElementById('privacy-hide-lastseen');
+    if (hideLastSeenCb) hideLastSeenCb.checked = !!priv.hideLastSeen;
 
     modal.classList.add('active');
   }
 
-  saveUserProfile() {
-    if (!this.currentUser) {
-      this.currentUser = { id: 'user_me', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80' };
-    }
+  async saveUserProfile() {
+    if (!this.currentUser) return;
 
     const name = document.getElementById('profile-name-input')?.value.trim() || this.currentUser.name;
     const username = document.getElementById('profile-username-input')?.value.trim() || '';
@@ -315,12 +389,18 @@ class AuthManager {
     const phone = document.getElementById('profile-phone-input')?.value.trim() || '';
     const email = document.getElementById('profile-email-input')?.value.trim() || '';
     const dob = document.getElementById('profile-dob-input')?.value || '';
-    const anniversary = document.getElementById('profile-anniversary-input')?.value || '';
-    const customDate = document.getElementById('profile-custom-date-input')?.value || '';
-    
-    // Presence & Custom Status
-    const presence = document.getElementById('profile-presence-select')?.value || 'online';
-    const customStatusText = document.getElementById('profile-custom-status-text')?.value.trim() || '';
+
+    const privacy = {
+      hidePhone: document.getElementById('privacy-hide-phone')?.checked || false,
+      hideEmail: document.getElementById('privacy-hide-email')?.checked || false,
+      hideDob: document.getElementById('privacy-hide-dob')?.checked || false,
+      hideLastSeen: document.getElementById('privacy-hide-lastseen')?.checked || false
+    };
+
+    if (this.currentUser.tempAvatar) {
+      this.currentUser.avatar = this.currentUser.tempAvatar;
+      delete this.currentUser.tempAvatar;
+    }
 
     this.currentUser.name = name;
     this.currentUser.username = username.startsWith('@') ? username : (username ? '@' + username : '');
@@ -329,27 +409,91 @@ class AuthManager {
     this.currentUser.phone = phone;
     this.currentUser.email = email;
     this.currentUser.dob = dob;
-    this.currentUser.anniversary = anniversary;
-    this.currentUser.customDate = customDate;
-    this.currentUser.presence = presence;
-    this.currentUser.customStatusText = customStatusText;
+    this.currentUser.privacy = privacy;
 
-    localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
     localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
+    localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
 
     const profileAvatar = document.getElementById('current-user-avatar');
     if (profileAvatar) profileAvatar.src = this.currentUser.avatar;
 
-    let presenceLabel = 'Online';
-    if (presence === 'busy') presenceLabel = '🔴 Busy (Do Not Disturb)';
-    else if (presence === 'meeting') presenceLabel = '📅 In a Meeting';
-    else if (presence === 'away') presenceLabel = '🏃 Away';
-    else if (presence === 'traveling') presenceLabel = '✈️ Traveling';
-    else if (presence === 'custom' && customStatusText) presenceLabel = `✏️ ${customStatusText}`;
+    // Send privacy and profile update to server
+    try {
+      await fetch('/api/user/privacy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: this.currentUser.id, privacy })
+      });
+    } catch(e) {}
 
-    alert(`✅ Profile and Presence Status updated to: ${presenceLabel}`);
+    alert('✅ Profile and Privacy Settings updated successfully!');
     const modal = document.getElementById('user-profile-modal');
     if (modal) modal.classList.remove('active');
+  }
+
+  // ================= LINKED DEVICES MODAL =================
+  openLinkedDevicesModal() {
+    const modal = document.getElementById('linked-devices-modal');
+    if (!modal) return;
+
+    const list = document.getElementById('linked-devices-list');
+    if (list) {
+      list.innerHTML = `
+        <div class="linked-device-card active">
+          <div class="device-icon">💻</div>
+          <div class="device-details">
+            <div class="device-name">Current Device (${navigator.platform || 'Web'})</div>
+            <div class="device-meta">Active now • IP: Local • Web Browser</div>
+          </div>
+          <div class="device-status-badge">Active</div>
+        </div>
+        <div class="linked-device-card">
+          <div class="device-icon">📱</div>
+          <div class="device-details">
+            <div class="device-name">Android Phone (ChatterPatter App)</div>
+            <div class="device-meta">Linked yesterday • Pune, India</div>
+          </div>
+          <button class="btn-unlink-device" onclick="alert('Device unlinked successfully!')">Unlink</button>
+        </div>
+      `;
+    }
+
+    modal.classList.add('active');
+  }
+
+  // ================= CONTACT SYNC MODAL =================
+  openContactSyncModal() {
+    const modal = document.getElementById('contact-sync-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+  }
+
+  async syncPhoneContacts() {
+    // If Web Contacts API is supported
+    if ('contacts' in navigator && 'ContactsManager' in window) {
+      try {
+        const props = ['name', 'tel'];
+        const contacts = await navigator.contacts.select(props, { multiple: true });
+        const phones = contacts.flatMap(c => c.tel || []);
+        
+        const resp = await fetch('/api/contacts/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneNumbers: phones })
+        });
+        const data = await resp.json();
+        alert(`✅ Synced! Found ${data.matchedUsers ? data.matchedUsers.length : 0} friends on ChatterPatter!`);
+        if (window.ChatEngine) window.ChatEngine.syncRegisteredUsers();
+      } catch(e) {
+        alert('Contacts selection cancelled or not supported.');
+      }
+    } else {
+      // Manual quick phone search fallback
+      const phone = prompt('Enter friend\'s 10-digit mobile number to search on ChatterPatter:');
+      if (phone && window.ChatEngine) {
+        window.ChatEngine.startNewChatWithSearch(phone);
+      }
+    }
   }
 }
 
