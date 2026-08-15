@@ -1,14 +1,12 @@
 services:
   - type: web
-    name: gitpit-server
+    name: chatterpatter-app
     runtime: node
     plan: free
-    region: singapore # Closest to India for ultra-low latency!
+    region: singapore
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
     autoDeploy: true

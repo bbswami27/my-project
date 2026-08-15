@@ -1,27 +1,22 @@
 {
   "name": "chatterpatter-app",
   "version": "1.0.0",
-  "description": "ChatterPatter - Social Chatting App with WhatsApp-style interface, multi-auth, news flash & video calls",
+  "description": "ChatterPatter - Social Chatting App with WhatsApp-style interface, smart AI assistant, video calls & screen sharing",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": [
-    "chat",
-    "whatsapp-clone",
-    "social-app",
-    "webrtc",
-    "socketio",
-    "news"
-  ],
-  "author": "ChatterPatter Team",
-  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
-    "@capacitor/android": "^8.5.0",
-    "@capacitor/cli": "^8.5.0",
-    "@capacitor/core": "^8.5.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0"
   }
 }

@@ -20,6 +20,10 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Health Check Routes for Cloud Deployment
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/ping', (req, res) => res.json({ status: 'live', app: 'ChatterPatter', time: new Date().toISOString() }));
+
 // In-Memory Storage
 const activeUsers = new Map(); // socketId -> user profile
 const otpStore = new Map();    // phone -> { otp, expiresAt }
