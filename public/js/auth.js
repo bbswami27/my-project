@@ -280,14 +280,6 @@ class AuthManager {
         document.getElementById('display-phone-target').textContent = fullPhone;
         this.startOtpTimer(data.cooldown || 60);
 
-        if (data.codeHint) {
-          const otpBoxes = document.querySelectorAll('.otp-box-input');
-          data.codeHint.split('').forEach((digit, idx) => {
-            if (otpBoxes[idx]) otpBoxes[idx].value = digit;
-          });
-          alert(`📲 Verification Code: ${data.codeHint}\n(Code auto-filled. Tap "Verify & Continue" to enter)`);
-        }
-
         const firstBox = document.querySelector('.otp-box-input');
         if (firstBox) firstBox.focus();
       } else {
@@ -501,14 +493,6 @@ class AuthManager {
         document.getElementById('mandatory-step-otp').style.display = 'block';
         document.getElementById('mandatory-display-phone').textContent = fullPhone;
         this.startMandatoryOtpTimer(data.cooldown || 60);
-
-        if (data.codeHint) {
-          const otpBoxes = document.querySelectorAll('.mandatory-otp-box');
-          data.codeHint.split('').forEach((digit, idx) => {
-            if (otpBoxes[idx]) otpBoxes[idx].value = digit;
-          });
-          alert(`📲 Verification Code: ${data.codeHint}\n(Code auto-filled. Tap "Verify & Complete Setup" to continue)`);
-        }
 
         const firstBox = document.querySelector('.mandatory-otp-box');
         if (firstBox) firstBox.focus();
