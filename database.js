@@ -1,25 +1,31 @@
-// ChatterPatter - Production Database Engine with Secure Sessions & Verification
+// ChatterPatter - Production Database Engine with Secure Sessions, Verification, Media, Calls & Backups
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
 const DATA_DIR = path.join(__dirname, 'data');
+const MEDIA_DIR = path.join(DATA_DIR, 'media');
 const DB_FILE = path.join(DATA_DIR, 'chatterpatter_data.json');
 
-// Ensure data directory exists
+// Ensure data and media directories exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(MEDIA_DIR)) {
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
 }
 
 // Initial DB schema
 const initialSchema = {
   users: [],
-  sessions: [], // token -> { userId, createdAt, expiresAt }
-  otps: {},     // phone -> { otpHash, expiresAt, attempts, lastSentAt, requestCount, windowStart }
+  sessions: [],      // token -> { userId, createdAt, expiresAt }
+  otps: {},          // phone -> { otpHash, expiresAt, attempts, lastSentAt, requestCount, windowStart }
   messages: [],
   groups: [],
   statusUpdates: [],
-  blockedContacts: [],
+  blockedContacts: {}, // userId -> [targetUserIds]
+  callLogs: [],
+  pushTokens: [],
   linkedDevices: {}, // userId -> [devices]
   settings: {}
 };
@@ -67,6 +73,18 @@ class Database {
       this.data.users = [];
       changed = true;
     }
+    if (!this.data.blockedContacts || Array.isArray(this.data.blockedContacts)) {
+      this.data.blockedContacts = {};
+      changed = true;
+    }
+    if (!Array.isArray(this.data.callLogs)) {
+      this.data.callLogs = [];
+      changed = true;
+    }
+    if (!Array.isArray(this.data.pushTokens)) {
+      this.data.pushTokens = [];
+      changed = true;
+    }
 
     // Filter out any legacy guest/demo accounts and ensure users have verified flags
     this.data.users = this.data.users.filter(u => {
@@ -74,7 +92,6 @@ class Database {
       return !isDemo;
     }).map(u => {
       if (u.phoneVerified === undefined) {
-        // If user already had a phone number, mark as verified
         u.phoneVerified = !!(u.phone && u.phone.length >= 10);
         u.phoneVerifiedAt = u.phoneVerified ? (u.createdAt || new Date().toISOString()) : null;
         changed = true;
@@ -247,7 +264,6 @@ class Database {
     if (!userData) return null;
     const normalizedPhone = this.normalizePhone(userData.phone);
     
-    // Find existing by ID, Phone, or Email
     let existing = null;
     if (userData.id) {
       existing = this.data.users.find(u => u.id === userData.id);
@@ -260,7 +276,6 @@ class Database {
     }
 
     if (existing) {
-      // Update existing user record (link details)
       if (userData.name) existing.name = userData.name;
       if (userData.username) existing.username = userData.username;
       if (normalizedPhone) {
@@ -282,7 +297,6 @@ class Database {
       this.save();
       return existing;
     } else {
-      // Create new user record
       const newUserId = userData.id || ('usr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       const cleanPhoneDigits = normalizedPhone ? normalizedPhone.slice(-4) : Math.floor(1000 + Math.random() * 9000);
       
@@ -317,7 +331,6 @@ class Database {
     }
   }
 
-  // Find verified users matching phone numbers list
   matchContactsByPhones(normalizedPhones = []) {
     if (!Array.isArray(normalizedPhones) || normalizedPhones.length === 0) {
       return [];
@@ -375,6 +388,38 @@ class Database {
       return user.privacy;
     }
     return null;
+  }
+
+  // ================= BLOCKING =================
+  blockUser(userId, targetUserId) {
+    if (!this.data.blockedContacts) this.data.blockedContacts = {};
+    if (!this.data.blockedContacts[userId]) this.data.blockedContacts[userId] = [];
+    if (!this.data.blockedContacts[userId].includes(targetUserId)) {
+      this.data.blockedContacts[userId].push(targetUserId);
+      this.save();
+    }
+    return this.data.blockedContacts[userId];
+  }
+
+  unblockUser(userId, targetUserId) {
+    if (this.data.blockedContacts && this.data.blockedContacts[userId]) {
+      this.data.blockedContacts[userId] = this.data.blockedContacts[userId].filter(id => id !== targetUserId);
+      this.save();
+      return this.data.blockedContacts[userId];
+    }
+    return [];
+  }
+
+  getBlockedUsers(userId) {
+    if (!this.data.blockedContacts) return [];
+    return this.data.blockedContacts[userId] || [];
+  }
+
+  isBlocked(senderId, recipientId) {
+    if (!this.data.blockedContacts) return false;
+    const recipientBlocks = this.data.blockedContacts[recipientId] || [];
+    const senderBlocks = this.data.blockedContacts[senderId] || [];
+    return recipientBlocks.includes(senderId) || senderBlocks.includes(recipientId);
   }
 
   // ================= MESSAGES =================
@@ -451,6 +496,116 @@ class Database {
       .slice(-limit);
   }
 
+  // ================= CALL LOGS =================
+  saveCallLog(log) {
+    if (!this.data.callLogs) this.data.callLogs = [];
+    const callEntry = {
+      id: log.id || 'call_' + Date.now(),
+      callerId: log.callerId,
+      callerName: log.callerName || 'User',
+      callerPhone: log.callerPhone || '',
+      receiverId: log.receiverId,
+      receiverName: log.receiverName || 'User',
+      receiverPhone: log.receiverPhone || '',
+      type: log.type || 'video', // 'audio' | 'video'
+      direction: log.direction || 'outgoing',
+      duration: log.duration || '00:00',
+      durationSeconds: log.durationSeconds || 0,
+      status: log.status || 'completed', // 'completed' | 'missed' | 'rejected'
+      timestamp: log.timestamp || new Date().toLocaleString(),
+      createdAt: Date.now()
+    };
+    this.data.callLogs.unshift(callEntry);
+    if (this.data.callLogs.length > 5000) {
+      this.data.callLogs = this.data.callLogs.slice(0, 5000);
+    }
+    this.save();
+    return callEntry;
+  }
+
+  getCallLogs(userId) {
+    if (!this.data.callLogs) return [];
+    return this.data.callLogs.filter(c => c.callerId === userId || c.receiverId === userId);
+  }
+
+  // ================= PUSH TOKENS =================
+  registerPushToken(userId, token, platform = 'android') {
+    if (!this.data.pushTokens) this.data.pushTokens = [];
+    this.data.pushTokens = this.data.pushTokens.filter(p => p.token !== token);
+    const entry = {
+      userId,
+      token,
+      platform,
+      updatedAt: new Date().toISOString()
+    };
+    this.data.pushTokens.push(entry);
+    this.save();
+    return entry;
+  }
+
+  unregisterPushToken(userId, token) {
+    if (!this.data.pushTokens) return false;
+    this.data.pushTokens = this.data.pushTokens.filter(p => !(p.userId === userId && p.token === token));
+    this.save();
+    return true;
+  }
+
+  getPushTokens(userId) {
+    if (!this.data.pushTokens) return [];
+    return this.data.pushTokens.filter(p => p.userId === userId);
+  }
+
+  // ================= CLOUD BACKUP & RESTORE =================
+  exportBackup(userId) {
+    const user = this.getUser(userId);
+    if (!user) return null;
+
+    const userMessages = this.data.messages.filter(m => m.senderId === userId || m.recipientId === userId || (m.chatId && m.chatId.includes(userId)));
+    const userCalls = this.getCallLogs(userId);
+    const userGroups = (this.data.groups || []).filter(g => (g.members || []).some(m => m.id === userId || m === userId));
+
+    return {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      user: {
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        bio: user.bio,
+        privacy: user.privacy
+      },
+      stats: {
+        messagesCount: userMessages.length,
+        callsCount: userCalls.length,
+        groupsCount: userGroups.length
+      },
+      messages: userMessages,
+      calls: userCalls,
+      groups: userGroups
+    };
+  }
+
+  restoreBackup(userId, backupData) {
+    if (!backupData || !backupData.messages) {
+      return { success: false, error: 'Invalid backup format' };
+    }
+
+    let restoredMessages = 0;
+    const existingMsgIds = new Set(this.data.messages.map(m => m.id));
+
+    backupData.messages.forEach(m => {
+      if (!existingMsgIds.has(m.id)) {
+        this.data.messages.push(m);
+        existingMsgIds.add(m.id);
+        restoredMessages++;
+      }
+    });
+
+    this.save();
+    return { success: true, restoredMessages };
+  }
+
   // ================= GROUPS =================
   getAllGroups() {
     return this.data.groups || [];
@@ -474,7 +629,7 @@ class Database {
   // ================= STATUS UPDATES =================
   getActiveStatusUpdates() {
     const now = Date.now();
-    const cutoff = now - (24 * 60 * 60 * 1000); // 24 hours
+    const cutoff = now - (24 * 60 * 60 * 1000);
     return (this.data.statusUpdates || []).filter(s => {
       const t = s.createdAtTime || new Date(s.createdAt).getTime();
       return t > cutoff;

@@ -1,7 +1,8 @@
-// ChatterPatter - Production Backend Server with Real WebRTC, OTP Authentication, and Contact Sync
+// ChatterPatter - Production Backend Server with Real WebRTC, OTP Authentication, Contact Sync & Durable Storage
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
@@ -11,7 +12,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
   },
   maxHttpBufferSize: 5e7 // 50MB for HD video, high-res photos, voice notes & files
 });
@@ -22,12 +23,20 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/media', express.static(path.join(__dirname, 'data', 'media')));
 
 // Database Engine
 const db = require('./database');
 
-// Health Check Routes for Cloud Deployment
+// Health Check Routes for Cloud Deployment & Monitoring
 app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/api/health', (req, res) => res.status(200).json({
+  status: 'ok',
+  time: new Date().toISOString(),
+  app: 'ChatterPatter',
+  version: '1.0.0',
+  uptime: process.uptime()
+}));
 app.get('/ping', (req, res) => res.json({ status: 'live', app: 'ChatterPatter', time: new Date().toISOString() }));
 
 // Active Sockets Mapping: socketId -> user profile
@@ -112,7 +121,6 @@ async function sendSmsOtp(normalizedPhone, otp) {
       });
       console.log(`[SMS-SERVICE] Fast2SMS OTP dispatched to ${clean10}`);
     } else {
-      // Production secure server log fallback (does not leak OTP in client API responses)
       console.log(`[AUTH-OTP-VERIFICATION-CODE] Mobile: ${normalizedPhone} | Code: [${otp}]`);
     }
     return true;
@@ -326,7 +334,7 @@ app.post('/api/auth/email/login', (req, res) => {
 
 // 5. Google Sign-In with mandatory phone verification
 app.post('/api/auth/google', (req, res) => {
-  const { name, email, googleId, avatar, phone } = req.body;
+  const { name, email, avatar, phone } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email is required for Google Sign-In' });
   }
@@ -335,7 +343,6 @@ app.post('/api/auth/google', (req, res) => {
   let user = db.findUserByEmail(cleanEmail);
 
   if (user && user.phoneVerified && user.phone) {
-    // Already verified Google account
     const session = db.createSession(user.id, 30);
     return res.json({
       success: true,
@@ -356,7 +363,6 @@ app.post('/api/auth/google', (req, res) => {
     });
   }
 
-  // Not verified yet -> require phone OTP verification
   if (!user) {
     user = db.saveUser({
       name: name || 'Google User',
@@ -435,6 +441,26 @@ app.post('/api/user/privacy', requirePhoneVerified, (req, res) => {
   res.json({ success: true, privacy: updated });
 });
 
+// Blocking & Unblocking APIs
+app.post('/api/user/block', requirePhoneVerified, (req, res) => {
+  const { targetUserId } = req.body;
+  if (!targetUserId) return res.status(400).json({ error: 'Target user ID is required' });
+  const list = db.blockUser(req.currentUser.id, targetUserId);
+  res.json({ success: true, blockedUsers: list });
+});
+
+app.post('/api/user/unblock', requirePhoneVerified, (req, res) => {
+  const { targetUserId } = req.body;
+  if (!targetUserId) return res.status(400).json({ error: 'Target user ID is required' });
+  const list = db.unblockUser(req.currentUser.id, targetUserId);
+  res.json({ success: true, blockedUsers: list });
+});
+
+app.get('/api/user/blocked', requirePhoneVerified, (req, res) => {
+  const list = db.getBlockedUsers(req.currentUser.id);
+  res.json({ success: true, blockedUsers: list });
+});
+
 // Linked Devices API
 app.get('/api/devices/:userId', requirePhoneVerified, (req, res) => {
   const devices = db.getLinkedDevices(req.params.userId);
@@ -462,6 +488,11 @@ app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
 
 // Save Message API
 app.post('/api/messages', requirePhoneVerified, (req, res) => {
+  const targetId = req.body.recipientId;
+  if (targetId && db.isBlocked(req.currentUser.id, targetId)) {
+    return res.status(403).json({ error: 'Message cannot be delivered. User is blocked.' });
+  }
+
   const msgData = {
     ...req.body,
     senderId: req.currentUser.id,
@@ -504,6 +535,88 @@ app.delete('/api/chats/:chatId', requirePhoneVerified, (req, res) => {
   res.json({ success: true });
 });
 
+// Media Storage Upload API (Durable File Storage)
+app.post('/api/media/upload', requirePhoneVerified, (req, res) => {
+  const { dataUrl, fileName, fileType } = req.body;
+  if (!dataUrl) {
+    return res.status(400).json({ error: 'Media payload required' });
+  }
+
+  try {
+    const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ error: 'Invalid media format' });
+    }
+
+    const mime = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    
+    // Max 50MB check
+    if (buffer.length > 50 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File exceeds 50MB size limit' });
+    }
+
+    const ext = (fileName && fileName.includes('.')) ? path.extname(fileName) : (mime.includes('image') ? '.jpg' : mime.includes('video') ? '.mp4' : mime.includes('audio') ? '.webm' : '.bin');
+    const secureName = `media_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`;
+    const targetPath = path.join(__dirname, 'data', 'media', secureName);
+
+    fs.writeFileSync(targetPath, buffer);
+
+    const mediaUrl = `/media/${secureName}`;
+    res.json({
+      success: true,
+      mediaUrl,
+      fileName: fileName || secureName,
+      fileSize: buffer.length,
+      mimeType: mime
+    });
+  } catch (err) {
+    console.error('[MEDIA UPLOAD ERROR]', err.message);
+    res.status(500).json({ error: 'Failed to save media file' });
+  }
+});
+
+// Call Logs API
+app.get('/api/calls', requirePhoneVerified, (req, res) => {
+  const logs = db.getCallLogs(req.currentUser.id);
+  res.json({ success: true, callLogs: logs });
+});
+
+app.post('/api/calls', requirePhoneVerified, (req, res) => {
+  const log = db.saveCallLog({
+    ...req.body,
+    callerId: req.currentUser.id,
+    callerPhone: req.currentUser.phone
+  });
+  res.json({ success: true, callLog: log });
+});
+
+// Push Notification Token Registration
+app.post('/api/push/register', requirePhoneVerified, (req, res) => {
+  const { token, platform } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token is required' });
+  const entry = db.registerPushToken(req.currentUser.id, token, platform || 'android');
+  res.json({ success: true, pushToken: entry });
+});
+
+app.post('/api/push/unregister', requirePhoneVerified, (req, res) => {
+  const { token } = req.body;
+  if (token) db.unregisterPushToken(req.currentUser.id, token);
+  res.json({ success: true });
+});
+
+// Cloud Backup Export & Restore
+app.post('/api/backup/export', requirePhoneVerified, (req, res) => {
+  const backup = db.exportBackup(req.currentUser.id);
+  res.json({ success: true, backup });
+});
+
+app.post('/api/backup/restore', requirePhoneVerified, (req, res) => {
+  const { backupData } = req.body;
+  const result = db.restoreBackup(req.currentUser.id, backupData);
+  res.json(result);
+});
+
 // Groups List & Create API
 app.get('/api/groups', requirePhoneVerified, (req, res) => {
   res.json(db.getAllGroups());
@@ -534,18 +647,20 @@ app.post('/api/status', requirePhoneVerified, (req, res) => {
   res.json({ success: true, status });
 });
 
-// WebRTC ICE Servers API
+// WebRTC ICE Servers API (Google STUN + Relay)
 app.get('/api/webrtc/ice-servers', (req, res) => {
   res.json({
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
     ]
   });
 });
 
-// News & Flash Tickers (Public content)
+// News & Flash Tickers
 const newsArticles = [
   {
     id: 'news-1',
@@ -675,6 +790,12 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const targetId = msgData.recipientId;
+    if (targetId && db.isBlocked(sender.id, targetId)) {
+      socket.emit('error_message', { error: 'Message blocked: Cannot send to this user.' });
+      return;
+    }
+
     const enrichedMsg = db.saveMessage({
       ...msgData,
       senderId: sender.id,
@@ -729,7 +850,13 @@ io.on('connection', (socket) => {
     const sender = activeUsers.get(socket.id);
     if (!sender) return;
 
-    const targetSocketId = findRecipientSocketId(callData.userToCall || callData.recipientId, callData.recipientPhone);
+    const targetRecipientId = callData.userToCall || callData.recipientId;
+    if (targetRecipientId && db.isBlocked(sender.id, targetRecipientId)) {
+      socket.emit('call-rejected', { reason: 'Blocked user' });
+      return;
+    }
+
+    const targetSocketId = findRecipientSocketId(targetRecipientId, callData.recipientPhone);
     const payload = {
       ...callData,
       callerId: sender.id,
@@ -878,8 +1005,8 @@ app.get('*', (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`=======================================================`);
-  console.log(`🚀 ChatterPatter Server Running on Port: ${PORT}`);
-  console.log(`🔒 Production Authentication & WebRTC Engine Active`);
-  console.log(`🌐 Live URL: https://chitchat-chatterpatter.onrender.com`);
+  console.log(`🚀 ChatterPatter Production Server on Port: ${PORT}`);
+  console.log(`🔒 Authentication, Contact Sync & Durable Storage Active`);
+  console.log(`🌐 Production URL: https://chitchat-chatterpatter.onrender.com`);
   console.log(`=======================================================`);
 });
