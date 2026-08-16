@@ -1211,18 +1211,21 @@
       </div>
 
       <!-- Video Mode Viewport -->
-      <div id="call-video-container" class="call-video-viewport" style="display: none;">
-        <canvas id="remote-video-canvas" class="remote-video-canvas"></canvas>
-        <div class="remote-caller-box">
+      <div id="call-video-container" class="call-video-viewport" style="display: none; position: relative; width: 100%; height: 100%;">
+        <!-- Real WebRTC Remote Audio/Video Elements -->
+        <video class="remote-video-feed" id="remote-video-feed" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; border-radius: 12px;"></video>
+        <audio id="remote-audio-feed" autoplay></audio>
+
+        <div class="remote-caller-box" id="remote-caller-box" style="z-index: 2;">
           <img id="remote-caller-video-avatar" class="remote-caller-img" src="assets/logo-icon.svg" alt="Remote Caller">
-          <div style="color: #ffffff; font-weight: 700; font-size: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Live Video Feed 🟢</div>
+          <div style="color: #ffffff; font-weight: 700; font-size: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Connecting Real Video Stream...</div>
         </div>
 
         <!-- Group Call Multi-User Grid -->
-        <div class="group-call-grid" id="group-call-grid"></div>
+        <div class="group-call-grid" id="group-call-grid" style="z-index: 3;"></div>
 
         <!-- Local Self Camera Viewport -->
-        <div class="video-local-pip-wrapper" id="local-video-pip-wrapper">
+        <div class="video-local-pip-wrapper" id="local-video-pip-wrapper" style="z-index: 4;">
           <video class="video-local-pip" id="local-video-feed" autoplay playsinline muted></video>
           <div class="camera-off-overlay" id="camera-off-overlay">
             <span style="font-size: 20px;">📷🚫</span>
@@ -1230,7 +1233,7 @@
           </div>
         </div>
 
-        <div class="video-local-fallback" id="local-video-fallback">
+        <div class="video-local-fallback" id="local-video-fallback" style="z-index: 4;">
           <img id="local-fallback-avatar" class="local-fallback-img" src="assets/logo-icon.svg" alt="Self">
           <span style="color: #fff; font-size: 11px; font-weight: 600;">You</span>
         </div>

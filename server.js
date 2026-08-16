@@ -486,26 +486,141 @@ io.on('connection', (socket) => {
     io.emit('chat_deleted', { chatId: data.chatId });
   });
 
-  // WebRTC / Call Signaling
-  socket.on('call_user', (callData) => {
-    console.log(`[CALL] ${callData.callerName} is calling ${callData.recipientId} (${callData.callType})`);
-    socket.broadcast.emit('incoming_call', callData);
+  // WebRTC / Call Signaling Handlers
+  function findRecipientSocketId(recipientId, recipientPhone) {
+    if (!recipientId && !recipientPhone) return null;
+    const cleanPhone = (recipientPhone || '').replace(/\D/g, '').slice(-10);
+    for (const [sockId, u] of activeUsers.entries()) {
+      if (recipientId && (u.id === recipientId || u.userId === recipientId || sockId === recipientId)) {
+        return sockId;
+      }
+      if (cleanPhone && u.cleanPhone && u.cleanPhone === cleanPhone) {
+        return sockId;
+      }
+      if (cleanPhone && u.phone && u.phone.replace(/\D/g, '').includes(cleanPhone)) {
+        return sockId;
+      }
+    }
+    return null;
+  }
+
+  // 1. Call User (Offer)
+  socket.on('call-user', (callData) => {
+    console.log(`[WEBRTC CALL] ${callData.callerName} calling ${callData.userToCall || callData.recipientId} (${callData.callType})`);
+    const targetSocketId = findRecipientSocketId(callData.userToCall || callData.recipientId, callData.recipientPhone);
+    const payload = {
+      ...callData,
+      fromSocketId: socket.id,
+      callerSocketId: socket.id
+    };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('incoming-call', payload);
+      io.to(targetSocketId).emit('incoming_call', payload);
+    } else {
+      socket.broadcast.emit('incoming-call', payload);
+      socket.broadcast.emit('incoming_call', payload);
+    }
   });
 
-  socket.on('webrtc_signal', (data) => {
-    socket.broadcast.emit('webrtc_signal', data);
+  socket.on('call_user', (callData) => {
+    const targetSocketId = findRecipientSocketId(callData.userToCall || callData.recipientId, callData.recipientPhone);
+    const payload = { ...callData, fromSocketId: socket.id, callerSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('incoming-call', payload);
+      io.to(targetSocketId).emit('incoming_call', payload);
+    } else {
+      socket.broadcast.emit('incoming-call', payload);
+      socket.broadcast.emit('incoming_call', payload);
+    }
+  });
+
+  // 2. Call Accepted (Answer)
+  socket.on('call-accepted', (data) => {
+    console.log(`[WEBRTC ACCEPT] Call accepted by ${socket.id}`);
+    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
+    const payload = { ...data, responderSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('call-accepted', payload);
+      io.to(targetSocketId).emit('call_accepted', payload);
+    } else {
+      socket.broadcast.emit('call-accepted', payload);
+      socket.broadcast.emit('call_accepted', payload);
+    }
   });
 
   socket.on('accept_call', (data) => {
-    io.emit('call_accepted', data);
+    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
+    const payload = { ...data, responderSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('call-accepted', payload);
+      io.to(targetSocketId).emit('call_accepted', payload);
+    } else {
+      socket.broadcast.emit('call-accepted', payload);
+      socket.broadcast.emit('call_accepted', payload);
+    }
+  });
+
+  // 3. ICE Candidate Exchange
+  socket.on('ice-candidate', (data) => {
+    const targetSocketId = data.to || data.targetSocketId || findRecipientSocketId(data.targetUserId, data.targetPhone);
+    const payload = { candidate: data.candidate, fromSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('ice-candidate', payload);
+      io.to(targetSocketId).emit('ice_candidate', payload);
+    } else {
+      socket.broadcast.emit('ice-candidate', payload);
+      socket.broadcast.emit('ice_candidate', payload);
+    }
+  });
+
+  socket.on('ice_candidate', (data) => {
+    const targetSocketId = data.to || data.targetSocketId || findRecipientSocketId(data.targetUserId, data.targetPhone);
+    const payload = { candidate: data.candidate, fromSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('ice-candidate', payload);
+      io.to(targetSocketId).emit('ice_candidate', payload);
+    } else {
+      socket.broadcast.emit('ice-candidate', payload);
+      socket.broadcast.emit('ice_candidate', payload);
+    }
+  });
+
+  // 4. Call Rejected
+  socket.on('call-rejected', (data) => {
+    console.log(`[WEBRTC REJECT] Call rejected by ${socket.id}`);
+    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
+    const payload = { ...data, fromSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('call-rejected', payload);
+      io.to(targetSocketId).emit('call_rejected', payload);
+    } else {
+      socket.broadcast.emit('call-rejected', payload);
+      socket.broadcast.emit('call_rejected', payload);
+    }
   });
 
   socket.on('reject_call', (data) => {
-    io.emit('call_rejected', data);
+    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
+    const payload = { ...data, fromSocketId: socket.id };
+    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
+      io.to(targetSocketId).emit('call-rejected', payload);
+      io.to(targetSocketId).emit('call_rejected', payload);
+    } else {
+      socket.broadcast.emit('call-rejected', payload);
+      socket.broadcast.emit('call_rejected', payload);
+    }
+  });
+
+  // 5. End Call
+  socket.on('end-call', (data) => {
+    console.log(`[WEBRTC END] Call ended by ${socket.id}`);
+    io.emit('end-call', { ...(data || {}), fromSocketId: socket.id });
+    io.emit('call_ended', { ...(data || {}), fromSocketId: socket.id });
   });
 
   socket.on('end_call', (data) => {
-    io.emit('call_ended', data);
+    io.emit('end-call', { ...(data || {}), fromSocketId: socket.id });
+    io.emit('call_ended', { ...(data || {}), fromSocketId: socket.id });
   });
 
   // Disconnect

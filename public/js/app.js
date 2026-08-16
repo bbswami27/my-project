@@ -88,9 +88,25 @@ class ChatterApp {
   initSocket() {
     try {
       if (typeof io !== 'undefined') {
-        this.socket = io();
+        let socketUrl = 'https://chitchat-chatterpatter.onrender.com';
+        if (typeof window !== 'undefined' && window.location && window.location.origin) {
+          const origin = window.location.origin;
+          if (origin.startsWith('http://') || origin.startsWith('https://')) {
+            if (!origin.includes('capacitor://') && !origin.includes('file://')) {
+              socketUrl = origin;
+            }
+          }
+        }
+
+        this.socket = io(socketUrl, {
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionAttempts: 20,
+          reconnectionDelay: 1000
+        });
+
         this.socket.on('connect', () => {
-          console.log('⚡ Connected to GitPit Socket.io Server:', this.socket.id);
+          console.log('⚡ Connected to GitPit WebRTC Socket Server:', this.socket.id, 'via', socketUrl);
           const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
           if (currentUser) {
             this.socket.emit('user_join', currentUser);
@@ -175,14 +191,16 @@ class ChatterApp {
           }
         });
 
-        // 📞 Real-Time Audio & Video Call Notifications
-        this.socket.on('incoming_call', (callData) => {
+        // ==========================================
+        // 📞 WebRTC Signaling Listeners
+        // ==========================================
+        const handleIncomingCall = (callData) => {
           if (!callData) return;
           const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
           const currentUserId = currentUser ? currentUser.id : null;
           const currentPhone = currentUser ? currentUser.phone : null;
           const cleanMyPhone = (currentPhone || '').replace(/\D/g, '').slice(-10);
-          const cleanTargetPhone = (callData.recipientPhone || callData.recipientId || '').replace(/\D/g, '').slice(-10);
+          const cleanTargetPhone = (callData.recipientPhone || callData.recipientId || callData.userToCall || '').replace(/\D/g, '').slice(-10);
           const cleanCallerPhone = (callData.callerPhone || callData.callerId || '').replace(/\D/g, '').slice(-10);
 
           // 1. Ignore if call originated from myself
@@ -191,18 +209,20 @@ class ChatterApp {
 
           // 2. Validate recipient match: matches ID or matches 10-digit mobile number
           let isTargetRecipient = false;
+          if (callData.userToCall && currentUserId && (callData.userToCall === currentUserId || callData.userToCall === ('user_' + cleanMyPhone))) {
+            isTargetRecipient = true;
+          }
           if (callData.recipientId && currentUserId && (callData.recipientId === currentUserId || callData.recipientId === ('user_' + cleanMyPhone))) {
             isTargetRecipient = true;
           }
           if (cleanMyPhone && cleanTargetPhone && (cleanMyPhone === cleanTargetPhone || cleanTargetPhone.includes(cleanMyPhone) || cleanMyPhone.includes(cleanTargetPhone))) {
             isTargetRecipient = true;
           }
-          if (!callData.recipientId && !cleanTargetPhone) {
+          if (!callData.recipientId && !callData.userToCall && !cleanTargetPhone) {
             isTargetRecipient = true;
           }
 
           if (!isTargetRecipient) {
-            console.log('[CALL] Incoming call was for another recipient');
             return;
           }
 
@@ -217,41 +237,53 @@ class ChatterApp {
               callerDisplayName,
               callerAvatar,
               callData.callType || 'audio',
-              callData.callerId || ('user_' + cleanCallerPhone)
+              callData.callerId || ('user_' + cleanCallerPhone),
+              callData.fromSocketId || callData.callerSocketId,
+              callData.signalData,
+              callData.callerPhone || ''
             );
           }
-        });
+        };
 
-        // 📞 Call Accepted by Recipient (Connect Caller)
-        this.socket.on('call_accepted', (data) => {
-          console.log('⚡ Call Accepted by Recipient:', data);
-          if (window.CallManager && window.CallManager.activeCall && window.CallManager.activeCall.status === 'ringing') {
-            window.CallManager.stopRingtone();
-            window.CallManager.activeCall.status = 'connected';
-            const badge = document.getElementById('call-status-badge');
-            if (badge) badge.textContent = '00:00';
-            window.CallManager.startCallDurationTimer();
+        // 1. Incoming Call Offer
+        this.socket.on('incoming-call', handleIncomingCall);
+        this.socket.on('incoming_call', handleIncomingCall);
+
+        // 2. Call Accepted Answer
+        const handleCallAccepted = (data) => {
+          if (window.CallManager) {
+            window.CallManager.handleCallAccepted(data);
           }
-        });
+        };
+        this.socket.on('call-accepted', handleCallAccepted);
+        this.socket.on('call_accepted', handleCallAccepted);
 
-        // 🚫 Call Rejected by Recipient
-        this.socket.on('call_rejected', (data) => {
-          console.log('🚫 Call Rejected:', data);
+        // 3. ICE Candidate
+        const handleIceCandidate = (data) => {
+          if (window.CallManager) {
+            window.CallManager.handleIceCandidate(data);
+          }
+        };
+        this.socket.on('ice-candidate', handleIceCandidate);
+        this.socket.on('ice_candidate', handleIceCandidate);
+
+        // 4. Call Rejected
+        const handleCallRejected = (data) => {
+          if (window.CallManager) {
+            window.CallManager.handleCallRejected(data);
+          }
+        };
+        this.socket.on('call-rejected', handleCallRejected);
+        this.socket.on('call_rejected', handleCallRejected);
+
+        // 5. Call Ended
+        const handleCallEnded = () => {
           if (window.CallManager && window.CallManager.activeCall) {
-            window.CallManager.stopRingtone();
-            const badge = document.getElementById('call-status-badge');
-            if (badge) badge.textContent = 'Call Declined 🚫';
-            setTimeout(() => {
-              window.CallManager.endCall();
-            }, 1200);
+            window.CallManager.endCall(true);
           }
-        });
-
-        this.socket.on('call_ended', () => {
-          if (window.CallManager && window.CallManager.activeCall) {
-            window.CallManager.endCall();
-          }
-        });
+        };
+        this.socket.on('end-call', handleCallEnded);
+        this.socket.on('call_ended', handleCallEnded);
       }
     } catch (err) {
       console.warn('Socket.io connection warning:', err);

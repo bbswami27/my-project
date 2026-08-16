@@ -1,23 +1,41 @@
-// ChatterPatter - Audio & Video Calling Manager (with Screen Sharing, Group Calls, Camera Toggle, Silent & Delete)
+// ChatterPatter - Real WebRTC Audio & Video Calling Manager
+// Features: Real peer-to-peer WebRTC streaming, STUN configuration, Socket.IO signaling,
+// Camera flip, Mic mute, Speaker mute, Screen share, and clean track lifecycle management.
 
 class CallManager {
   constructor() {
     this.callLogs = [];
     this.activeCall = null;
-    this.callDurationTimer = null;
-    this.callSeconds = 0;
-    this.ringtoneInterval = null;
+    this.pendingIncomingCall = null;
+    this.peerConnection = null;
     this.localStream = null;
     this.screenStream = null;
     this.isScreenSharing = false;
-    this.remoteAudioCtx = null;
+    this.callDurationTimer = null;
+    this.callSeconds = 0;
+    this.audioContext = null;
+    this.ringtoneOsc1 = null;
+    this.ringtoneOsc2 = null;
+    this.ringtoneInterval = null;
+    
     this.isMicMuted = false;
     this.isSpeakerMuted = false;
     this.isCameraOff = false;
     this.isSilent = false;
     this.currentFacingMode = 'user';
     this.groupParticipants = [];
-    this.animationFrameId = null;
+    this.iceCandidatesQueue = [];
+
+    this.rtcConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
+    };
+
     this.init();
   }
 
@@ -27,10 +45,10 @@ class CallManager {
       try {
         this.callLogs = JSON.parse(saved);
       } catch (e) {
-        this.callLogs = [...window.MOCK_DATA.initialCalls];
+        this.callLogs = [...(window.MOCK_DATA?.initialCalls || [])];
       }
     } else {
-      this.callLogs = [...window.MOCK_DATA.initialCalls];
+      this.callLogs = [...(window.MOCK_DATA?.initialCalls || [])];
     }
 
     this.bindEvents();
@@ -50,7 +68,7 @@ class CallManager {
       micBtn.addEventListener('click', () => this.toggleMicMute());
     }
 
-    // Mute Speaker / Deafening (Incoming Audio)
+    // Mute Speaker (Incoming Audio)
     const speakerBtn = document.getElementById('btn-call-speaker-mute');
     if (speakerBtn) {
       speakerBtn.addEventListener('click', () => this.toggleSpeakerMute());
@@ -74,7 +92,7 @@ class CallManager {
       flipBtn.addEventListener('click', () => this.flipCamera());
     }
 
-    // Add Participant to Call (Group Call)
+    // Add Participant to Call
     const addParticipantBtn = document.getElementById('btn-call-add-participant');
     if (addParticipantBtn) {
       addParticipantBtn.addEventListener('click', () => this.openAddParticipantModal());
@@ -90,7 +108,8 @@ class CallManager {
     const closeAddModal = document.getElementById('btn-close-add-participant');
     if (closeAddModal) {
       closeAddModal.addEventListener('click', () => {
-        document.getElementById('add-participant-modal').classList.remove('active');
+        const modal = document.getElementById('add-participant-modal');
+        if (modal) modal.classList.remove('active');
       });
     }
 
@@ -112,146 +131,58 @@ class CallManager {
     }
   }
 
-  async answerIncomingCall(type = 'audio') {
-    if (!this.pendingIncomingCall) return;
-    const { name, avatar, contactId } = this.pendingIncomingCall;
-    this.stopRingtone();
-
-    const promptModal = document.getElementById('incoming-call-prompt-modal');
-    if (promptModal) promptModal.classList.remove('active');
-
-    this.activeCall = {
-      name,
-      avatar: avatar || 'assets/logo-icon.svg',
-      type,
-      contactId,
-      direction: 'incoming',
-      status: 'connected'
-    };
-    this.groupParticipants = [{ name, avatar: avatar || 'assets/logo-icon.svg' }];
-    this.isCameraOff = false;
-    this.isMicMuted = false;
-    this.isSpeakerMuted = false;
-    this.isSilent = false;
-    this.callSeconds = 0;
-
-    const modal = document.getElementById('call-overlay-modal');
-    if (modal) modal.classList.add('active');
-
-    document.getElementById('call-caller-name').textContent = name;
-    document.getElementById('call-big-avatar').src = avatar || 'assets/logo-icon.svg';
-    document.getElementById('call-status-badge').textContent = '00:00';
-
-    const videoContainer = document.getElementById('call-video-container');
-    const avatarContainer = document.getElementById('call-avatar-container');
-    const flipBtn = document.getElementById('btn-call-flip-camera');
-    const groupGrid = document.getElementById('group-call-grid');
-    if (groupGrid) groupGrid.classList.remove('active');
-
-    if (type === 'video') {
-      videoContainer.style.display = 'block';
-      avatarContainer.style.display = 'none';
-      if (flipBtn) flipBtn.style.display = 'flex';
-      const remoteImg = document.getElementById('remote-caller-video-avatar');
-      if (remoteImg) remoteImg.src = avatar || 'assets/logo-icon.svg';
-      await this.initLocalVideo();
-      this.startRemoteVideoSimulation();
-    } else {
-      videoContainer.style.display = 'none';
-      avatarContainer.style.display = 'flex';
-      if (flipBtn) flipBtn.style.display = 'none';
-    }
-
-    this.startCallDurationTimer();
-
-    // Emit accept_call to Socket.io to notify Caller
-    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
-    if (window.ChatterApp && window.ChatterApp.socket) {
-      window.ChatterApp.socket.emit('accept_call', {
-        callerId: contactId,
-        recipientId: currentUser ? currentUser.id : 'user_me',
-        recipientPhone: currentUser ? currentUser.phone : '',
-        callType: type,
-        timestamp: Date.now()
-      });
-    }
-
-    this.pendingIncomingCall = null;
-  }
-
-  declineIncomingCall() {
-    if (!this.pendingIncomingCall) return;
-    const { contactId } = this.pendingIncomingCall;
-    this.stopRingtone();
-
-    const promptModal = document.getElementById('incoming-call-prompt-modal');
-    if (promptModal) promptModal.classList.remove('active');
-
-    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
-    if (window.ChatterApp && window.ChatterApp.socket) {
-      window.ChatterApp.socket.emit('reject_call', {
-        callerId: contactId,
-        recipientId: currentUser ? currentUser.id : 'user_me',
-        recipientPhone: currentUser ? currentUser.phone : '',
-        timestamp: Date.now()
-      });
-    }
-
-    this.pendingIncomingCall = null;
-  }
-
-  showIncomingCallPrompt(name, avatar, type = 'video', contactId = null) {
-    const videoPrivacy = localStorage.getItem('gitpit_video_call_privacy') || 'everyone';
+  // ==========================================
+  // INCOMING CALL PROMPT & ANSWERING
+  // ==========================================
+  showIncomingCallPrompt(callerDisplayName, callerAvatar, callType = 'audio', callerId = null, callerSocketId = null, signalData = null, callerPhone = '') {
+    // Check Privacy Settings
+    const videoPrivacy = localStorage.getItem('gitpit_video_call_privacy') || 'contacts';
     const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
-    const cleanContactPhone = (contactId || '').replace(/\D/g, '').slice(-10);
-    const isSavedInPhonebook = !!(phonebook[contactId] || (cleanContactPhone && phonebook[cleanContactPhone]));
-    const isSavedContact = (window.ChatEngine && window.ChatEngine.chats.some(c => c.id === contactId || c.name === name || (cleanContactPhone && c.phone && c.phone.includes(cleanContactPhone)))) || isSavedInPhonebook;
+    const cleanCallerPhone = (callerPhone || callerId || '').replace(/\D/g, '').slice(-10);
+    const isSavedInPhonebook = !!(phonebook[callerId] || (cleanCallerPhone && phonebook[cleanCallerPhone]));
+    const isSavedContact = (window.ChatEngine && window.ChatEngine.chats.some(c => c.id === callerId || (cleanCallerPhone && c.phone && c.phone.includes(cleanCallerPhone)))) || isSavedInPhonebook;
 
-    const videoBlockedList = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
-    const isPerContactVideoBlocked = contactId && videoBlockedList.includes(contactId);
-
-    // 1. Check Per-Contact Video Block
-    if (type === 'video' && isPerContactVideoBlocked) {
-      console.log('Video calls from this contact are blocked in personal settings.');
+    if (callType === 'video' && videoPrivacy === 'nobody') {
+      console.log('Video call rejected by Privacy: nobody');
+      this.sendRejectSignal(callerSocketId, callerId, callerPhone);
       return;
     }
 
-    // 2. Block All Video Calls (Nobody / Voice Only Mode)
-    if (type === 'video' && videoPrivacy === 'nobody') {
-      console.log('All incoming video calls are blocked in privacy settings.');
+    if (callType === 'video' && videoPrivacy === 'contacts' && !isSavedContact) {
+      console.log('Video call rejected by Privacy: contacts only');
+      this.sendRejectSignal(callerSocketId, callerId, callerPhone);
       return;
     }
 
-    // 3. Selected Persons Only Video Privacy
-    if (type === 'video' && videoPrivacy === 'selected') {
-      const allowedList = JSON.parse(localStorage.getItem('gitpit_allowed_video_contacts') || '[]');
-      if (!contactId || (!allowedList.includes(contactId) && !isSavedContact)) {
-        console.log('Caller is not in allowed video callers list.');
-        return;
-      }
+    this.pendingIncomingCall = {
+      name: callerDisplayName,
+      avatar: callerAvatar || 'assets/logo-icon.svg',
+      type: callType,
+      contactId: callerId,
+      callerPhone: callerPhone,
+      callerSocketId: callerSocketId,
+      signalData: signalData
+    };
+    this.iceCandidatesQueue = [];
+
+    // Populate Incoming Dialog UI
+    const promptAvatar = document.getElementById('incoming-call-avatar');
+    const promptName = document.getElementById('incoming-caller-name');
+    const promptDesc = document.getElementById('incoming-call-subtitle');
+
+    if (promptAvatar) promptAvatar.src = callerAvatar || 'assets/logo-icon.svg';
+    if (promptName) promptName.textContent = callerDisplayName;
+    if (promptDesc) {
+      promptDesc.textContent = `Incoming ${callType === 'video' ? '📹 Video' : '📞 Audio'} Call from ${callerDisplayName}`;
     }
 
-    // 4. Contacts Only Video Privacy (Block Unknown)
-    if (type === 'video' && videoPrivacy === 'contacts' && !isSavedContact) {
-      console.log('Blocked incoming video call from unknown caller due to privacy settings.');
-      return;
-    }
-
-    this.pendingIncomingCall = { name, avatar, type, contactId };
-
-    document.getElementById('incoming-caller-name').textContent = name;
-    document.getElementById('incoming-call-avatar').src = avatar || 'assets/logo-icon.svg';
-    document.getElementById('incoming-call-subtitle').textContent = `Incoming ${type === 'video' ? 'Video' : 'Voice'} Call from ${name}...`;
-
-    // Trigger System Notification
+    // System Notification
     try {
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(`📞 Incoming ${type === 'video' ? 'Video' : 'Voice'} Call`, {
-          body: `${name} is calling you on GitPit`,
-          icon: avatar || 'assets/logo-icon.svg'
+        new Notification(`Incoming ${callType.toUpperCase()} Call`, {
+          body: `${callerDisplayName} is calling you on ChatterPatter...`,
+          icon: callerAvatar || 'assets/logo-icon.svg'
         });
-      } else if ('Notification' in window && Notification.permission !== 'denied') {
-        Notification.requestPermission();
       }
     } catch (notifErr) {}
 
@@ -268,546 +199,685 @@ class CallManager {
     this.startRingtone(true);
   }
 
-  renderCallsTab() {
-    const listElem = document.getElementById('calls-list-items');
-    if (!listElem) return;
+  async answerIncomingCall(acceptedType = 'audio') {
+    if (!this.pendingIncomingCall) return;
+    const { name, avatar, contactId, callerSocketId, signalData, callerPhone } = this.pendingIncomingCall;
+    this.stopRingtone();
 
-    if (this.callLogs.length === 0) {
-      listElem.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px;">No call history.</div>`;
-      return;
-    }
-
-    listElem.innerHTML = this.callLogs.map(call => {
-      let icon = '📞';
-      let iconClass = 'call-icon-outgoing';
-      if (call.direction === 'incoming') {
-        icon = '↙';
-        iconClass = 'call-icon-incoming';
-      } else if (call.direction === 'missed') {
-        icon = '↙';
-        iconClass = 'call-icon-missed';
-      } else {
-        icon = '↗';
-      }
-
-      return `
-        <div class="call-item" id="call-entry-${call.id}">
-          <div class="avatar-wrapper">
-            <img class="avatar-img" src="${call.avatar}" alt="${call.name}">
-          </div>
-          <div class="call-meta">
-            <span class="call-user-name">${call.name}</span>
-            <div class="call-info-row">
-              <span class="${iconClass}">${icon}</span>
-              <span>${call.time} • ${call.duration || '0:00'}</span>
-            </div>
-          </div>
-          <div class="call-actions-group">
-            <button class="call-action-btn" title="Call back" onclick="window.CallManager.showIncomingCallPrompt('${call.name}', '${call.avatar}', '${call.type || 'video'}', '${call.id}')">
-              ${call.type === 'video' ? '📹' : '📞'}
-            </button>
-            <button class="call-delete-btn" title="Delete call log" onclick="window.CallManager.deleteCall('${call.id}')">
-              🗑️
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  deleteCall(callId) {
-    this.callLogs = this.callLogs.filter(c => c.id !== callId);
-    this.saveCalls();
-    this.renderCallsTab();
-  }
-
-  async startCall(name, avatar, type = 'audio', contactId = null) {
-    const videoBlockedList = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
-    const isPerContactVideoBlocked = contactId && videoBlockedList.includes(contactId);
-
-    if (type === 'video' && isPerContactVideoBlocked) {
-      alert(`🚫 Video calling is blocked for "${name}". You can still make Voice Calls or unblock video in contact options.`);
-      return;
-    }
-
-    // Check Unknown Video Blocker Setting
-    const blockUnknownVideo = localStorage.getItem('gitpit_block_unknown_video') !== 'false';
-    const isSavedContact = window.ChatEngine && window.ChatEngine.chats.some(c => c.id === contactId || c.name === name);
-
-    if (type === 'video' && blockUnknownVideo && !isSavedContact && contactId && contactId.startsWith('chat_user_unknown')) {
-      alert('🚫 Video calls with unsaved numbers are restricted in your Privacy Settings.');
-      return;
-    }
+    const promptModal = document.getElementById('incoming-call-prompt-modal');
+    if (promptModal) promptModal.classList.remove('active');
 
     this.activeCall = {
       name,
-      avatar,
-      type,
+      avatar: avatar || 'assets/logo-icon.svg',
+      type: acceptedType,
       contactId,
-      direction: 'outgoing',
-      status: 'ringing'
+      callerPhone,
+      callerSocketId,
+      direction: 'incoming',
+      status: 'connecting'
     };
-    this.groupParticipants = [{ name, avatar }];
-    this.isCameraOff = false;
+    this.groupParticipants = [{ name, avatar: avatar || 'assets/logo-icon.svg' }];
+    this.isCameraOff = (acceptedType !== 'video');
     this.isMicMuted = false;
     this.isSpeakerMuted = false;
     this.isSilent = false;
-
-    // Emit Real-Time Call Event over Socket.io
-    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
-    const targetChat = window.ChatEngine ? window.ChatEngine.chats.find(c => c.id === contactId) : null;
-    if (window.ChatterApp && window.ChatterApp.socket) {
-      window.ChatterApp.socket.emit('call_user', {
-        callerId: currentUser ? currentUser.id : 'user_me',
-        callerName: currentUser ? currentUser.name : 'User',
-        callerAvatar: currentUser ? currentUser.avatar : 'assets/logo-icon.svg',
-        callerPhone: currentUser ? currentUser.phone : '',
-        recipientId: contactId,
-        recipientPhone: targetChat ? targetChat.phone : '',
-        callType: type,
-        timestamp: Date.now()
-      });
-    }
+    this.callSeconds = 0;
 
     const modal = document.getElementById('call-overlay-modal');
     if (modal) modal.classList.add('active');
 
     document.getElementById('call-caller-name').textContent = name;
-    document.getElementById('call-big-avatar').src = avatar;
+    document.getElementById('call-big-avatar').src = avatar || 'assets/logo-icon.svg';
+    document.getElementById('call-status-badge').textContent = 'Connecting...';
+
+    const videoContainer = document.getElementById('call-video-container');
+    const avatarContainer = document.getElementById('call-avatar-container');
+    const flipBtn = document.getElementById('btn-call-flip-camera');
+
+    if (acceptedType === 'video') {
+      if (videoContainer) videoContainer.style.display = 'block';
+      if (avatarContainer) avatarContainer.style.display = 'none';
+      if (flipBtn) flipBtn.style.display = 'flex';
+      const remoteImg = document.getElementById('remote-caller-video-avatar');
+      if (remoteImg) remoteImg.src = avatar || 'assets/logo-icon.svg';
+    } else {
+      if (videoContainer) videoContainer.style.display = 'none';
+      if (avatarContainer) avatarContainer.style.display = 'flex';
+      if (flipBtn) flipBtn.style.display = 'none';
+    }
+
+    try {
+      // 1. Get Local Media Stream
+      await this.initLocalStream(acceptedType === 'video');
+
+      // 2. Create WebRTC PeerConnection
+      this.createPeerConnection(callerSocketId, contactId, callerPhone);
+
+      // 3. Set Remote Offer Description
+      if (signalData) {
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(signalData));
+        await this.drainIceCandidatesQueue();
+      }
+
+      // 4. Create and Set Local Answer Description
+      const answer = await this.peerConnection.createAnswer();
+      await this.peerConnection.setLocalDescription(answer);
+
+      // 5. Send Answer via Socket.IO
+      const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+      this.emitSocketEvent('call-accepted', {
+        to: callerSocketId,
+        callerId: contactId,
+        callerPhone: callerPhone,
+        signal: answer,
+        recipientId: currentUser ? currentUser.id : 'user_me',
+        recipientPhone: currentUser ? currentUser.phone : '',
+        recipientName: currentUser ? currentUser.name : 'Recipient',
+        recipientAvatar: currentUser ? currentUser.avatar : 'assets/logo-icon.svg',
+        callType: acceptedType,
+        timestamp: Date.now()
+      });
+
+      this.activeCall.status = 'connected';
+      document.getElementById('call-status-badge').textContent = '00:00';
+      this.startCallDurationTimer();
+
+    } catch (err) {
+      console.error('Error answering call with WebRTC:', err);
+      alert('Could not establish WebRTC connection. Please check camera/mic permissions.');
+      this.endCall();
+    }
+
+    this.pendingIncomingCall = null;
+  }
+
+  declineIncomingCall() {
+    if (!this.pendingIncomingCall) return;
+    const { contactId, callerSocketId, callerPhone } = this.pendingIncomingCall;
+    this.stopRingtone();
+
+    const promptModal = document.getElementById('incoming-call-prompt-modal');
+    if (promptModal) promptModal.classList.remove('active');
+
+    this.sendRejectSignal(callerSocketId, contactId, callerPhone);
+    this.pendingIncomingCall = null;
+  }
+
+  sendRejectSignal(callerSocketId, contactId, callerPhone) {
+    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    this.emitSocketEvent('call-rejected', {
+      to: callerSocketId,
+      callerId: contactId,
+      callerPhone: callerPhone,
+      recipientId: currentUser ? currentUser.id : 'user_me',
+      recipientPhone: currentUser ? currentUser.phone : '',
+      timestamp: Date.now()
+    });
+  }
+
+  // ==========================================
+  // OUTGOING CALL INITIATION
+  // ==========================================
+  async startCall(name, avatar, type = 'audio', contactId = null) {
+    if (this.activeCall) {
+      alert('Another call is already in progress.');
+      return;
+    }
+
+    this.activeCall = {
+      name,
+      avatar: avatar || 'assets/logo-icon.svg',
+      type,
+      contactId,
+      direction: 'outgoing',
+      status: 'ringing'
+    };
+    this.groupParticipants = [{ name, avatar: avatar || 'assets/logo-icon.svg' }];
+    this.isCameraOff = (type !== 'video');
+    this.isMicMuted = false;
+    this.isSpeakerMuted = false;
+    this.isSilent = false;
+    this.callSeconds = 0;
+    this.iceCandidatesQueue = [];
+
+    const modal = document.getElementById('call-overlay-modal');
+    if (modal) modal.classList.add('active');
+
+    document.getElementById('call-caller-name').textContent = name;
+    document.getElementById('call-big-avatar').src = avatar || 'assets/logo-icon.svg';
     document.getElementById('call-status-badge').textContent = 'Ringing... 🔔';
 
     const videoContainer = document.getElementById('call-video-container');
     const avatarContainer = document.getElementById('call-avatar-container');
     const flipBtn = document.getElementById('btn-call-flip-camera');
-    const groupGrid = document.getElementById('group-call-grid');
-    if (groupGrid) groupGrid.classList.remove('active');
 
     if (type === 'video') {
-      videoContainer.style.display = 'block';
-      avatarContainer.style.display = 'none';
+      if (videoContainer) videoContainer.style.display = 'block';
+      if (avatarContainer) avatarContainer.style.display = 'none';
       if (flipBtn) flipBtn.style.display = 'flex';
-      
       const remoteImg = document.getElementById('remote-caller-video-avatar');
-      if (remoteImg) remoteImg.src = avatar;
-
-      await this.initLocalVideo();
-      this.startRemoteVideoSimulation();
+      if (remoteImg) remoteImg.src = avatar || 'assets/logo-icon.svg';
     } else {
-      videoContainer.style.display = 'none';
-      avatarContainer.style.display = 'flex';
+      if (videoContainer) videoContainer.style.display = 'none';
+      if (avatarContainer) avatarContainer.style.display = 'flex';
       if (flipBtn) flipBtn.style.display = 'none';
     }
 
     this.playRingtone(false);
 
-    // 45-Second No Answer Timeout
-    setTimeout(() => {
-      if (this.activeCall && this.activeCall.status === 'ringing') {
-        const badge = document.getElementById('call-status-badge');
-        if (badge) badge.textContent = 'No Answer 📵';
-        setTimeout(() => this.endCall(), 2000);
-      }
-    }, 45000);
-  }
-
-  async initLocalVideo() {
-    const localVideo = document.getElementById('local-video-feed');
-    const localFallback = document.getElementById('local-video-fallback');
-    const cameraOffOverlay = document.getElementById('camera-off-overlay');
-
-    if (cameraOffOverlay) cameraOffOverlay.classList.remove('active');
-
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        if (this.localStream) {
-          this.localStream.getTracks().forEach(t => t.stop());
-        }
+      // 1. Get Local Media Stream
+      await this.initLocalStream(type === 'video');
 
-        const constraints = {
-          video: {
-            facingMode: this.currentFacingMode,
-            width: { min: 1280, ideal: 1920 },
-            height: { min: 720, ideal: 1080 },
-            frameRate: { ideal: 30, max: 60 }
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        };
-
-        try {
-          this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (mediaErr) {
-          this.localStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: this.currentFacingMode,
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: true
-          });
-        }
-
-        if (this.localStream && localVideo) {
-          localVideo.srcObject = this.localStream;
-          localVideo.style.display = 'block';
-          if (localFallback) localFallback.style.display = 'none';
-          localVideo.onloadedmetadata = () => {
-            localVideo.play().catch(e => console.warn(e));
-          };
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('Real camera stream not available, activating fallback:', err);
-    }
-
-    if (localVideo) localVideo.style.display = 'none';
-    if (localFallback) {
-      localFallback.style.display = 'flex';
+      // 2. Find target phone & info
       const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
-      const avatarImg = document.getElementById('local-fallback-avatar');
-      if (avatarImg && currentUser) avatarImg.src = currentUser.avatar;
+      const targetChat = window.ChatEngine ? window.ChatEngine.chats.find(c => c.id === contactId) : null;
+      const recipientPhone = targetChat ? targetChat.phone : '';
+
+      // 3. Create WebRTC PeerConnection
+      this.createPeerConnection(null, contactId, recipientPhone);
+
+      // 4. Create and Set Local Offer
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+
+      // 5. Emit call-user / call_user signaling event
+      this.emitSocketEvent('call-user', {
+        callerId: currentUser ? currentUser.id : 'user_me',
+        callerName: currentUser ? currentUser.name : 'User',
+        callerAvatar: currentUser ? currentUser.avatar : 'assets/logo-icon.svg',
+        callerPhone: currentUser ? currentUser.phone : '',
+        userToCall: contactId,
+        recipientId: contactId,
+        recipientPhone: recipientPhone,
+        signalData: offer,
+        callType: type,
+        timestamp: Date.now()
+      });
+
+      // 45-Second No Answer Timeout
+      setTimeout(() => {
+        if (this.activeCall && this.activeCall.status === 'ringing') {
+          const badge = document.getElementById('call-status-badge');
+          if (badge) badge.textContent = 'No Answer 📵';
+          setTimeout(() => this.endCall(), 2000);
+        }
+      }, 45000);
+
+    } catch (err) {
+      console.error('Error starting WebRTC call:', err);
+      alert('Camera/Microphone access error. Please allow permissions.');
+      this.endCall();
     }
   }
 
-  toggleCamera() {
-    this.isCameraOff = !this.isCameraOff;
-    const btn = document.getElementById('btn-call-camera');
-    const cameraOffOverlay = document.getElementById('camera-off-overlay');
+  // ==========================================
+  // WEBRTC PEER CONNECTION & SIGNALING
+  // ==========================================
+  createPeerConnection(targetSocketId = null, targetUserId = null, targetPhone = '') {
+    if (this.peerConnection) {
+      try { this.peerConnection.close(); } catch (e) {}
+    }
 
-    if (btn) btn.classList.toggle('active-off', this.isCameraOff);
-    if (cameraOffOverlay) cameraOffOverlay.classList.toggle('active', this.isCameraOff);
+    this.peerConnection = new RTCPeerConnection(this.rtcConfig);
 
+    // Add local tracks to PeerConnection
     if (this.localStream) {
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = !this.isCameraOff;
+      this.localStream.getTracks().forEach(track => {
+        this.peerConnection.addTrack(track, this.localStream);
       });
     }
+
+    // ICE Candidate Handler
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.emitSocketEvent('ice-candidate', {
+          candidate: event.candidate,
+          to: targetSocketId,
+          targetUserId: targetUserId,
+          targetPhone: targetPhone
+        });
+      }
+    };
+
+    // Remote Stream Handler
+    this.peerConnection.ontrack = (event) => {
+      console.log('⚡ WebRTC Remote track received:', event.track.kind);
+      const remoteStream = event.streams[0] || new MediaStream([event.track]);
+      
+      const remoteVideo = document.getElementById('remote-video-feed');
+      const remoteAudio = document.getElementById('remote-audio-feed');
+      const remoteBox = document.getElementById('remote-caller-box');
+
+      if (remoteVideo) {
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.style.display = 'block';
+      }
+      if (remoteAudio) {
+        remoteAudio.srcObject = remoteStream;
+      }
+      if (remoteBox) {
+        remoteBox.style.display = 'none';
+      }
+    };
+
+    // Connection State Monitor
+    this.peerConnection.onconnectionstatechange = () => {
+      console.log('⚡ WebRTC Connection State:', this.peerConnection.connectionState);
+      if (this.peerConnection.connectionState === 'connected') {
+        if (this.activeCall) {
+          this.activeCall.status = 'connected';
+          this.stopRingtone();
+          const badge = document.getElementById('call-status-badge');
+          if (badge && (badge.textContent.includes('Ringing') || badge.textContent.includes('Connecting'))) {
+            badge.textContent = '00:00';
+            this.startCallDurationTimer();
+          }
+        }
+      } else if (this.peerConnection.connectionState === 'disconnected' || this.peerConnection.connectionState === 'failed') {
+        console.warn('WebRTC Disconnected or Failed');
+      }
+    };
   }
 
+  async handleCallAccepted(data) {
+    console.log('⚡ Handling call-accepted signaling answer:', data);
+    this.stopRingtone();
+    if (!this.activeCall || !this.peerConnection) return;
+
+    try {
+      if (data.signal) {
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
+        await this.drainIceCandidatesQueue();
+      }
+      this.activeCall.status = 'connected';
+      const badge = document.getElementById('call-status-badge');
+      if (badge) badge.textContent = '00:00';
+      this.startCallDurationTimer();
+    } catch (err) {
+      console.error('Error setting remote description on call-accepted:', err);
+    }
+  }
+
+  async handleIceCandidate(data) {
+    if (!data || !data.candidate) return;
+    const candidate = new RTCIceCandidate(data.candidate);
+
+    if (this.peerConnection && this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
+      try {
+        await this.peerConnection.addIceCandidate(candidate);
+      } catch (err) {
+        console.warn('Error adding ICE candidate:', err);
+      }
+    } else {
+      this.iceCandidatesQueue.push(candidate);
+    }
+  }
+
+  async drainIceCandidatesQueue() {
+    while (this.iceCandidatesQueue.length > 0) {
+      const candidate = this.iceCandidatesQueue.shift();
+      try {
+        if (this.peerConnection) {
+          await this.peerConnection.addIceCandidate(candidate);
+        }
+      } catch (e) {
+        console.warn('Error draining ICE candidate:', e);
+      }
+    }
+  }
+
+  handleCallRejected(data) {
+    console.log('🚫 Call was rejected by peer');
+    this.stopRingtone();
+    if (this.activeCall) {
+      const badge = document.getElementById('call-status-badge');
+      if (badge) badge.textContent = 'Call Declined 🚫';
+      setTimeout(() => this.endCall(true), 1200);
+    }
+  }
+
+  emitSocketEvent(eventName, payload) {
+    if (window.ChatterApp && window.ChatterApp.socket && window.ChatterApp.socket.connected) {
+      window.ChatterApp.socket.emit(eventName, payload);
+    }
+  }
+
+  // ==========================================
+  // LOCAL MEDIA CAPTURE & CONTROLS
+  // ==========================================
+  async initLocalStream(includeVideo = false) {
+    this.stopLocalStream();
+
+    const constraints = {
+      audio: true,
+      video: includeVideo ? {
+        facingMode: this.currentFacingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      } : false
+    };
+
+    try {
+      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const localVideo = document.getElementById('local-video-feed');
+      const cameraOffOverlay = document.getElementById('camera-off-overlay');
+
+      if (localVideo) {
+        localVideo.srcObject = this.localStream;
+      }
+      if (cameraOffOverlay) {
+        cameraOffOverlay.classList.toggle('active', !includeVideo);
+      }
+      return this.localStream;
+    } catch (err) {
+      console.warn('getUserMedia error, trying audio-only fallback:', err);
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        return this.localStream;
+      } catch (audioErr) {
+        console.error('Fatal: Cannot access microphone:', audioErr);
+        throw audioErr;
+      }
+    }
+  }
+
+  stopLocalStream() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        try { track.stop(); } catch (e) {}
+      });
+      this.localStream = null;
+    }
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => {
+        try { track.stop(); } catch (e) {}
+      });
+      this.screenStream = null;
+    }
+    const localVideo = document.getElementById('local-video-feed');
+    if (localVideo) localVideo.srcObject = null;
+    const remoteVideo = document.getElementById('remote-video-feed');
+    if (remoteVideo) remoteVideo.srcObject = null;
+    const remoteAudio = document.getElementById('remote-audio-feed');
+    if (remoteAudio) remoteAudio.srcObject = null;
+  }
+
+  // Mute / Unmute Microphone
   toggleMicMute() {
     this.isMicMuted = !this.isMicMuted;
-    const btn = document.getElementById('btn-call-mute');
-    if (btn) {
-      btn.classList.toggle('active-off', this.isMicMuted);
-      btn.title = this.isMicMuted ? 'Unmute Mic (Outgoing)' : 'Mute Mic (Outgoing)';
-    }
-
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach(track => {
         track.enabled = !this.isMicMuted;
       });
     }
-
-    const badge = document.getElementById('call-status-badge');
-    if (badge && this.activeCall && this.activeCall.status === 'connected') {
-      if (this.isMicMuted) badge.textContent += ' • 🎤 Muted';
+    const btn = document.getElementById('btn-call-mute');
+    if (btn) {
+      btn.classList.toggle('active-state', this.isMicMuted);
+      btn.textContent = this.isMicMuted ? '🔇' : '🎤';
+      btn.title = this.isMicMuted ? 'Unmute Microphone' : 'Mute Microphone';
     }
   }
 
+  // Mute / Unmute Speaker
   toggleSpeakerMute() {
     this.isSpeakerMuted = !this.isSpeakerMuted;
+    const remoteAudio = document.getElementById('remote-audio-feed');
+    if (remoteAudio) {
+      remoteAudio.muted = this.isSpeakerMuted;
+    }
     const btn = document.getElementById('btn-call-speaker-mute');
     if (btn) {
-      btn.classList.toggle('active-off', this.isSpeakerMuted);
-      btn.textContent = this.isSpeakerMuted ? '🔇' : '🔊';
-      btn.title = this.isSpeakerMuted ? 'Unmute Speaker (Hear Caller)' : 'Mute Speaker (Deafen)';
-    }
-
-    if (this.isSpeakerMuted) {
-      this.stopRingtone();
-    }
-
-    const badge = document.getElementById('call-status-badge');
-    if (badge && this.activeCall && this.activeCall.status === 'connected') {
-      if (this.isSpeakerMuted) badge.textContent += ' • 🔇 Deafened';
+      btn.classList.toggle('active-state', this.isSpeakerMuted);
+      btn.textContent = this.isSpeakerMuted ? '🔈' : '🔊';
+      btn.title = this.isSpeakerMuted ? 'Unmute Speaker' : 'Mute Speaker';
     }
   }
 
-  toggleSilent() {
-    this.isSilent = !this.isSilent;
-    const btn = document.getElementById('btn-call-silent');
-    if (btn) btn.classList.toggle('active-off', this.isSilent);
+  // Toggle Camera On / Off
+  async toggleCamera() {
+    this.isCameraOff = !this.isCameraOff;
+    const cameraOffOverlay = document.getElementById('camera-off-overlay');
 
-    if (this.isSilent) {
-      this.stopRingtone();
-    } else if (this.activeCall && this.activeCall.status === 'ringing') {
-      this.playRingtone();
-    }
-  }
-
-  async flipCamera() {
-    this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
-    await this.initLocalVideo();
-  }
-
-  openAddParticipantModal() {
-    const modal = document.getElementById('add-participant-modal');
-    const list = document.getElementById('add-participant-list');
-    if (!modal || !list) return;
-
-    const chats = window.ChatEngine ? window.ChatEngine.chats : [];
-    list.innerHTML = chats.map(chat => `
-      <div class="share-contact-item" onclick="window.CallManager.addParticipantToActiveCall('${chat.name}', '${chat.avatar}')">
-        <img class="avatar-img" style="width: 40px; height: 40px;" src="${chat.avatar}" alt="${chat.name}">
-        <div>
-          <div style="font-weight: 600; color: var(--text-primary);">${chat.name}</div>
-          <div style="font-size: 11.5px; color: var(--brand-green);">Available for group call</div>
-        </div>
-      </div>
-    `).join('');
-
-    modal.classList.add('active');
-  }
-
-  addParticipantToActiveCall(name, avatar) {
-    if (!this.groupParticipants.some(p => p.name === name)) {
-      this.groupParticipants.push({ name, avatar });
-    }
-
-    const modal = document.getElementById('add-participant-modal');
-    if (modal) modal.classList.remove('active');
-
-    // Update Header
-    document.getElementById('call-caller-name').textContent = `Group Call (${this.groupParticipants.length} people)`;
-
-    // Render Group Grid
-    const groupGrid = document.getElementById('group-call-grid');
-    const remoteBox = document.querySelector('.remote-caller-box');
-    if (groupGrid) {
-      groupGrid.classList.add('active');
-      if (remoteBox) remoteBox.style.display = 'none';
-
-      groupGrid.innerHTML = this.groupParticipants.map(p => `
-        <div class="group-call-member-cell">
-          <img class="group-member-avatar" src="${p.avatar}" alt="${p.name}">
-          <span class="group-member-name">${p.name}</span>
-          <span style="font-size: 10px; color: #22c55e; margin-top: 2px;">● Connected</span>
-        </div>
-      `).join('');
-    }
-
-    alert(`🎉 Added ${name} to the group call!`);
-  }
-
-  startRemoteVideoSimulation() {
-    const canvas = document.getElementById('remote-video-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let step = 0;
-
-    const animate = () => {
-      if (!this.activeCall || this.activeCall.type !== 'video') return;
-      step += 0.03;
-      
-      const width = canvas.width = canvas.offsetWidth;
-      const height = canvas.height = canvas.offsetHeight;
-
-      const grad = ctx.createLinearGradient(0, 0, width, height);
-      const r = Math.sin(step) * 20 + 20;
-      const g = Math.cos(step) * 30 + 40;
-      const b = 80;
-      grad.addColorStop(0, `rgb(${r}, ${g}, ${b})`);
-      grad.addColorStop(1, '#0b141a');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.strokeStyle = 'rgba(0, 168, 132, 0.25)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let x = 0; x < width; x += 10) {
-        const y = height / 2 + Math.sin(x * 0.02 + step) * 25;
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    if (this.localStream && this.localStream.getVideoTracks().length > 0) {
+      this.localStream.getVideoTracks().forEach(track => {
+        track.enabled = !this.isCameraOff;
+      });
+    } else if (!this.isCameraOff && this.peerConnection) {
+      // Add video track dynamically if starting from audio-only
+      try {
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: this.currentFacingMode } });
+        const videoTrack = videoStream.getVideoTracks()[0];
+        if (this.localStream) {
+          this.localStream.addTrack(videoTrack);
+        }
+        const localVideo = document.getElementById('local-video-feed');
+        if (localVideo) localVideo.srcObject = this.localStream;
+        this.peerConnection.addTrack(videoTrack, this.localStream);
+      } catch (e) {
+        console.warn('Could not add video track dynamically:', e);
       }
-      ctx.stroke();
+    }
 
-      this.animationFrameId = requestAnimationFrame(animate);
-    };
-
-    cancelAnimationFrame(this.animationFrameId);
-    this.animationFrameId = requestAnimationFrame(animate);
-  }
-
-  startCallDurationTimer() {
-    this.callSeconds = 0;
-    clearInterval(this.callDurationTimer);
-    this.callDurationTimer = setInterval(() => {
-      this.callSeconds++;
-      const mins = Math.floor(this.callSeconds / 60);
-      const secs = this.callSeconds % 60;
-      const formatted = `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
-      const badge = document.getElementById('call-status-badge');
-      if (badge) badge.textContent = formatted;
-    }, 1000);
-  }
-
-  async toggleScreenShare() {
-    if (this.isScreenSharing) {
-      this.stopScreenShare();
-    } else {
-      await this.startScreenShare();
+    if (cameraOffOverlay) {
+      cameraOffOverlay.classList.toggle('active', this.isCameraOff);
+    }
+    const btn = document.getElementById('btn-call-camera');
+    if (btn) {
+      btn.classList.toggle('active-state', this.isCameraOff);
+      btn.textContent = this.isCameraOff ? '📷🚫' : '📹';
     }
   }
 
-  async startScreenShare() {
+  // Flip Camera (Front <-> Back)
+  async flipCamera() {
+    this.currentFacingMode = (this.currentFacingMode === 'user') ? 'environment' : 'user';
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-        this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
-          audio: false
-        });
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: this.currentFacingMode }
+      });
+      const newVideoTrack = newStream.getVideoTracks()[0];
+
+      if (this.peerConnection) {
+        const senders = this.peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          videoSender.replaceTrack(newVideoTrack);
+        }
+      }
+
+      if (this.localStream) {
+        const oldTrack = this.localStream.getVideoTracks()[0];
+        if (oldTrack) {
+          this.localStream.removeTrack(oldTrack);
+          oldTrack.stop();
+        }
+        this.localStream.addTrack(newVideoTrack);
+      }
+
+      const localVideo = document.getElementById('local-video-feed');
+      if (localVideo) localVideo.srcObject = this.localStream;
+    } catch (e) {
+      console.warn('Camera flip error:', e);
+    }
+  }
+
+  // Screen Sharing
+  async toggleScreenShare() {
+    if (!this.isScreenSharing) {
+      try {
+        this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = this.screenStream.getVideoTracks()[0];
+        
+        if (this.peerConnection) {
+          const senders = this.peerConnection.getSenders();
+          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+          if (videoSender) {
+            videoSender.replaceTrack(screenTrack);
+          }
+        }
 
         const localVideo = document.getElementById('local-video-feed');
-        const localFallback = document.getElementById('local-video-fallback');
-        const screenshareBtn = document.getElementById('btn-call-screenshare');
+        if (localVideo) localVideo.srcObject = this.screenStream;
 
-        if (this.screenStream && localVideo) {
-          localVideo.srcObject = this.screenStream;
-          localVideo.style.display = 'block';
-          if (localFallback) localFallback.style.display = 'none';
-          this.isScreenSharing = true;
+        screenTrack.onended = () => this.stopScreenShare();
+        this.isScreenSharing = true;
 
-          if (screenshareBtn) {
-            screenshareBtn.style.background = '#10b981';
-            screenshareBtn.style.color = '#ffffff';
-            screenshareBtn.title = 'Stop Screen Sharing';
-          }
-
-          const badge = document.getElementById('call-status-badge');
-          if (badge) badge.textContent += ' • 🖥️ Sharing Screen';
-
-          // When user clicks "Stop sharing" on the browser native banner
-          this.screenStream.getVideoTracks()[0].onended = () => {
-            this.stopScreenShare();
-          };
-          return;
-        }
-      } else {
-        alert('Screen sharing is not supported by your browser.');
+        const btn = document.getElementById('btn-call-screenshare');
+        if (btn) btn.classList.add('active-state');
+      } catch (err) {
+        console.warn('Screen share cancelled or failed:', err);
       }
-    } catch (err) {
-      console.warn('Screen sharing cancelled or error:', err);
+    } else {
       this.stopScreenShare();
     }
   }
 
-  stopScreenShare() {
-    if (this.screenStream) {
-      this.screenStream.getTracks().forEach(track => track.stop());
-      this.screenStream = null;
-    }
+  async stopScreenShare() {
+    if (!this.isScreenSharing) return;
     this.isScreenSharing = false;
 
-    const screenshareBtn = document.getElementById('btn-call-screenshare');
-    if (screenshareBtn) {
-      screenshareBtn.style.background = '';
-      screenshareBtn.style.color = '';
-      screenshareBtn.title = 'Share My Screen';
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(t => t.stop());
+      this.screenStream = null;
     }
 
-    if (this.activeCall && this.activeCall.type === 'video') {
-      this.initLocalVideo();
+    // Revert back to local camera track
+    if (this.localStream && this.localStream.getVideoTracks().length > 0) {
+      const camTrack = this.localStream.getVideoTracks()[0];
+      if (this.peerConnection) {
+        const senders = this.peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          videoSender.replaceTrack(camTrack);
+        }
+      }
+      const localVideo = document.getElementById('local-video-feed');
+      if (localVideo) localVideo.srcObject = this.localStream;
     }
+
+    const btn = document.getElementById('btn-call-screenshare');
+    if (btn) btn.classList.remove('active-state');
   }
 
-  startCallWithScreenShare() {
-    const activeChat = window.ChatEngine ? window.ChatEngine.getActiveChat() : null;
-    const name = activeChat ? activeChat.name : 'Group Meeting';
-    const avatar = activeChat ? activeChat.avatar : 'assets/logo-icon.svg';
-    const contactId = activeChat ? activeChat.id : null;
-
-    this.startCall(name, avatar, 'video', contactId);
-    setTimeout(() => {
-      this.startScreenShare();
-    }, 1200);
+  startCallWithScreenShare(name = 'Screen Share', avatar = 'assets/logo-icon.svg', contactId = null) {
+    this.startCall(name, avatar, 'video', contactId).then(() => {
+      setTimeout(() => this.toggleScreenShare(), 600);
+    });
   }
 
-  endCall() {
+  // ==========================================
+  // CALL TERMINATION & LOGS
+  // ==========================================
+  endCall(isRemote = false) {
     this.stopRingtone();
-    this.stopScreenShare();
-    clearInterval(this.callDurationTimer);
-    cancelAnimationFrame(this.animationFrameId);
+    this.stopCallDurationTimer();
+    this.stopLocalStream();
 
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
-      this.localStream = null;
+    if (this.peerConnection) {
+      try {
+        this.peerConnection.close();
+      } catch (e) {}
+      this.peerConnection = null;
+    }
+
+    if (!isRemote && this.activeCall) {
+      this.emitSocketEvent('end-call', {
+        callerId: this.activeCall.contactId,
+        timestamp: Date.now()
+      });
     }
 
     if (this.activeCall) {
-      const durationStr = this.callSeconds > 0
-        ? `${Math.floor(this.callSeconds / 60)}m ${this.callSeconds % 60}s`
-        : 'Missed';
-
-      this.callLogs.unshift({
+      const durationFormatted = this.formatDuration(this.callSeconds);
+      const isMissed = (this.activeCall.status === 'ringing' || this.callSeconds === 0);
+      
+      const logEntry = {
         id: 'call_' + Date.now(),
+        contactId: this.activeCall.contactId,
         name: this.activeCall.name,
-        avatar: this.activeCall.avatar,
+        avatar: this.activeCall.avatar || 'assets/logo-icon.svg',
         type: this.activeCall.type,
         direction: this.activeCall.direction,
+        status: isMissed ? 'missed' : 'completed',
+        duration: isMissed ? 'Missed Call' : durationFormatted,
         time: 'Just now',
-        duration: durationStr
-      });
+        timestamp: Date.now()
+      };
+
+      this.callLogs.unshift(logEntry);
       this.saveCalls();
       this.renderCallsTab();
-
-      if (window.ChatterApp && window.ChatterApp.socket) {
-        window.ChatterApp.socket.emit('end_call', {
-          contactId: this.activeCall.contactId,
-          timestamp: Date.now()
-        });
-      }
     }
 
     this.activeCall = null;
     this.pendingIncomingCall = null;
-    this.groupParticipants = [];
+    this.isScreenSharing = false;
+
     const modal = document.getElementById('call-overlay-modal');
     if (modal) modal.classList.remove('active');
+
+    const promptModal = document.getElementById('incoming-call-prompt-modal');
+    if (promptModal) promptModal.classList.remove('active');
+
+    const remoteBox = document.getElementById('remote-caller-box');
+    if (remoteBox) remoteBox.style.display = 'flex';
   }
 
+  // ==========================================
+  // RINGTONES & AUDIO SYNTHESIS
+  // ==========================================
   startRingtone(isIncoming = false) {
     this.playRingtone(isIncoming);
   }
 
   playRingtone(isIncoming = false) {
-    if (this.isSilent) return;
     this.stopRingtone();
+    if (this.isSilent) return;
 
     try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      this.audioContext = new AudioContextClass();
+
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
       }
 
-      const playTone = () => {
-        if (this.isSilent) return;
-        if (!this.activeCall && !this.pendingIncomingCall) return;
+      const freq1 = isIncoming ? 480 : 440;
+      const freq2 = isIncoming ? 620 : 480;
 
+      const playBurst = () => {
+        if (!this.audioContext) return;
         try {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = isIncoming ? 'triangle' : 'sine';
-          osc.frequency.setValueAtTime(isIncoming ? 520 : 440, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(isIncoming ? 800 : 440, ctx.currentTime + 0.35);
-          gain.gain.setValueAtTime(0.35, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.85);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.85);
-        } catch (toneErr) {}
+          const osc1 = this.audioContext.createOscillator();
+          const osc2 = this.audioContext.createOscillator();
+          const gain = this.audioContext.createGain();
+
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          osc1.frequency.setValueAtTime(freq1, this.audioContext.currentTime);
+          osc2.frequency.setValueAtTime(freq2, this.audioContext.currentTime);
+
+          gain.gain.setValueAtTime(0.08, this.audioContext.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 1.2);
+
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(this.audioContext.destination);
+
+          osc1.start();
+          osc2.start();
+          osc1.stop(this.audioContext.currentTime + 1.2);
+          osc2.stop(this.audioContext.currentTime + 1.2);
+        } catch (e) {}
       };
 
-      playTone();
-      this.ringtoneInterval = setInterval(playTone, isIncoming ? 1500 : 2000);
-    } catch (e) {
-      console.warn('Ringtone warning:', e);
+      playBurst();
+      this.ringtoneInterval = setInterval(playBurst, 2500);
+    } catch (err) {
+      console.warn('AudioContext ringtone initialization failed:', err);
     }
   }
 
@@ -816,13 +886,126 @@ class CallManager {
       clearInterval(this.ringtoneInterval);
       this.ringtoneInterval = null;
     }
+    if (this.audioContext) {
+      try {
+        this.audioContext.close();
+      } catch (e) {}
+      this.audioContext = null;
+    }
+  }
+
+  toggleSilent() {
+    this.isSilent = !this.isSilent;
+    if (this.isSilent) this.stopRingtone();
+    const btn = document.getElementById('btn-call-silent');
+    if (btn) {
+      btn.classList.toggle('active-state', this.isSilent);
+      btn.textContent = this.isSilent ? '🔔' : '🔕';
+      btn.title = this.isSilent ? 'Unmute Ringtone' : 'Silent Ringtone';
+    }
+  }
+
+  // ==========================================
+  // TIMERS & LOG RENDERING
+  // ==========================================
+  startCallDurationTimer() {
+    this.stopCallDurationTimer();
+    this.callSeconds = 0;
+    this.callDurationTimer = setInterval(() => {
+      this.callSeconds++;
+      const formatted = this.formatDuration(this.callSeconds);
+      const badge = document.getElementById('call-status-badge');
+      if (badge) badge.textContent = formatted;
+    }, 1000);
+  }
+
+  stopCallDurationTimer() {
+    if (this.callDurationTimer) {
+      clearInterval(this.callDurationTimer);
+      this.callDurationTimer = null;
+    }
+  }
+
+  formatDuration(sec) {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
 
   saveCalls() {
-    localStorage.setItem('chatterpatter_calls', JSON.stringify(this.callLogs));
+    localStorage.setItem('gitpit_calls', JSON.stringify(this.callLogs));
+  }
+
+  renderCallsTab() {
+    const listElem = document.getElementById('calls-list-items');
+    if (!listElem) return;
+
+    if (this.callLogs.length === 0) {
+      listElem.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+          <div style="font-size: 40px; margin-bottom: 8px;">📞</div>
+          <p>No recent calls. Start a voice or video call with any contact!</p>
+        </div>
+      `;
+      return;
+    }
+
+    listElem.innerHTML = this.callLogs.map(log => {
+      const isVideo = log.type === 'video';
+      const isMissed = log.status === 'missed';
+      const isOutgoing = log.direction === 'outgoing';
+
+      return `
+        <div class="call-item-card">
+          <img class="avatar-img" src="${log.avatar || 'assets/logo-icon.svg'}" alt="${log.name}">
+          <div class="call-item-meta">
+            <div class="call-item-name ${isMissed ? 'call-missed' : ''}">${log.name}</div>
+            <div class="call-item-time">
+              <span style="font-size: 13px;">${isOutgoing ? '↗' : '↙'}</span>
+              <span>${log.time || 'Recently'} • ${log.duration || ''}</span>
+            </div>
+          </div>
+          <div class="call-item-actions">
+            <button class="call-action-icon-btn" title="Call Back" onclick="window.CallManager.startCall('${log.name.replace(/'/g, "\\'")}', '${log.avatar}', '${log.type}', '${log.contactId || ''}')">
+              ${isVideo ? '📹' : '📞'}
+            </button>
+            <button class="call-action-icon-btn delete-call-btn" title="Delete Log" onclick="window.CallManager.deleteCallLog('${log.id}')">
+              ✕
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  deleteCallLog(callId) {
+    this.callLogs = this.callLogs.filter(c => c.id !== callId);
+    this.saveCalls();
+    this.renderCallsTab();
+  }
+
+  openAddParticipantModal() {
+    const modal = document.getElementById('add-participant-modal');
+    const container = document.getElementById('add-participant-list');
+    if (!modal || !container) return;
+
+    const chats = window.ChatEngine ? window.ChatEngine.chats : [];
+    container.innerHTML = chats.map(c => `
+      <div class="share-contact-item" onclick="window.CallManager.inviteParticipantToCall('${c.name.replace(/'/g, "\\'")}', '${c.avatar}')">
+        <img class="avatar-img" src="${c.avatar || 'assets/logo-icon.svg'}" style="width: 36px; height: 36px;">
+        <span style="font-weight: 600; font-size: 14px; color: var(--text-primary);">${c.name}</span>
+      </div>
+    `).join('');
+
+    modal.classList.add('active');
+  }
+
+  inviteParticipantToCall(name, avatar) {
+    const modal = document.getElementById('add-participant-modal');
+    if (modal) modal.classList.remove('active');
+    alert(`Call invite sent to ${name} 👥`);
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  window.CallManager = new CallManager();
-});
+// Global Singleton Instance
+window.CallManager = new CallManager();
