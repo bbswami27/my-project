@@ -27,3 +27,10 @@ android/build/
 android/app/build/
 android/.idea/
 android/local.properties
+
+# Secrets and Credentials
+*service-account*.json
+firebase-service-account.json
+*.key
+*.pem
+secrets/

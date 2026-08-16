@@ -65,6 +65,23 @@ app.get('/api/storage/r2-check', async (req, res) => {
   }
 });
 
+// Safe Isolated FCM HTTP v1 Health Self-Check Endpoint
+app.get('/api/fcm/check', (req, res) => {
+  try {
+    const status = fcmService.getSelfCheckStatus();
+    res.json({
+      status: 'ok',
+      time: new Date().toISOString(),
+      fcmStatus: status
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      error: err.message
+    });
+  }
+});
+
 // Active Sockets Mapping: socketId -> user profile
 const activeUsers = new Map();
 
