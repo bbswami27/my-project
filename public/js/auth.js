@@ -249,28 +249,48 @@ class AuthManager {
   }
 
   handleGoogleLogin() {
-    const googleName = prompt('Enter your Display Name for Google Sign-In:', 'Google Explorer') || 'Google Explorer';
+    const phoneInput = document.getElementById('google-mobile-number-input')?.value.trim();
+    if (!phoneInput || phoneInput.length < 10) {
+      alert('⚠️ Mobile Number is mandatory! Please enter a valid 10-digit mobile number before continuing with Google.');
+      const inp = document.getElementById('google-mobile-number-input');
+      if (inp) inp.focus();
+      return;
+    }
+
+    const googleName = prompt('Enter your Name for Google Sign-In:', 'Google User') || 'Google User';
+    const cleanPhone = phoneInput.replace(/\D/g, '').slice(-10);
     const googleUser = {
-      id: 'google_user_' + Date.now().toString(36),
+      id: 'user_' + cleanPhone,
       name: googleName,
+      phone: '+91 ' + cleanPhone,
       email: `${googleName.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${googleName}`,
-      status: 'Connected with Google on ChatterPatter 🌐'
+      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${cleanPhone}`,
+      status: 'Chatting on GitPit ✨'
     };
     this.loginSuccess(googleUser);
   }
 
   handleEmailAuth() {
-    const name = document.getElementById('email-name-input').value.trim() || 'Chatter User';
+    const name = document.getElementById('email-name-input').value.trim() || 'GitPit User';
+    const phoneInput = document.getElementById('email-phone-input')?.value.trim();
     const email = document.getElementById('email-addr-input').value.trim();
     const avatarChoice = document.querySelector('input[name="avatar-choice"]:checked')?.value || 'adventurer';
 
+    if (!phoneInput || phoneInput.length < 10) {
+      alert('⚠️ Mobile Number is mandatory! Please enter your 10-digit mobile number.');
+      const inp = document.getElementById('email-phone-input');
+      if (inp) inp.focus();
+      return;
+    }
+
+    const cleanPhone = phoneInput.replace(/\D/g, '').slice(-10);
     const user = {
-      id: 'user_' + Math.random().toString(36).substr(2, 9),
+      id: 'user_' + cleanPhone,
       name: name,
+      phone: '+91 ' + cleanPhone,
       email: email,
-      avatar: `https://api.dicebear.com/7.x/${avatarChoice}/svg?seed=${name}`,
-      status: 'Chatting on ChatterPatter ✨'
+      avatar: `https://api.dicebear.com/7.x/${avatarChoice}/svg?seed=${cleanPhone}`,
+      status: 'Chatting on GitPit ✨'
     };
     this.loginSuccess(user);
   }
@@ -303,7 +323,7 @@ class AuthManager {
       window.ChatEngine.syncRegisteredUsers();
     }
 
-    alert(`🎉 Welcome to ChatterPatter, ${this.currentUser.name}!`);
+    alert(`🎉 Welcome to GitPit, ${this.currentUser.name}!`);
   }
 
   logout() {
@@ -417,7 +437,6 @@ class AuthManager {
     if (!this.currentUser) return;
 
     const name = document.getElementById('profile-name-input')?.value.trim() || this.currentUser.name;
-    const username = document.getElementById('profile-username-input')?.value.trim() || '';
     const bio = document.getElementById('profile-bio-input')?.value.trim() || '';
     const phone = document.getElementById('profile-phone-input')?.value.trim() || '';
     const email = document.getElementById('profile-email-input')?.value.trim() || '';
@@ -436,7 +455,6 @@ class AuthManager {
     }
 
     this.currentUser.name = name;
-    this.currentUser.username = username.startsWith('@') ? username : (username ? '@' + username : '');
     this.currentUser.bio = bio;
     this.currentUser.status = bio;
     this.currentUser.phone = phone;
@@ -464,6 +482,45 @@ class AuthManager {
     if (modal) modal.classList.remove('active');
   }
 
+  // ================= PHONEBOOK CONTACTS STORAGE =================
+  getPhonebook() {
+    try {
+      return JSON.parse(localStorage.getItem('gitpit_phonebook') || '{}');
+    } catch(e) {
+      return {};
+    }
+  }
+
+  saveContactToPhonebook(contactId, savedName, phoneNumber = '') {
+    const phonebook = this.getPhonebook();
+    phonebook[contactId] = {
+      savedName: savedName.trim(),
+      phone: phoneNumber.trim(),
+      updatedAt: Date.now()
+    };
+    if (phoneNumber) {
+      const clean = phoneNumber.replace(/\D/g, '').slice(-10);
+      if (clean) phonebook[clean] = { savedName: savedName.trim(), contactId, phone: phoneNumber.trim() };
+    }
+    localStorage.setItem('gitpit_phonebook', JSON.stringify(phonebook));
+    
+    // Update active chat if open
+    if (window.ChatEngine) {
+      const chat = window.ChatEngine.chats.find(c => c.id === contactId);
+      if (chat) {
+        chat.savedName = savedName.trim();
+        chat.name = savedName.trim();
+        window.ChatEngine.saveChats();
+        window.ChatEngine.renderChatList();
+        if (window.ChatEngine.activeChatId === contactId) {
+          const headerName = document.getElementById('active-chat-name');
+          if (headerName) headerName.textContent = savedName.trim();
+        }
+      }
+    }
+    return phonebook;
+  }
+
   // ================= LINKED DEVICES MODAL =================
   openLinkedDevicesModal() {
     const modal = document.getElementById('linked-devices-modal');
@@ -483,8 +540,8 @@ class AuthManager {
         <div class="linked-device-card">
           <div class="device-icon">📱</div>
           <div class="device-details">
-            <div class="device-name">Android Phone (ChatterPatter App)</div>
-            <div class="device-meta">Linked yesterday • Pune, India</div>
+            <div class="device-name">Android Phone (GitPit App)</div>
+            <div class="device-meta">Linked • Real-time Sync Active</div>
           </div>
           <button class="btn-unlink-device" onclick="alert('Device unlinked successfully!')">Unlink</button>
         </div>
@@ -502,29 +559,69 @@ class AuthManager {
   }
 
   async syncPhoneContacts() {
-    // If Web Contacts API is supported
+    // 1. If Web Contacts API is supported in mobile browser
     if ('contacts' in navigator && 'ContactsManager' in window) {
       try {
         const props = ['name', 'tel'];
         const contacts = await navigator.contacts.select(props, { multiple: true });
         const phones = contacts.flatMap(c => c.tel || []);
         
+        contacts.forEach(c => {
+          const name = Array.isArray(c.name) ? c.name[0] : (c.name || 'Friend');
+          const tels = c.tel || [];
+          tels.forEach(t => {
+            const clean = (t || '').replace(/\D/g, '').slice(-10);
+            if (clean) {
+              this.saveContactToPhonebook('user_' + clean, name, t);
+            }
+          });
+        });
+
         const resp = await fetch('/api/contacts/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phoneNumbers: phones })
         });
         const data = await resp.json();
-        alert(`✅ Synced! Found ${data.matchedUsers ? data.matchedUsers.length : 0} friends on ChatterPatter!`);
+        alert(`✅ Synced! Found ${data.matchedUsers ? data.matchedUsers.length : 0} contacts on GitPit!`);
         if (window.ChatEngine) window.ChatEngine.syncRegisteredUsers();
       } catch(e) {
-        alert('Contacts selection cancelled or not supported.');
+        console.log('Native contact selection fallback');
       }
     } else {
-      // Manual quick phone search fallback
-      const phone = prompt('Enter friend\'s 10-digit mobile number to search on ChatterPatter:');
-      if (phone && window.ChatEngine) {
-        window.ChatEngine.startNewChatWithSearch(phone);
+      // 2. Interactive quick add contact to phonebook
+      const name = prompt('Enter Contact Name to add to Phonebook:', '');
+      if (!name) return;
+      const phone = prompt(`Enter 10-digit Mobile Number for "${name}":`, '');
+      if (!phone) return;
+
+      const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+      const contactId = 'user_' + cleanPhone;
+      this.saveContactToPhonebook(contactId, name, '+91 ' + cleanPhone);
+
+      // Add to chats list directly so it's on the panel
+      if (window.ChatEngine) {
+        let existing = window.ChatEngine.chats.find(c => c.id === contactId || (c.phone && c.phone.includes(cleanPhone)));
+        if (!existing) {
+          existing = {
+            id: contactId,
+            name: name,
+            savedName: name,
+            phone: '+91 ' + cleanPhone,
+            avatar: 'assets/logo-icon.svg',
+            unreadCount: 0,
+            online: true,
+            messages: []
+          };
+          window.ChatEngine.chats.push(existing);
+        } else {
+          existing.name = name;
+          existing.savedName = name;
+        }
+        window.ChatEngine.saveChats();
+        window.ChatEngine.renderChatList();
+        window.ChatEngine.openChat(contactId);
+        alert(`✅ "${name}" (${phone}) added to your Phonebook & Chat Panel!`);
       }
     }
   }

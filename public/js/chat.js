@@ -88,39 +88,69 @@ class ChatEngine {
   async syncRegisteredUsers() {
     try {
       const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : null;
+      const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
+      
+      // 1. Sync from Server API
       const resp = await fetch(`/api/users${currentUserId ? '?userId=' + currentUserId : ''}`);
       const users = await resp.json();
       if (Array.isArray(users)) {
         this.registeredUsers = users;
         users.forEach(u => {
           if (currentUserId && u.id === currentUserId) return;
+          const cleanPhone = (u.phone || '').replace(/\D/g, '').slice(-10);
+          const savedBookEntry = phonebook[u.id] || (cleanPhone ? phonebook[cleanPhone] : null);
+          const displayName = savedBookEntry ? savedBookEntry.savedName : (u.name || (u.phone ? u.phone : 'Contact'));
+
           const existing = this.chats.find(c => c.id === u.id || (u.phone && c.phone === u.phone));
           if (!existing) {
             this.chats.push({
               id: u.id,
-              name: u.name,
-              username: u.username,
+              name: displayName,
+              savedName: savedBookEntry ? savedBookEntry.savedName : '',
               phone: u.phone || '',
               email: u.email || '',
-              avatar: u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.id}`,
-              bio: u.bio || 'Hey there! I am using ChatterPatter 🚀',
+              avatar: u.avatar || 'assets/logo-icon.svg',
+              bio: u.bio || 'Hey there! I am using GitPit 🚀',
               online: u.online || false,
               isGroup: false,
               unreadCount: 0,
               messages: []
             });
           } else {
-            existing.name = u.name;
-            existing.avatar = u.avatar || existing.avatar;
+            if (savedBookEntry) existing.name = savedBookEntry.savedName;
+            existing.avatar = u.avatar || existing.avatar || 'assets/logo-icon.svg';
             existing.online = u.online || existing.online;
             existing.bio = u.bio || existing.bio;
             if (u.phone) existing.phone = u.phone;
             if (u.email) existing.email = u.email;
           }
         });
-        this.saveChats();
-        this.renderChatList();
       }
+
+      // 2. Sync any contacts saved in Phonebook
+      Object.keys(phonebook).forEach(key => {
+        const item = phonebook[key];
+        if (!item || !item.savedName) return;
+        const contactId = item.contactId || key;
+        if (currentUserId && contactId === currentUserId) return;
+        const exists = this.chats.find(c => c.id === contactId || (item.phone && c.phone === item.phone));
+        if (!exists) {
+          this.chats.push({
+            id: contactId,
+            name: item.savedName,
+            savedName: item.savedName,
+            phone: item.phone || '',
+            avatar: 'assets/logo-icon.svg',
+            online: true,
+            isGroup: false,
+            unreadCount: 0,
+            messages: []
+          });
+        }
+      });
+
+      this.saveChats();
+      this.renderChatList();
     } catch (e) {
       console.warn('Could not sync registered users:', e);
     }
@@ -338,7 +368,14 @@ class ChatEngine {
       return;
     }
 
+    const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
+
     listElem.innerHTML = this.chats.map(chat => {
+      const cleanPhone = (chat.phone || '').replace(/\D/g, '').slice(-10);
+      const savedEntry = phonebook[chat.id] || (cleanPhone ? phonebook[cleanPhone] : null);
+      const displayName = chat.isAi ? 'ChatterPatter AI 🤖' : (savedEntry ? savedEntry.savedName : (chat.savedName || chat.name || chat.phone || 'Contact'));
+      const displayAvatar = chat.avatar || 'assets/logo-icon.svg';
+
       const lastMsg = chat.messages && chat.messages.length > 0
         ? chat.messages[chat.messages.length - 1]
         : { text: 'Tap to chat', timestamp: '' };
@@ -357,12 +394,12 @@ class ChatEngine {
       return `
         <li class="chat-item ${isActive}" onclick="window.ChatEngine.openChat('${chat.id}')">
           <div class="avatar-wrapper" onclick="event.stopPropagation(); window.ChatEngine.openContactProfile('${chat.id}')">
-            <img class="avatar-img" src="${chat.avatar}" alt="${chat.name}">
+            <img class="avatar-img" src="${displayAvatar}" alt="${displayName}" onerror="this.src='assets/logo-icon.svg'">
             ${onlineDot}
           </div>
           <div class="chat-item-info">
             <div class="chat-item-top">
-              <span class="chat-item-name">${isPinned}${chat.name}</span>
+              <span class="chat-item-name">${isPinned}${displayName}</span>
               <span class="chat-item-time">${lastMsg.timestamp || ''}</span>
             </div>
             <div class="chat-item-bottom">
@@ -461,8 +498,14 @@ class ChatEngine {
     document.getElementById('chat-empty-state').style.display = 'none';
     document.getElementById('chat-active-view').style.display = 'flex';
 
-    document.getElementById('active-chat-avatar').src = chat.avatar;
-    document.getElementById('active-chat-name').textContent = chat.name;
+    const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
+    const cleanPhone = (chat.phone || '').replace(/\D/g, '').slice(-10);
+    const savedEntry = phonebook[chat.id] || (cleanPhone ? phonebook[cleanPhone] : null);
+    const displayName = chat.isAi ? 'ChatterPatter AI 🤖' : (savedEntry ? savedEntry.savedName : (chat.savedName || chat.name || chat.phone || 'Contact'));
+    const displayAvatar = chat.avatar || 'assets/logo-icon.svg';
+
+    document.getElementById('active-chat-avatar').src = displayAvatar;
+    document.getElementById('active-chat-name').textContent = displayName;
     const statusElem = document.getElementById('active-chat-status');
     const isAi = chat.isAi || chat.id === 'chat_ai';
 
@@ -470,7 +513,7 @@ class ChatEngine {
       ? '🤖 Smart AI Assistant • Always Active'
       : (chat.isGroup
         ? `${(chat.members || []).length} members`
-        : (chat.online ? 'Online' : (chat.lastSeen ? `Last seen ${chat.lastSeen}` : 'ChatterPatter')));
+        : (chat.phone ? chat.phone : (chat.online ? 'Online' : (chat.lastSeen ? `Last seen ${chat.lastSeen}` : 'GitPit'))));
     statusElem.className = 'status-text';
 
     // Toggle AI Prompt Chips
@@ -814,6 +857,36 @@ class ChatEngine {
     document.body.removeChild(a);
   }
 
+  // ================= SAVE TO PHONEBOOK FROM ACTIVE CHAT =================
+  promptSaveActiveContactToPhonebook() {
+    const activeChat = this.getActiveChat();
+    if (!activeChat) {
+      alert('Please select or open a chat first.');
+      return;
+    }
+    if (activeChat.isAi || activeChat.id === 'chat_ai') {
+      alert('ChatterPatter AI is already saved in your system contacts.');
+      return;
+    }
+
+    const currentName = activeChat.savedName || activeChat.name || '';
+    const newName = prompt(`Enter name to save in your Phonebook for this contact (${activeChat.phone || activeChat.id}):`, currentName);
+    if (!newName || !newName.trim()) return;
+
+    if (window.AuthManager) {
+      window.AuthManager.saveContactToPhonebook(activeChat.id, newName.trim(), activeChat.phone || '');
+    }
+    activeChat.savedName = newName.trim();
+    activeChat.name = newName.trim();
+    this.saveChats();
+    this.renderChatList();
+    const headerName = document.getElementById('active-chat-name');
+    if (headerName) headerName.textContent = newName.trim();
+    const profileName = document.getElementById('contact-profile-name');
+    if (profileName) profileName.textContent = newName.trim();
+    alert(`✅ Contact saved as "${newName.trim()}" in your Phonebook!`);
+  }
+
   // ================= CONTACT PROFILE MODAL & SHARED FILES =================
   openContactProfile(contactId) {
     const contact = this.chats.find(c => c.id === contactId) || this.registeredUsers.find(u => u.id === contactId);
@@ -822,10 +895,9 @@ class ChatEngine {
     const modal = document.getElementById('contact-profile-modal');
     if (!modal) return;
 
-    document.getElementById('contact-profile-avatar').src = contact.avatar;
-    document.getElementById('contact-profile-name').textContent = contact.name;
-    document.getElementById('contact-profile-username').textContent = contact.username || '@user';
-    document.getElementById('contact-profile-status').textContent = contact.bio || contact.status || 'ChatterPatter Member';
+    document.getElementById('contact-profile-avatar').src = contact.avatar || 'assets/logo-icon.svg';
+    document.getElementById('contact-profile-name').textContent = contact.savedName || contact.name || contact.phone || 'Contact';
+    document.getElementById('contact-profile-status').textContent = contact.bio || contact.status || 'Hey there! I am using GitPit 🚀';
     
     // Privacy respecting phone & email
     const phoneElem = document.getElementById('contact-profile-phone');

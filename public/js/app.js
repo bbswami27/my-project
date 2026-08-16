@@ -167,6 +167,40 @@ class ChatterApp {
             textElem.textContent = `🚨 ${news.title} (${news.source || 'ChatterPatter'})`;
           }
         });
+
+        // 📞 Real-Time Audio & Video Call Notifications
+        this.socket.on('incoming_call', (callData) => {
+          const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : null;
+          const currentPhone = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.phone : null;
+          const cleanMyPhone = (currentPhone || '').replace(/\D/g, '').slice(-10);
+          const cleanTargetPhone = (callData.recipientPhone || '').replace(/\D/g, '').slice(-10);
+
+          if (!callData || (currentUserId && callData.callerId === currentUserId)) {
+            return; // Ignore own outgoing call
+          }
+
+          // Check target recipient
+          if (callData.recipientId && currentUserId && callData.recipientId !== currentUserId) {
+            if (!cleanMyPhone || cleanMyPhone !== cleanTargetPhone) {
+              return;
+            }
+          }
+
+          if (window.CallManager) {
+            window.CallManager.showIncomingCallPrompt(
+              callData.callerName || 'Incoming Caller',
+              callData.callerAvatar || 'assets/logo-icon.svg',
+              callData.callType || 'audio',
+              callData.callerId || null
+            );
+          }
+        });
+
+        this.socket.on('call_ended', () => {
+          if (window.CallManager && window.CallManager.activeCall) {
+            window.CallManager.endCall();
+          }
+        });
       }
     } catch (err) {
       console.warn('Socket.io connection warning:', err);

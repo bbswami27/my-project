@@ -56,7 +56,6 @@
           </div>
           <div class="sidebar-header-actions">
             <button class="header-icon-btn" id="btn-new-chat" title="New Chat / Group" onclick="window.ChatterApp && window.ChatterApp.openNewGroupModal()">💬</button>
-            <button class="header-icon-btn" id="btn-header-settings" title="Settings" onclick="window.ChatterApp && window.ChatterApp.openSettingsModal()">⚙️</button>
             <button class="three-dots-btn" id="btn-main-three-dots" title="More Options">⋮</button>
 
             <!-- WhatsApp Style 3-Dots Vertical Dropdown Menu -->
@@ -285,6 +284,7 @@
             </div>
 
             <div class="chat-header-actions" style="position: relative;">
+              <button class="header-icon-btn" id="btn-save-contact-phonebook" title="➕ Save to Phonebook / Add Contact" onclick="window.ChatEngine && window.ChatEngine.promptSaveActiveContactToPhonebook()">➕</button>
               <button class="header-icon-btn" id="btn-jump-to-date" title="📅 Jump to Specific Date (Calendar)" onclick="window.ChatEngine && window.ChatEngine.openJumpToDateModal()">📅</button>
               <button class="header-icon-btn" id="btn-chat-video-call" title="Start Video Call" onclick="const c = window.ChatEngine && window.ChatEngine.getActiveChat(); if (c && window.CallManager) window.CallManager.startCall(c.name, c.avatar, 'video', c.id);">📹</button>
               <button class="header-icon-btn" id="btn-chat-audio-call" title="Start Voice Call" onclick="const c = window.ChatEngine && window.ChatEngine.getActiveChat(); if (c && window.CallManager) window.CallManager.startCall(c.name, c.avatar, 'audio', c.id);">📞</button>
@@ -292,6 +292,10 @@
 
               <!-- Active Chat 3-Dots Dropdown Menu -->
               <div class="chat-header-dropdown" id="chat-header-dropdown-menu">
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.promptSaveActiveContactToPhonebook()">
+                  <span class="dropdown-item-icon">➕</span>
+                  <span>Save to Phonebook</span>
+                </button>
                 <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
                   <span class="dropdown-item-icon">👤</span>
                   <span>View Contact & Media</span>
@@ -1039,10 +1043,17 @@
       </div>
 
       <div class="auth-form-panel" id="auth-panel-google">
-        <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 16px;">
-          Instant 1-Click access using your Google or Gmail account.
+        <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 12px;">
+          Instant 1-Click access with Google (Mobile Number required for chats & calling):
         </p>
-        <button class="google-auth-btn">
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">📱 Mobile Number (Mandatory)</label>
+          <div class="phone-input-group">
+            <span style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px 0 0 8px; font-weight: 600; color: var(--text-primary); font-size: 13px;">🇮🇳 +91</span>
+            <input type="tel" id="google-mobile-number-input" class="auth-input" placeholder="Enter 10-digit mobile number" style="border-radius: 0 8px 8px 0;" required>
+          </div>
+        </div>
+        <button class="google-auth-btn" id="btn-google-sign-in">
           <svg class="google-icon" viewBox="0 0 48 48">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
             <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
@@ -1058,6 +1069,10 @@
           <div class="form-group">
             <label class="form-label">Full Name</label>
             <input type="text" id="email-name-input" class="auth-input" placeholder="e.g. Vikramaditya" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">📱 Mobile Number (Mandatory)</label>
+            <input type="tel" id="email-phone-input" class="auth-input" placeholder="e.g. 9876543210" required>
           </div>
           <div class="form-group">
             <label class="form-label">Email Address</label>
@@ -1316,11 +1331,6 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" id="profile-username-input" class="auth-input" placeholder="e.g. @rahul_s">
-          </div>
-
-          <div class="form-group">
             <label class="form-label">About / Bio</label>
             <textarea id="profile-bio-input" class="auth-input" rows="2" placeholder="Tell something about yourself..." style="resize: none;"></textarea>
           </div>
@@ -1505,15 +1515,17 @@
       <div class="modal-body" style="text-align: left;">
         
         <!-- Contact Header Profile -->
-        <div style="text-align: center; margin-bottom: 20px;">
-          <img id="contact-profile-avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid var(--brand-blue); box-shadow: var(--shadow-md); margin-bottom: 8px;" src="" alt="Contact">
-          <h3 id="contact-profile-name" style="font-size: 19px; font-weight: 700; color: var(--text-primary); margin: 0 0 2px 0;">Contact Name</h3>
-          <div id="contact-profile-username" style="font-size: 13px; color: var(--brand-blue); font-weight: 600; margin-bottom: 6px;">@username</div>
-          <p id="contact-profile-status" style="font-size: 13.5px; color: var(--text-secondary); margin: 0 auto; max-width: 90%;">Hey there! I am using ChatterPatter 🚀</p>
+        <div style="text-align: center; margin-bottom: 16px;">
+          <img id="contact-profile-avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid var(--brand-green); box-shadow: var(--shadow-md); margin-bottom: 8px;" src="assets/logo-icon.svg" alt="Contact">
+          <h3 id="contact-profile-name" style="font-size: 19px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px 0;">Contact Name</h3>
+          <p id="contact-profile-status" style="font-size: 13px; color: var(--text-secondary); margin: 0 auto; max-width: 90%;">Hey there! I am using GitPit 🚀</p>
         </div>
 
-        <!-- Quick Call & Action Buttons -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+        <!-- Quick Call & Save to Phonebook Action Buttons -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+          <button class="auth-submit-btn" style="background: var(--brand-green); color: #fff; padding: 10px; font-size: 13px; font-weight: 700;" onclick="window.ChatEngine && window.ChatEngine.promptSaveActiveContactToPhonebook()">
+            ➕ Save to Phonebook
+          </button>
           <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.CallManager && window.CallManager.startCall(document.getElementById('contact-profile-name').textContent, document.getElementById('contact-profile-avatar').src, 'audio', window.ChatEngine.activeChatId)">
             📞 Audio Call
           </button>

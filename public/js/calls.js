@@ -172,8 +172,27 @@ class CallManager {
     this.pendingIncomingCall = { name, avatar, type, contactId };
 
     document.getElementById('incoming-caller-name').textContent = name;
-    document.getElementById('incoming-call-avatar').src = avatar;
+    document.getElementById('incoming-call-avatar').src = avatar || 'assets/logo-icon.svg';
     document.getElementById('incoming-call-subtitle').textContent = `Incoming ${type === 'video' ? 'Video' : 'Voice'} Call from ${name}...`;
+
+    // Trigger System Notification
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(`📞 Incoming ${type === 'video' ? 'Video' : 'Voice'} Call`, {
+          body: `${name} is calling you on GitPit`,
+          icon: avatar || 'assets/logo-icon.svg'
+        });
+      } else if ('Notification' in window && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+      }
+    } catch (notifErr) {}
+
+    // Vibrate device
+    try {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([400, 200, 400, 200, 800]);
+      }
+    } catch(vibErr) {}
 
     const promptModal = document.getElementById('incoming-call-prompt-modal');
     if (promptModal) promptModal.classList.add('active');
@@ -265,6 +284,22 @@ class CallManager {
     this.isMicMuted = false;
     this.isSpeakerMuted = false;
     this.isSilent = false;
+
+    // Emit Real-Time Call Event over Socket.io
+    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    const targetChat = window.ChatEngine ? window.ChatEngine.chats.find(c => c.id === contactId) : null;
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('call_user', {
+        callerId: currentUser ? currentUser.id : 'user_me',
+        callerName: currentUser ? currentUser.name : 'User',
+        callerAvatar: currentUser ? currentUser.avatar : 'assets/logo-icon.svg',
+        callerPhone: currentUser ? currentUser.phone : '',
+        recipientId: contactId,
+        recipientPhone: targetChat ? targetChat.phone : '',
+        callType: type,
+        timestamp: Date.now()
+      });
+    }
 
     const modal = document.getElementById('call-overlay-modal');
     if (modal) modal.classList.add('active');
@@ -650,6 +685,13 @@ class CallManager {
       });
       this.saveCalls();
       this.renderCallsTab();
+
+      if (window.ChatterApp && window.ChatterApp.socket) {
+        window.ChatterApp.socket.emit('end_call', {
+          contactId: this.activeCall.contactId,
+          timestamp: Date.now()
+        });
+      }
     }
 
     this.activeCall = null;
