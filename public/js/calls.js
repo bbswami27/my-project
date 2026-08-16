@@ -94,42 +94,110 @@ class CallManager {
       });
     }
 
-    // Incoming Call Permission Choices
+    // Incoming Call Accept/Decline Handlers
     const btnAcceptVideo = document.getElementById('btn-incoming-accept-video');
     const btnAcceptAudio = document.getElementById('btn-incoming-accept-audio');
     const btnDecline = document.getElementById('btn-incoming-decline');
 
     if (btnAcceptVideo) {
-      btnAcceptVideo.addEventListener('click', () => {
-        const promptModal = document.getElementById('incoming-call-prompt-modal');
-        if (promptModal) promptModal.classList.remove('active');
-        if (this.pendingIncomingCall) {
-          const { name, avatar, contactId } = this.pendingIncomingCall;
-          this.startCall(name, avatar, 'video', contactId);
-        }
-      });
+      btnAcceptVideo.addEventListener('click', () => this.answerIncomingCall('video'));
     }
 
     if (btnAcceptAudio) {
-      btnAcceptAudio.addEventListener('click', () => {
-        const promptModal = document.getElementById('incoming-call-prompt-modal');
-        if (promptModal) promptModal.classList.remove('active');
-        if (this.pendingIncomingCall) {
-          const { name, avatar, contactId } = this.pendingIncomingCall;
-          this.startCall(name, avatar, 'audio', contactId);
-        }
-      });
+      btnAcceptAudio.addEventListener('click', () => this.answerIncomingCall('audio'));
     }
 
     if (btnDecline) {
-      btnDecline.addEventListener('click', () => {
-        const promptModal = document.getElementById('incoming-call-prompt-modal');
-        if (promptModal) promptModal.classList.remove('active');
-        this.stopRingtone();
-        this.pendingIncomingCall = null;
-        alert('Call declined.');
+      btnDecline.addEventListener('click', () => this.declineIncomingCall());
+    }
+  }
+
+  async answerIncomingCall(type = 'audio') {
+    if (!this.pendingIncomingCall) return;
+    const { name, avatar, contactId } = this.pendingIncomingCall;
+    this.stopRingtone();
+
+    const promptModal = document.getElementById('incoming-call-prompt-modal');
+    if (promptModal) promptModal.classList.remove('active');
+
+    this.activeCall = {
+      name,
+      avatar: avatar || 'assets/logo-icon.svg',
+      type,
+      contactId,
+      direction: 'incoming',
+      status: 'connected'
+    };
+    this.groupParticipants = [{ name, avatar: avatar || 'assets/logo-icon.svg' }];
+    this.isCameraOff = false;
+    this.isMicMuted = false;
+    this.isSpeakerMuted = false;
+    this.isSilent = false;
+    this.callSeconds = 0;
+
+    const modal = document.getElementById('call-overlay-modal');
+    if (modal) modal.classList.add('active');
+
+    document.getElementById('call-caller-name').textContent = name;
+    document.getElementById('call-big-avatar').src = avatar || 'assets/logo-icon.svg';
+    document.getElementById('call-status-badge').textContent = '00:00';
+
+    const videoContainer = document.getElementById('call-video-container');
+    const avatarContainer = document.getElementById('call-avatar-container');
+    const flipBtn = document.getElementById('btn-call-flip-camera');
+    const groupGrid = document.getElementById('group-call-grid');
+    if (groupGrid) groupGrid.classList.remove('active');
+
+    if (type === 'video') {
+      videoContainer.style.display = 'block';
+      avatarContainer.style.display = 'none';
+      if (flipBtn) flipBtn.style.display = 'flex';
+      const remoteImg = document.getElementById('remote-caller-video-avatar');
+      if (remoteImg) remoteImg.src = avatar || 'assets/logo-icon.svg';
+      await this.initLocalVideo();
+      this.startRemoteVideoSimulation();
+    } else {
+      videoContainer.style.display = 'none';
+      avatarContainer.style.display = 'flex';
+      if (flipBtn) flipBtn.style.display = 'none';
+    }
+
+    this.startCallDurationTimer();
+
+    // Emit accept_call to Socket.io to notify Caller
+    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('accept_call', {
+        callerId: contactId,
+        recipientId: currentUser ? currentUser.id : 'user_me',
+        recipientPhone: currentUser ? currentUser.phone : '',
+        callType: type,
+        timestamp: Date.now()
       });
     }
+
+    this.pendingIncomingCall = null;
+  }
+
+  declineIncomingCall() {
+    if (!this.pendingIncomingCall) return;
+    const { contactId } = this.pendingIncomingCall;
+    this.stopRingtone();
+
+    const promptModal = document.getElementById('incoming-call-prompt-modal');
+    if (promptModal) promptModal.classList.remove('active');
+
+    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('reject_call', {
+        callerId: contactId,
+        recipientId: currentUser ? currentUser.id : 'user_me',
+        recipientPhone: currentUser ? currentUser.phone : '',
+        timestamp: Date.now()
+      });
+    }
+
+    this.pendingIncomingCall = null;
   }
 
   showIncomingCallPrompt(name, avatar, type = 'video', contactId = null) {
@@ -330,16 +398,16 @@ class CallManager {
       if (flipBtn) flipBtn.style.display = 'none';
     }
 
-    this.playRingtone();
+    this.playRingtone(false);
 
+    // 45-Second No Answer Timeout
     setTimeout(() => {
       if (this.activeCall && this.activeCall.status === 'ringing') {
-        this.stopRingtone();
-        this.activeCall.status = 'connected';
-        document.getElementById('call-status-badge').textContent = '00:00';
-        this.startCallDurationTimer();
+        const badge = document.getElementById('call-status-badge');
+        if (badge) badge.textContent = 'No Answer 📵';
+        setTimeout(() => this.endCall(), 2000);
       }
-    }, 3000);
+    }, 45000);
   }
 
   async initLocalVideo() {

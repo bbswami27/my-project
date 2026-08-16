@@ -983,6 +983,8 @@ class ChatEngine {
     const senderId = currentUser ? currentUser.id : 'me';
     const senderName = currentUser ? currentUser.name : 'You';
     const senderAvatar = currentUser ? currentUser.avatar : '';
+    const senderPhone = currentUser ? currentUser.phone : '';
+    const recipientPhone = activeChat ? (activeChat.phone || '') : '';
 
     const newMsg = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -990,6 +992,9 @@ class ChatEngine {
       senderId: senderId,
       senderName: senderName,
       senderAvatar: senderAvatar,
+      senderPhone: senderPhone,
+      recipientPhone: recipientPhone,
+      recipientId: activeChat.id,
       text: text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       createdAt: Date.now(),
@@ -1016,6 +1021,8 @@ class ChatEngine {
     if (window.ChatterApp && window.ChatterApp.socket && window.ChatterApp.socket.connected) {
       window.ChatterApp.socket.emit('send_message', {
         ...newMsg,
+        senderPhone: senderPhone,
+        recipientPhone: recipientPhone,
         recipientId: activeChat.id,
         isAiChat: activeChat.isAi || activeChat.id === 'chat_ai'
       });
@@ -1035,6 +1042,8 @@ class ChatEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newMsg,
+          senderPhone: senderPhone,
+          recipientPhone: recipientPhone,
           recipientId: activeChat.id,
           isAiChat: activeChat.isAi || activeChat.id === 'chat_ai'
         })

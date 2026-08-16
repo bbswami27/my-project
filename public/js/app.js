@@ -222,6 +222,31 @@ class ChatterApp {
           }
         });
 
+        // 📞 Call Accepted by Recipient (Connect Caller)
+        this.socket.on('call_accepted', (data) => {
+          console.log('⚡ Call Accepted by Recipient:', data);
+          if (window.CallManager && window.CallManager.activeCall && window.CallManager.activeCall.status === 'ringing') {
+            window.CallManager.stopRingtone();
+            window.CallManager.activeCall.status = 'connected';
+            const badge = document.getElementById('call-status-badge');
+            if (badge) badge.textContent = '00:00';
+            window.CallManager.startCallDurationTimer();
+          }
+        });
+
+        // 🚫 Call Rejected by Recipient
+        this.socket.on('call_rejected', (data) => {
+          console.log('🚫 Call Rejected:', data);
+          if (window.CallManager && window.CallManager.activeCall) {
+            window.CallManager.stopRingtone();
+            const badge = document.getElementById('call-status-badge');
+            if (badge) badge.textContent = 'Call Declined 🚫';
+            setTimeout(() => {
+              window.CallManager.endCall();
+            }, 1200);
+          }
+        });
+
         this.socket.on('call_ended', () => {
           if (window.CallManager && window.CallManager.activeCall) {
             window.CallManager.endCall();

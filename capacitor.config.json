@@ -1,5 +1,9 @@
 {
-  "appId": "com.chatterpatter.app",
+  "appId": "com.gitpit.app",
   "appName": "ChatterPatter",
-  "webDir": "public"
+  "webDir": "public",
+  "server": {
+    "url": "https://chitchat-chatterpatter.onrender.com/",
+    "cleartext": false
+  }
 }
