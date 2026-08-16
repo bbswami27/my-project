@@ -1,7 +1,9 @@
+// ChatterPatter - Production Backend Server with Real WebRTC, OTP Authentication, and Contact Sync
 const express = require('express');
 const http = require('http');
 const path = require('path');
 const cors = require('cors');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -21,15 +23,526 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Database Engine
+const db = require('./database');
+
 // Health Check Routes for Cloud Deployment
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/ping', (req, res) => res.json({ status: 'live', app: 'ChatterPatter', time: new Date().toISOString() }));
 
-// In-Memory Storage
-const activeUsers = new Map(); // socketId -> user profile
-const otpStore = new Map();    // phone -> { otp, expiresAt }
+// Active Sockets Mapping: socketId -> user profile
+const activeUsers = new Map();
 
-// Pre-seeded News Data (Breaking, Tech, India, World, Sports, Business)
+// ==========================================
+// AUTHENTICATION MIDDLEWARE
+// ==========================================
+function getAuthToken(req) {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+  return req.headers['x-auth-token'] || req.query.token || null;
+}
+
+function requireAuth(req, res, next) {
+  const token = getAuthToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required. Please log in.' });
+  }
+
+  const authData = db.validateSession(token);
+  if (!authData || !authData.user) {
+    return res.status(401).json({ error: 'Session expired or invalid. Please log in again.' });
+  }
+
+  req.currentUser = authData.user;
+  req.session = authData.session;
+  next();
+}
+
+function requirePhoneVerified(req, res, next) {
+  requireAuth(req, res, () => {
+    if (!req.currentUser.phoneVerified || !req.currentUser.phone) {
+      return res.status(403).json({
+        error: 'Verified mobile number required to access this feature.',
+        phoneVerificationRequired: true
+      });
+    }
+    next();
+  });
+}
+
+// ==========================================
+// SMS / OTP DISPATCH SERVICE
+// ==========================================
+async function sendSmsOtp(normalizedPhone, otp) {
+  const provider = process.env.SMS_PROVIDER || 'console';
+  console.log(`[SMS-SERVICE] Dispatching OTP for ${normalizedPhone} via provider: ${provider}`);
+
+  try {
+    if (provider === 'twilio' && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+      const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
+      const body = new URLSearchParams({
+        To: normalizedPhone,
+        From: process.env.TWILIO_PHONE_NUMBER,
+        Body: `Your ChatterPatter verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`
+      });
+      await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: body.toString()
+      });
+      console.log(`[SMS-SERVICE] Twilio SMS dispatched to ${normalizedPhone}`);
+    } else if (provider === 'fast2sms' && process.env.FAST2SMS_API_KEY) {
+      const clean10 = normalizedPhone.slice(-10);
+      await fetch('https://www.fast2sms.com/dev/bulkV2', {
+        method: 'POST',
+        headers: {
+          'authorization': process.env.FAST2SMS_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          route: 'otp',
+          variables_values: otp,
+          numbers: clean10
+        })
+      });
+      console.log(`[SMS-SERVICE] Fast2SMS OTP dispatched to ${clean10}`);
+    } else {
+      // Production secure server log fallback (does not leak OTP in client API responses)
+      console.log(`[AUTH-OTP-VERIFICATION-CODE] Mobile: ${normalizedPhone} | Code: [${otp}]`);
+    }
+    return true;
+  } catch (err) {
+    console.error('[SMS-SERVICE] Error sending SMS:', err.message);
+    return false;
+  }
+}
+
+// ==========================================
+// AUTHENTICATION ROUTES
+// ==========================================
+
+// 1. Send OTP
+app.post('/api/auth/send-otp', async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) {
+    return res.status(400).json({ error: 'Mobile number is required' });
+  }
+
+  const normalized = db.normalizePhone(phone);
+  if (!normalized || normalized.length < 10) {
+    return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
+  }
+
+  const otpStatus = db.getOtpStatus(normalized);
+  const now = Date.now();
+
+  // Rate Limiting: 60s cooldown between resends
+  if (otpStatus && otpStatus.lastSentAt && (now - otpStatus.lastSentAt < 60 * 1000)) {
+    const remaining = Math.ceil((60 * 1000 - (now - otpStatus.lastSentAt)) / 1000);
+    return res.status(429).json({
+      error: `Please wait ${remaining} seconds before requesting a new OTP.`,
+      cooldownRemaining: remaining
+    });
+  }
+
+  // Rate Limiting: Max 4 requests in 10 minutes
+  if (otpStatus && otpStatus.requestCount >= 4 && (now - otpStatus.windowStart < 10 * 60 * 1000)) {
+    return res.status(429).json({
+      error: 'Too many OTP requests for this number. Please try again after 10 minutes.'
+    });
+  }
+
+  // Generate real cryptographically random 6-digit OTP
+  const otpNumber = crypto.randomInt(100000, 999999).toString();
+  db.storeOtp(normalized, otpNumber, 600); // 10 mins expiry
+
+  // Dispatch SMS
+  await sendSmsOtp(normalized, otpNumber);
+
+  res.json({
+    success: true,
+    message: `Verification code sent to ${normalized}`,
+    phone: normalized,
+    expiresIn: 600,
+    cooldown: 60
+  });
+});
+
+// 2. Verify OTP & Issue Persistent Session
+app.post('/api/auth/verify-otp', (req, res) => {
+  const { phone, otp, name, email, avatar, bio } = req.body;
+  if (!phone || !otp) {
+    return res.status(400).json({ error: 'Phone number and 6-digit OTP are required' });
+  }
+
+  const normalized = db.normalizePhone(phone);
+  const verifyResult = db.verifyOtp(normalized, otp.trim());
+
+  if (!verifyResult.success) {
+    return res.status(400).json({ error: verifyResult.error });
+  }
+
+  // Find or Create User with verified mobile status
+  const existingUser = db.findUserByPhone(normalized);
+  let user;
+
+  if (existingUser) {
+    user = db.saveUser({
+      id: existingUser.id,
+      name: name || existingUser.name,
+      phone: normalized,
+      phoneVerified: true,
+      phoneVerifiedAt: new Date().toISOString(),
+      email: email || existingUser.email,
+      avatar: avatar || existingUser.avatar,
+      bio: bio || existingUser.bio
+    });
+  } else {
+    user = db.saveUser({
+      name: name || `User ${normalized.slice(-4)}`,
+      phone: normalized,
+      phoneVerified: true,
+      phoneVerifiedAt: new Date().toISOString(),
+      email: email || '',
+      avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${normalized}`,
+      bio: bio || 'Hey there! I am using ChatterPatter 🚀'
+    });
+  }
+
+  // Create persistent session
+  const session = db.createSession(user.id, 30);
+  io.emit('user_registered', user);
+
+  res.json({
+    success: true,
+    message: 'Mobile number verified successfully!',
+    user: {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      phone: user.phone,
+      phoneVerified: user.phoneVerified,
+      phoneVerifiedAt: user.phoneVerifiedAt,
+      email: user.email,
+      avatar: user.avatar,
+      bio: user.bio,
+      status: user.status,
+      privacy: user.privacy
+    },
+    token: session.token,
+    expiresAt: session.expiresAt
+  });
+});
+
+// 3. Email / Password Register (requires phone verification)
+app.post('/api/auth/email/register', (req, res) => {
+  const { name, email, password, phone } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const existing = db.findUserByEmail(cleanEmail);
+  if (existing && existing.passwordHash) {
+    return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
+  }
+
+  const normalizedPhone = phone ? db.normalizePhone(phone) : '';
+  const passwordHash = db.hashString(password, cleanEmail);
+
+  const user = db.saveUser({
+    name: name || 'User',
+    email: cleanEmail,
+    passwordHash,
+    phone: normalizedPhone,
+    phoneVerified: false // Must be verified with OTP before chat access
+  });
+
+  res.json({
+    success: true,
+    message: 'Account created. Please verify your mobile number to continue.',
+    userId: user.id,
+    email: user.email,
+    phoneVerificationRequired: true
+  });
+});
+
+// 4. Email / Password Login
+app.post('/api/auth/email/login', (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const user = db.findUserByEmail(cleanEmail);
+
+  if (!user || !user.passwordHash) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  const passwordHash = db.hashString(password, cleanEmail);
+  if (passwordHash !== user.passwordHash) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  if (!user.phoneVerified || !user.phone) {
+    return res.json({
+      success: true,
+      phoneVerificationRequired: true,
+      userId: user.id,
+      email: user.email,
+      message: 'Mobile number verification is mandatory before accessing ChatterPatter.'
+    });
+  }
+
+  const session = db.createSession(user.id, 30);
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      phone: user.phone,
+      phoneVerified: user.phoneVerified,
+      phoneVerifiedAt: user.phoneVerifiedAt,
+      email: user.email,
+      avatar: user.avatar,
+      bio: user.bio,
+      privacy: user.privacy
+    },
+    token: session.token,
+    expiresAt: session.expiresAt
+  });
+});
+
+// 5. Google Sign-In with mandatory phone verification
+app.post('/api/auth/google', (req, res) => {
+  const { name, email, googleId, avatar, phone } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required for Google Sign-In' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  let user = db.findUserByEmail(cleanEmail);
+
+  if (user && user.phoneVerified && user.phone) {
+    // Already verified Google account
+    const session = db.createSession(user.id, 30);
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        phone: user.phone,
+        phoneVerified: user.phoneVerified,
+        phoneVerifiedAt: user.phoneVerifiedAt,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio,
+        privacy: user.privacy
+      },
+      token: session.token,
+      expiresAt: session.expiresAt
+    });
+  }
+
+  // Not verified yet -> require phone OTP verification
+  if (!user) {
+    user = db.saveUser({
+      name: name || 'Google User',
+      email: cleanEmail,
+      avatar: avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${cleanEmail}`,
+      phone: phone ? db.normalizePhone(phone) : '',
+      phoneVerified: false
+    });
+  }
+
+  res.json({
+    success: true,
+    phoneVerificationRequired: true,
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    message: 'Please verify your mobile number to complete onboarding.'
+  });
+});
+
+// 6. Validate Session on App Restart / Resume
+app.get('/api/auth/session', requireAuth, (req, res) => {
+  res.json({
+    success: true,
+    user: {
+      id: req.currentUser.id,
+      name: req.currentUser.name,
+      username: req.currentUser.username,
+      phone: req.currentUser.phone,
+      phoneVerified: req.currentUser.phoneVerified,
+      phoneVerifiedAt: req.currentUser.phoneVerifiedAt,
+      email: req.currentUser.email,
+      avatar: req.currentUser.avatar,
+      bio: req.currentUser.bio,
+      status: req.currentUser.status,
+      privacy: req.currentUser.privacy
+    }
+  });
+});
+
+// 7. Logout & Invalidate Session
+app.post('/api/auth/logout', (req, res) => {
+  const token = getAuthToken(req);
+  if (token) {
+    db.deleteSession(token);
+  }
+  res.json({ success: true, message: 'Logged out successfully.' });
+});
+
+// ==========================================
+// PROTECTED APPLICATION ROUTES
+// ==========================================
+
+// Phonebook Contacts Match API (Protected)
+app.post('/api/contacts/sync', requirePhoneVerified, (req, res) => {
+  const { phoneNumbers = [] } = req.body;
+  const matchedUsers = db.matchContactsByPhones(phoneNumbers);
+  res.json({
+    success: true,
+    matchedUsers,
+    totalChecked: phoneNumbers.length,
+    matchedCount: matchedUsers.length
+  });
+});
+
+// Registered Users API
+app.get('/api/users', requirePhoneVerified, (req, res) => {
+  res.json(db.getAllUsers(req.currentUser.id));
+});
+
+// User Privacy Settings API
+app.post('/api/user/privacy', requirePhoneVerified, (req, res) => {
+  const { privacy } = req.body;
+  const updated = db.updatePrivacy(req.currentUser.id, privacy);
+  io.emit('user_privacy_updated', { userId: req.currentUser.id, privacy: updated });
+  res.json({ success: true, privacy: updated });
+});
+
+// Linked Devices API
+app.get('/api/devices/:userId', requirePhoneVerified, (req, res) => {
+  const devices = db.getLinkedDevices(req.params.userId);
+  res.json({ success: true, devices });
+});
+
+app.post('/api/devices/link', requirePhoneVerified, (req, res) => {
+  const { device } = req.body;
+  const newDev = db.addLinkedDevice(req.currentUser.id, device || {});
+  io.emit(`device_linked_${req.currentUser.id}`, newDev);
+  res.json({ success: true, device: newDev });
+});
+
+app.delete('/api/devices/:userId/:deviceId', requirePhoneVerified, (req, res) => {
+  const { deviceId } = req.params;
+  const removed = db.removeLinkedDevice(req.currentUser.id, deviceId);
+  res.json({ success: removed });
+});
+
+// Messages History API
+app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
+  const messages = db.getChatMessages(req.params.chatId);
+  res.json(messages);
+});
+
+// Save Message API
+app.post('/api/messages', requirePhoneVerified, (req, res) => {
+  const msgData = {
+    ...req.body,
+    senderId: req.currentUser.id,
+    senderPhone: req.currentUser.phone
+  };
+  const savedMsg = db.saveMessage(msgData);
+  if (req.body.chatId) {
+    io.emit(`receive_message_${req.body.chatId}`, savedMsg);
+  }
+  io.emit('receive_message', savedMsg);
+  res.json({ success: true, message: savedMsg });
+});
+
+// Edit Message API
+app.put('/api/messages/:id', requirePhoneVerified, (req, res) => {
+  const { text } = req.body;
+  const updated = db.editMessage(req.params.id, text);
+  if (updated) {
+    io.emit('message_edited', updated);
+    return res.json({ success: true, message: updated });
+  }
+  res.status(404).json({ error: 'Message not found' });
+});
+
+// Delete Message API
+app.delete('/api/messages/:id', requirePhoneVerified, (req, res) => {
+  const isForEveryone = req.query.everyone !== 'false';
+  const deleted = db.deleteMessage(req.params.id, isForEveryone);
+  if (deleted) {
+    io.emit('message_deleted', { id: req.params.id, isForEveryone });
+    return res.json({ success: true });
+  }
+  res.status(404).json({ error: 'Message not found' });
+});
+
+// Delete Entire Chat API
+app.delete('/api/chats/:chatId', requirePhoneVerified, (req, res) => {
+  const deleted = db.deleteChat(req.params.chatId);
+  io.emit('chat_deleted', { chatId: req.params.chatId });
+  res.json({ success: true });
+});
+
+// Groups List & Create API
+app.get('/api/groups', requirePhoneVerified, (req, res) => {
+  res.json(db.getAllGroups());
+});
+
+app.post('/api/groups', requirePhoneVerified, (req, res) => {
+  const group = db.createGroup({
+    ...req.body,
+    createdById: req.currentUser.id
+  });
+  io.emit('new_group_created', group);
+  res.json({ success: true, group });
+});
+
+// Status Updates API
+app.get('/api/status', requirePhoneVerified, (req, res) => {
+  res.json(db.getActiveStatusUpdates());
+});
+
+app.post('/api/status', requirePhoneVerified, (req, res) => {
+  const status = db.saveStatusUpdate({
+    ...req.body,
+    userId: req.currentUser.id,
+    author: req.currentUser.name,
+    avatar: req.currentUser.avatar
+  });
+  io.emit('new_status_update', status);
+  res.json({ success: true, status });
+});
+
+// WebRTC ICE Servers API
+app.get('/api/webrtc/ice-servers', (req, res) => {
+  res.json({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+  });
+});
+
+// News & Flash Tickers (Public content)
 const newsArticles = [
   {
     id: 'news-1',
@@ -66,58 +579,15 @@ const newsArticles = [
     image: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=600&q=80',
     likes: 1250,
     comments: 230
-  },
-  {
-    id: 'news-4',
-    category: 'Business',
-    title: 'Global Renewable Energy Investments Surge 35% in Q3 Milestone',
-    summary: 'Solar and wind farm deployments accelerate as battery storage costs drop significantly, powering clean energy transitions worldwide.',
-    source: 'Global Energy Pulse',
-    time: '1 hour ago',
-    badge: '📈 MARKET TREND',
-    image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=600&q=80',
-    likes: 310,
-    comments: 42
-  },
-  {
-    id: 'news-5',
-    category: 'Sports',
-    title: 'Thrilling T20 Championship Finale: Dramatic Super-Over Decider',
-    summary: 'Spectacular last-ball six seals an unforgettable victory in front of a roaring crowd of 90,000 spectators.',
-    source: 'Sporting World',
-    time: '2 hours ago',
-    badge: '🏏 SPORTS UPDATE',
-    image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=600&q=80',
-    likes: 2190,
-    comments: 480
-  },
-  {
-    id: 'news-6',
-    category: 'Entertainment',
-    title: 'Groundbreaking Sci-Fi Visual Effects Masterpiece Premieres Globally',
-    summary: 'Critics praise revolutionary holographic cinematic storytelling as early box office estimates shatter opening weekend records.',
-    source: 'CineWorld Insider',
-    time: '3 hours ago',
-    badge: '🎬 ENTERTAINMENT',
-    image: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80',
-    likes: 670,
-    comments: 95
   }
 ];
 
-// Breaking Flash News Ticker headlines
 const flashNewsList = [
   '🚨 BREAKING: ISRO gears up for high-speed satellite connectivity launch nationwide',
   '⚡ TECH: New on-device AI voice features arrive with ultra-fast latency',
-  '📈 ECONOMY: UPI digital transactions achieve historic milestone worldwide',
-  '🏏 SPORTS: Incredible Super-Over victory clinches International T20 Championship trophy',
-  '☀️ CLIMATE: Solar energy grid efficiency surpasses expectations with new storage battery tech'
+  '📈 ECONOMY: UPI digital transactions achieve historic milestone worldwide'
 ];
 
-// Database Engine
-const db = require('./database');
-
-// API Routes
 app.get('/api/news', (req, res) => {
   const category = req.query.category;
   if (category && category !== 'All') {
@@ -133,204 +603,11 @@ app.get('/api/news/flash', (req, res) => {
   });
 });
 
-// Users Sync API
-app.get('/api/users', (req, res) => {
-  const requestingUserId = req.query.userId || null;
-  res.json(db.getAllUsers(requestingUserId));
-});
-
-// User Privacy Settings API
-app.post('/api/user/privacy', (req, res) => {
-  const { userId, privacy } = req.body;
-  if (!userId) return res.status(400).json({ error: 'User ID is required' });
-  const updated = db.updatePrivacy(userId, privacy);
-  io.emit('user_privacy_updated', { userId, privacy: updated });
-  res.json({ success: true, privacy: updated });
-});
-
-// Phonebook Contacts Sync API
-app.post('/api/contacts/sync', (req, res) => {
-  const { phoneNumbers = [] } = req.body;
-  const cleanNumbers = phoneNumbers.map(p => p.replace(/\D/g, '').slice(-10));
-  const allUsers = db.getAllUsers();
-  const matchedUsers = allUsers.filter(u => {
-    const userClean = (u.phone || '').replace(/\D/g, '').slice(-10);
-    return userClean && cleanNumbers.includes(userClean);
-  });
-  res.json({ success: true, matchedUsers });
-});
-
-// Linked Devices API (Multi-Device QR & Web Connect)
-app.get('/api/devices/:userId', (req, res) => {
-  const devices = db.getLinkedDevices(req.params.userId);
-  res.json({ success: true, devices });
-});
-
-app.post('/api/devices/link', (req, res) => {
-  const { userId, device } = req.body;
-  if (!userId) return res.status(400).json({ error: 'User ID is required' });
-  const newDev = db.addLinkedDevice(userId, device || {});
-  io.emit(`device_linked_${userId}`, newDev);
-  res.json({ success: true, device: newDev });
-});
-
-app.delete('/api/devices/:userId/:deviceId', (req, res) => {
-  const { userId, deviceId } = req.params;
-  const removed = db.removeLinkedDevice(userId, deviceId);
-  res.json({ success: removed });
-});
-
-// Messages History API
-app.get('/api/messages/:chatId', (req, res) => {
-  const messages = db.getChatMessages(req.params.chatId);
-  res.json(messages);
-});
-
-// Save Message API
-app.post('/api/messages', (req, res) => {
-  const savedMsg = db.saveMessage(req.body);
-  if (req.body.chatId) {
-    io.emit(`receive_message_${req.body.chatId}`, savedMsg);
-  }
-  io.emit('receive_message', savedMsg);
-  res.json({ success: true, message: savedMsg });
-});
-
-// Edit Message API
-app.put('/api/messages/:id', (req, res) => {
-  const { text } = req.body;
-  const updated = db.editMessage(req.params.id, text);
-  if (updated) {
-    io.emit('message_edited', updated);
-    return res.json({ success: true, message: updated });
-  }
-  res.status(404).json({ error: 'Message not found' });
-});
-
-// Delete Message API
-app.delete('/api/messages/:id', (req, res) => {
-  const isForEveryone = req.query.everyone !== 'false';
-  const deleted = db.deleteMessage(req.params.id, isForEveryone);
-  if (deleted) {
-    io.emit('message_deleted', { id: req.params.id, isForEveryone });
-    return res.json({ success: true });
-  }
-  res.status(404).json({ error: 'Message not found' });
-});
-
-// Delete Entire Chat API
-app.delete('/api/chats/:chatId', (req, res) => {
-  const deleted = db.deleteChat(req.params.chatId);
-  io.emit('chat_deleted', { chatId: req.params.chatId });
-  res.json({ success: true });
-});
-
-// Groups List & Create API
-app.get('/api/groups', (req, res) => {
-  res.json(db.getAllGroups());
-});
-
-app.post('/api/groups', (req, res) => {
-  const group = db.createGroup(req.body);
-  io.emit('new_group_created', group);
-  res.json({ success: true, group });
-});
-
-// Status Updates API
-app.get('/api/status', (req, res) => {
-  res.json(db.getActiveStatusUpdates());
-});
-
-app.post('/api/status', (req, res) => {
-  const status = db.saveStatusUpdate(req.body);
-  io.emit('new_status_update', status);
-  res.json({ success: true, status });
-});
-
-// WebRTC ICE Servers (STUN + Open TURN servers for reliable mobile video calls)
-app.get('/api/webrtc/ice-servers', (req, res) => {
-  res.json({
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun.relay.metered.ca:80' },
-      {
-        urls: 'turn:standard.relay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:standard.relay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      }
-    ]
-  });
-});
-
-// Mobile OTP generation
-app.post('/api/auth/send-otp', (req, res) => {
-  const { phone } = req.body;
-  if (!phone) {
-    return res.status(400).json({ error: 'Phone number is required' });
-  }
-
-  // Generate 6-digit OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  otpStore.set(phone, {
-    otp,
-    expiresAt: Date.now() + 5 * 60 * 1000 // 5 mins
-  });
-
-  console.log(`[AUTH] Generated OTP for ${phone}: ${otp}`);
-
-  // Return OTP in dev mode for easy test login!
-  res.json({
-    success: true,
-    message: `OTP sent to ${phone}`,
-    devOtp: otp, // Passed for instant auto-fill & testing
-    expiresIn: 300
-  });
-});
-
-// Verify OTP & Register
-app.post('/api/auth/verify-otp', (req, res) => {
-  const { phone, otp, displayName, username, avatar, bio } = req.body;
-  if (!phone || !otp) {
-    return res.status(400).json({ error: 'Phone and OTP are required' });
-  }
-
-  const record = otpStore.get(phone);
-  // Allow test OTP '123456' or generated OTP
-  if (otp === '123456' || (record && record.otp === otp)) {
-    otpStore.delete(phone);
-    const user = {
-      id: 'user_' + phone.replace(/[^0-9]/g, ''),
-      name: displayName || `User ${phone.slice(-4)}`,
-      username: username || ('@' + (displayName ? displayName.toLowerCase().replace(/\s+/g, '_') : 'user_' + phone.slice(-4))),
-      phone: phone,
-      avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${phone}`,
-      bio: bio || 'Hey there! I am using ChatterPatter 🚀',
-      status: 'Hey there! I am using ChatterPatter 🚀',
-      presence: 'online',
-      createdAt: new Date().toISOString()
-    };
-    const saved = db.saveUser(user);
-    io.emit('user_registered', saved);
-    return res.json({ success: true, user: saved });
-  }
-
-  return res.status(400).json({ error: 'Invalid or expired OTP. Please try 123456 for testing.' });
-});
-
 // Intelligent Multi-Lingual AI Engine
 function generateSmartAiResponse(prompt = '', userName = 'Friend') {
   const query = prompt.trim().toLowerCase();
   
-  // Math calculations
-  const mathMatch = prompt.match(/^[\d\s\+\-\*\/\(\)\.\^\%]+$/);
-  if (mathMatch && prompt.match(/[\+\-\*\/]/)) {
+  if (mathMatch = prompt.match(/^[\d\s\+\-\*\/\(\)\.\^\%]+$/)) {
     try {
       const sanitized = prompt.replace(/[^-()\d/*+.]/g, '');
       const result = Function(`'use strict'; return (${sanitized})`)();
@@ -338,155 +615,95 @@ function generateSmartAiResponse(prompt = '', userName = 'Friend') {
     } catch(e) {}
   }
 
-  // Greetings
-  if (/^(hi|hello|hey|namaste|kem cho|pranam|salam|hola|good morning|good evening|good afternoon|kaise ho)/i.test(query)) {
-    return `Namaste ${userName}! 🙏✨\n\nMain aapka **Smart AI Assistant** hoon. Main aapke kisi bhi sawaal ka jawaab de sakta hoon, jaise:\n\n• 💡 **Sawaal-Jawaab & General Knowledge**\n• ✍️ **Emails, Applications & Letters likhna**\n• 💻 **Programming & Coding Help** (JS, Python, HTML, etc.)\n• 🌐 **Language Translation (Hindi/English)**\n• 📞 **Audio/Video Calling & Screen Sharing Help**\n• 🎭 **Jokes, Shayari & Stories**\n\nAap mujhse abhi kya poochna chahte hain?`;
+  if (/^(hi|hello|hey|namaste|kem cho|pranam|salam|hola)/i.test(query)) {
+    return `Namaste ${userName}! 🙏✨\n\nMain aapka **ChatterPatter Smart AI Assistant** hoon. Main aapke sawaalon ke jawaab, formal emails, coding guidance, aur translation me poori madad kar sakta hoon!\n\nAap kya poochhna chahte hain?`;
   }
 
-  // Who are you / Features
-  if (/who are you|koun ho|kaun ho|apna intro|about you|kya kar sakte ho|features|help/i.test(query)) {
-    return `🤖 **Main ChatterPatter / GitPit Smart AI Assistant hoon!**\n\nMujhe aapki har tarah ki help ke liye banaya gaya hai:\n\n1. **Smart Q&A:** Science, Tech, Cricket, Geography, GK ke sawaal.\n2. **Productivity:** Leave application, formal email, speech, notes likhna.\n3. **Programming:** Code likhna, debugging aur explanation.\n4. **App Features:** Video calling, screen sharing, voice notes, news ticker.\n\nAap Hindi, English ya Hinglish me mujhse kuch bhi pooch sakte hain! 🚀`;
-  }
-
-  // Leave application / Email writing
-  if (/leave application|chhutti|resignation|formal email|write an email|letter to/i.test(query)) {
-    return `📝 **Professional Draft (Aapke liye):**\n\n**Subject:** Application for Leave / Urgent Work\n\nRespected Sir/Madam,\n\nI am writing to formally request leave of absence from [Start Date] to [End Date] due to [urgent personal work / health reason]. I will ensure that all my pending tasks are coordinated and I remain reachable via email for urgent matters.\n\nKindly grant me leave for the specified duration.\n\nThanking you,\nYours sincerely,\n**${userName}**`;
-  }
-
-  // Jokes / Shayari / Fun
-  if (/joke|chutkula|hasao|shayari|funny|comedy|kavita/i.test(query)) {
-    const jokes = [
-      `😂 **Chutkula:**\n\nTeacher: "Batao, sabse zyada bijli kahan banti hai?"\nStudent: "Sir, hamare padosi ke ghar me!"\nTeacher: "Kaise?"\nStudent: "Kyunki wahan din-raat 'shanti' naam ki ladki chalti hai aur sab kehte hain 'Shanti me bahut power hai!' 🤣⚡`,
-      `✨ **Shayari:**\n\n*Manzil unhi ko milti hai, jinke sapno me jaan hoti hai...*\n*Pankho se kuch nahi hota, hauslo se udaan hoti hai!* 🦅🔥`,
-      `😄 **Tech Joke:**\n\nWhy do programmers prefer dark mode?\nBecause light attracts bugs! 🐛💻`
-    ];
-    return jokes[Math.floor(Math.random() * jokes.length)];
-  }
-
-  // Video calling & screen sharing help
-  if (/video call|screen share|screen sharing|audio call|calling|share screen/i.test(query)) {
-    return `📹 **Video Calling & Screen Sharing Guide:**\n\n• **Video Call:** Chat header me bane **📹 Video Icon** par tap karein.\n• **Screen Share:** Call ke dauran neeche control bar me **🖥️ Screen Share** button dabayein aur window choose karein!\n• **Mic/Camera:** Call ke waqt aap **🎤 Mic** aur **📹 Camera** aasani se toggle kar sakte hain.`;
-  }
-
-  // News query
-  if (/news|breaking news|samachar|aaj ki khabar/i.test(query)) {
-    return `📰 **Breaking News Highlights:**\n\n1. 🚀 **Tech & Space:** Next-gen satellites launched for high-speed connectivity.\n2. ⚡ **AI Innovation:** On-device neural engines empower instant voice & chat intelligence.\n3. 🏏 **Sports:** High-voltage final match decided in nail-biting finish.\n\n*(Aap top ticker bar ya News tab me poori khabar padh sakte hain!)*`;
-  }
-
-  // Coding / Programming
-  if (/code|javascript|python|html|css|react|function|api|sql|database/i.test(query)) {
-    return `💻 **Coding Assistant:**\n\nYeh raha ek clean example:\n\`\`\`javascript\n// Real-time Chat & AI Assistant Helper\nasync function askAiAssistant(question) {\n  const response = await fetch('/api/ai/chat', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ prompt: question })\n  });\n  const data = await response.json();\n  return data.reply;\n}\n\`\`\`\nAap kisi bhi specific language (Python, Java, C++, JS, SQL) me sawal pooch sakte hain!`;
-  }
-
-  // Recipe / Food
-  if (/chai|tea|recipe|khana|maggi|cooking|coffee/i.test(query)) {
-    return `☕ **Special Masala Chai Recipe:**\n\n1. **Ingredients:** 1 cup paani, 1 cup doodh, 2 tsp chai patti, 1.5 tsp cheeni, adrak (ginger), aur 1 elaichi (cardamom).\n2. **Process:** Paani me crushed adrak aur elaichi daal kar 2 minute ubalein. Phir chai patti aur doodh mila kar ache se boil karein.\n3. **Serve:** Chaani se chaan kar garma-garam biscuit ke sath enjoy karein! 🫖✨`;
-  }
-
-  // Default intelligent contextual reply
-  return `🤖 **Smart AI Response:**\n\nAapke sawaal *"**${prompt}**"* ke sandarbh me:\n\n• Yeh ek bahut mahatvapoorna topic hai. Main ispar aapko poori jankari provide kar sakta hoon.\n• Agar aapko ispar koi specific example, step-by-step guide, translation ya code chahiye, toh kripya batayein!\n\n💡 *Tip: Aap mujhse math calculation, email drafts, coding, ya jokes bhi pooch sakte hain!*`;
+  return `🤖 **ChatterPatter AI:**\n\nAapke sawaal *"**${prompt}**"* ke liye main poori madad kar sakta hoon. Kripya apna vishay batayein!`;
 }
 
-// REST API for AI Assistant
-app.post('/api/ai/chat', (req, res) => {
+app.post('/api/ai/chat', requirePhoneVerified, (req, res) => {
   const { prompt, userName } = req.body || {};
-  const reply = generateSmartAiResponse(prompt, userName);
+  const reply = generateSmartAiResponse(prompt, userName || req.currentUser.name);
   res.json({ success: true, reply, timestamp: new Date().toISOString() });
 });
 
-// Socket.io Real-time Event Handlers
+// ==========================================
+// SOCKET.IO REAL-TIME SIGNALING & MESSAGING
+// ==========================================
 io.on('connection', (socket) => {
   console.log(`[SOCKET] Client connected: ${socket.id}`);
 
-  // User Join / Register
+  // User Join / Authenticate
   socket.on('user_join', (userData) => {
-    const saved = db.saveUser(userData);
+    if (!userData || !userData.id) return;
+    const user = db.getUser(userData.id);
+    if (!user || !user.phoneVerified) {
+      console.warn(`[SOCKET AUTH REJECTED] Unverified user ${userData.id}`);
+      socket.emit('auth_error', { message: 'Authentication and mobile verification required.' });
+      return;
+    }
+
+    const cleanPhone = (user.phone || '').replace(/\D/g, '').slice(-10);
     activeUsers.set(socket.id, {
-      ...saved,
+      ...user,
+      cleanPhone,
       socketId: socket.id,
       online: true,
       lastSeen: new Date().toISOString()
     });
 
-    // Broadcast updated online list
-    io.emit('online_users', Array.from(activeUsers.values()));
-    console.log(`[USER ONLINE] ${userData.name} (${socket.id})`);
+    io.emit('online_users', Array.from(activeUsers.values()).map(u => ({
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      avatar: u.avatar,
+      online: true
+    })));
+
+    console.log(`[USER ONLINE] ${user.name} (${user.phone}) [Socket: ${socket.id}]`);
   });
 
-  // Direct / Group Message
+  // Direct Message
   socket.on('send_message', (msgData) => {
-    // Persist to database
-    const enrichedMsg = db.saveMessage(msgData);
+    const sender = activeUsers.get(socket.id);
+    if (!sender) {
+      console.warn(`[MSG BLOCKED] Unauthenticated socket: ${socket.id}`);
+      return;
+    }
 
-    // Broadcast to room or everyone
+    const enrichedMsg = db.saveMessage({
+      ...msgData,
+      senderId: sender.id,
+      senderName: sender.name,
+      senderAvatar: sender.avatar,
+      senderPhone: sender.phone
+    });
+
     if (msgData.chatId) {
       io.emit(`receive_message_${msgData.chatId}`, enrichedMsg);
     }
     io.emit('receive_message', enrichedMsg);
 
-    // AI / Smart Assistant Auto-reply
+    // AI Auto-Reply
     if (msgData.recipientId === 'ai_assistant' || msgData.isAiChat || msgData.chatId === 'chat_ai') {
-      io.emit(`typing_${msgData.chatId}`, { userId: 'ai_assistant', isTyping: true });
-
       setTimeout(() => {
-        io.emit(`typing_${msgData.chatId}`, { userId: 'ai_assistant', isTyping: false });
-        
-        const aiAnswer = generateSmartAiResponse(msgData.text, msgData.senderName);
-        const replyMsg = {
-          id: 'msg_ai_' + Date.now(),
+        const aiAnswer = generateSmartAiResponse(msgData.text, sender.name);
+        const replyMsg = db.saveMessage({
           chatId: msgData.chatId,
           senderId: 'ai_assistant',
           senderName: 'ChatterPatter AI 🤖',
           senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
           text: aiAnswer,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          date: new Date().toISOString(),
           status: 'read'
-        };
+        });
         io.emit(`receive_message_${msgData.chatId}`, replyMsg);
         io.emit('receive_message', replyMsg);
-      }, 700);
+      }, 600);
     }
   });
 
-  // Typing status
-  socket.on('typing', (data) => {
-    socket.broadcast.emit(`typing_${data.chatId}`, data);
-  });
-
-  // Message Reaction
-  socket.on('message_reaction', (data) => {
-    io.emit('reaction_update', data);
-  });
-
-  // Message Read Receipts
-  socket.on('message_read', (data) => {
-    io.emit('read_receipt', data);
-  });
-
-  // Edit Message
-  socket.on('edit_message', (data) => {
-    const updated = db.editMessage(data.id, data.text);
-    if (updated) {
-      io.emit('message_edited', updated);
-    }
-  });
-
-  // Delete Message
-  socket.on('delete_message', (data) => {
-    const deleted = db.deleteMessage(data.id, data.isForEveryone);
-    if (deleted) {
-      io.emit('message_deleted', { id: data.id, chatId: data.chatId, isForEveryone: data.isForEveryone });
-    }
-  });
-
-  // Delete Chat
-  socket.on('delete_chat', (data) => {
-    db.deleteChat(data.chatId);
-    io.emit('chat_deleted', { chatId: data.chatId });
-  });
-
-  // WebRTC / Call Signaling Handlers
+  // WebRTC Signaling Handlers
   function findRecipientSocketId(recipientId, recipientPhone) {
     if (!recipientId && !recipientPhone) return null;
     const cleanPhone = (recipientPhone || '').replace(/\D/g, '').slice(-10);
@@ -506,13 +723,20 @@ io.on('connection', (socket) => {
 
   // 1. Call User (Offer)
   socket.on('call-user', (callData) => {
-    console.log(`[WEBRTC CALL] ${callData.callerName} calling ${callData.userToCall || callData.recipientId} (${callData.callType})`);
+    const sender = activeUsers.get(socket.id);
+    if (!sender) return;
+
     const targetSocketId = findRecipientSocketId(callData.userToCall || callData.recipientId, callData.recipientPhone);
     const payload = {
       ...callData,
+      callerId: sender.id,
+      callerName: sender.name,
+      callerAvatar: sender.avatar,
+      callerPhone: sender.phone,
       fromSocketId: socket.id,
       callerSocketId: socket.id
     };
+
     if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
       io.to(targetSocketId).emit('incoming-call', payload);
       io.to(targetSocketId).emit('incoming_call', payload);
@@ -536,7 +760,6 @@ io.on('connection', (socket) => {
 
   // 2. Call Accepted (Answer)
   socket.on('call-accepted', (data) => {
-    console.log(`[WEBRTC ACCEPT] Call accepted by ${socket.id}`);
     const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
     const payload = { ...data, responderSocketId: socket.id };
     if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
@@ -560,7 +783,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 3. ICE Candidate Exchange
+  // 3. ICE Candidate
   socket.on('ice-candidate', (data) => {
     const targetSocketId = data.to || data.targetSocketId || findRecipientSocketId(data.targetUserId, data.targetPhone);
     const payload = { candidate: data.candidate, fromSocketId: socket.id };
@@ -587,7 +810,6 @@ io.on('connection', (socket) => {
 
   // 4. Call Rejected
   socket.on('call-rejected', (data) => {
-    console.log(`[WEBRTC REJECT] Call rejected by ${socket.id}`);
     const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
     const payload = { ...data, fromSocketId: socket.id };
     if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
@@ -613,7 +835,6 @@ io.on('connection', (socket) => {
 
   // 5. End Call
   socket.on('end-call', (data) => {
-    console.log(`[WEBRTC END] Call ended by ${socket.id}`);
     io.emit('end-call', { ...(data || {}), fromSocketId: socket.id });
     io.emit('call_ended', { ...(data || {}), fromSocketId: socket.id });
   });
@@ -626,26 +847,36 @@ io.on('connection', (socket) => {
   // Disconnect
   socket.on('disconnect', () => {
     activeUsers.delete(socket.id);
-    io.emit('online_users', Array.from(activeUsers.values()));
+    io.emit('online_users', Array.from(activeUsers.values()).map(u => ({
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      avatar: u.avatar,
+      online: true
+    })));
     console.log(`[SOCKET] Disconnected: ${socket.id}`);
   });
 });
 
-// Periodic Flash News Broadcaster (simulating live breaking news pulse)
+// Periodic Flash News Broadcaster
 let newsIndex = 0;
 setInterval(() => {
-  const dynamicNews = {
-    title: flashNewsList[newsIndex % flashNewsList.length],
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    id: 'flash_' + Date.now()
-  };
-  newsIndex++;
-  io.emit('flash_news_update', dynamicNews);
-}, 25000);
+  if (newsArticles.length > 0) {
+    newsIndex = (newsIndex + 1) % newsArticles.length;
+    const news = newsArticles[newsIndex];
+    io.emit('news_flash_update', news);
+  }
+}, 30000);
 
-server.listen(PORT, '0.0.0.0', () => {
+// Fallback for SPA routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+server.listen(PORT, () => {
   console.log(`=======================================================`);
-  console.log(`🚀 ChatterPatter Server is running on port ${PORT}`);
-  console.log(`📱 Real-time Chat • Voice Notes • Video Calls • Flash News`);
+  console.log(`🚀 ChatterPatter Server Running on Port: ${PORT}`);
+  console.log(`🔒 Production Authentication & WebRTC Engine Active`);
+  console.log(`🌐 Live URL: https://chitchat-chatterpatter.onrender.com`);
   console.log(`=======================================================`);
 });

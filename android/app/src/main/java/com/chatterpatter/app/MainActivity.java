@@ -15,9 +15,12 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Register Native Contacts Plugin
+        registerPlugin(ContactsPlugin.class);
+
         super.onCreate(savedInstanceState);
         
-        // 1. Request Runtime Permissions for Camera & Microphone on launch
+        // 1. Request Runtime Permissions for Camera & Microphone & Contacts on launch
         requestWebRtcPermissions();
 
         // 2. Grant WebView WebRTC permissions seamlessly

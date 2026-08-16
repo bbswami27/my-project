@@ -93,7 +93,10 @@ class ChatEngine {
       const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
       
       // 1. Sync from Server API
-      const resp = await fetch(`/api/users${currentUserId ? '?userId=' + currentUserId : ''}`);
+      const token = localStorage.getItem('gitpit_auth_token') || (window.AuthManager ? window.AuthManager.authToken : '');
+      const resp = await fetch(`/api/users${currentUserId ? '?userId=' + currentUserId : ''}`, {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      });
       const users = await resp.json();
       if (Array.isArray(users)) {
         this.registeredUsers = users;
@@ -1037,9 +1040,13 @@ class ChatEngine {
 
     // Persist via REST API Fallback
     try {
+      const token = localStorage.getItem('gitpit_auth_token') || (window.AuthManager ? window.AuthManager.authToken : '');
       fetch('/api/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
         body: JSON.stringify({
           ...newMsg,
           senderPhone: senderPhone,

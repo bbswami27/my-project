@@ -1,15 +1,21 @@
-// ChatterPatter - Production Authentication, Profile, Privacy, Multi-Device & Contact Sync Manager
+// ChatterPatter - Production Authentication, Persistent Sessions, Mandatory Phone Verification & Contact Sync Manager
 
 class AuthManager {
   constructor() {
     this.currentUser = null;
+    this.authToken = null;
     this.otpTimer = null;
     this.otpSecondsLeft = 0;
+    this.mandatoryOtpTimer = null;
+    this.mandatoryOtpSecondsLeft = 0;
+    this.pendingSocialUser = null;
     this.init();
   }
 
-  init() {
-    const savedUser = localStorage.getItem('chatterpatter_user') || localStorage.getItem('gitpit_user');
+  async init() {
+    this.authToken = localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token');
+    const savedUser = localStorage.getItem('gitpit_user') || localStorage.getItem('chatterpatter_user');
+    
     if (savedUser) {
       try {
         this.currentUser = JSON.parse(savedUser);
@@ -19,28 +25,73 @@ class AuthManager {
     }
 
     this.bindEvents();
-    this.renderUI();
+
+    // Verify session on server
+    if (this.authToken && this.currentUser && this.currentUser.phoneVerified) {
+      try {
+        const resp = await fetch('/api/auth/session', {
+          headers: { 'Authorization': `Bearer ${this.authToken}` }
+        });
+        const data = await resp.json();
+        if (data.success && data.user && data.user.phoneVerified) {
+          this.currentUser = data.user;
+          localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
+          this.renderAuthenticatedUI();
+          return;
+        }
+      } catch (err) {
+        console.warn('[AUTH] Session validation offline or network issue, using cached verified session');
+        if (this.currentUser && this.currentUser.phoneVerified) {
+          this.renderAuthenticatedUI();
+          return;
+        }
+      }
+    }
+
+    // If not authenticated or unverified, force Login modal
+    this.showLoginModal();
   }
 
-  renderUI() {
+  showLoginModal() {
     const authModal = document.getElementById('auth-overlay-modal');
+    if (authModal) {
+      authModal.classList.add('active');
+      authModal.style.display = 'flex';
+    }
+  }
+
+  hideLoginModal() {
+    const authModal = document.getElementById('auth-overlay-modal');
+    if (authModal) {
+      authModal.classList.remove('active');
+      authModal.style.display = 'none';
+    }
+  }
+
+  renderAuthenticatedUI() {
+    this.hideLoginModal();
+
     const profileAvatar = document.getElementById('current-user-avatar');
+    if (profileAvatar && this.currentUser) {
+      profileAvatar.src = this.currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${this.currentUser.id}`;
+      profileAvatar.title = `${this.currentUser.name} (${this.currentUser.phone || ''})`;
+    }
 
-    if (this.currentUser) {
-      if (authModal) authModal.classList.remove('active');
-      if (profileAvatar) {
-        profileAvatar.src = this.currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${this.currentUser.id}`;
-        profileAvatar.title = `${this.currentUser.name} (${this.currentUser.phone || this.currentUser.email || ''})`;
-      }
+    // Connect socket with authenticated user
+    if (window.ChatterApp && window.ChatterApp.socket) {
+      window.ChatterApp.socket.emit('user_join', this.currentUser);
+    }
 
-      // Notify socket server
-      if (window.ChatterApp && window.ChatterApp.socket && window.ChatterApp.socket.connected) {
-        window.ChatterApp.socket.emit('user_join', this.currentUser);
-      }
+    // If first time login, prompt contact sync consent
+    const syncDone = localStorage.getItem('gitpit_contacts_synced');
+    if (!syncDone) {
+      setTimeout(() => {
+        const consentModal = document.getElementById('contact-sync-consent-modal');
+        if (consentModal) consentModal.classList.add('active');
+      }, 800);
     } else {
-      // Show Welcome / Login Page
-      if (authModal) {
-        authModal.classList.add('active');
+      if (window.ChatEngine) {
+        window.ChatEngine.syncRegisteredUsers();
       }
     }
   }
@@ -67,11 +118,11 @@ class AuthManager {
       verifyOtpBtn.addEventListener('click', () => this.handleVerifyOtp());
     }
 
-    // Google 1-Click Sign-In
-    const googleBtns = document.querySelectorAll('.google-auth-btn');
-    googleBtns.forEach(btn => {
-      btn.addEventListener('click', () => this.handleGoogleLogin());
-    });
+    // Google Sign-In
+    const googleBtn = document.getElementById('btn-google-sign-in');
+    if (googleBtn) {
+      googleBtn.addEventListener('click', () => this.handleGoogleLogin());
+    }
 
     // Email / Password Form Submit
     const emailForm = document.getElementById('email-auth-form');
@@ -83,27 +134,8 @@ class AuthManager {
     }
 
     // OTP Input auto-focus & keyboard navigation
-    const otpBoxes = document.querySelectorAll('.otp-box-input');
-    otpBoxes.forEach((box, index) => {
-      box.addEventListener('input', () => {
-        if (box.value.length === 1 && index < otpBoxes.length - 1) {
-          otpBoxes[index + 1].focus();
-        }
-      });
-      box.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && box.value === '' && index > 0) {
-          otpBoxes[index - 1].focus();
-        }
-      });
-      box.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const pasteData = (e.clipboardData || window.clipboardData).getData('text').trim();
-        if (/^\d{6}$/.test(pasteData)) {
-          otpBoxes.forEach((b, i) => b.value = pasteData[i] || '');
-          otpBoxes[otpBoxes.length - 1].focus();
-        }
-      });
-    });
+    this.setupOtpInputNavigation('.otp-box-input');
+    this.setupOtpInputNavigation('.mandatory-otp-box');
 
     // Save Profile button
     const saveProfileBtn = document.getElementById('btn-save-user-profile');
@@ -124,6 +156,34 @@ class AuthManager {
     }
   }
 
+  setupOtpInputNavigation(selector) {
+    const otpBoxes = document.querySelectorAll(selector);
+    otpBoxes.forEach((box, index) => {
+      box.addEventListener('input', () => {
+        box.value = box.value.replace(/\D/g, '');
+        if (box.value.length === 1 && index < otpBoxes.length - 1) {
+          otpBoxes[index + 1].focus();
+        }
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && box.value === '' && index > 0) {
+          otpBoxes[index - 1].focus();
+        }
+      });
+      box.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+        if (pasteData.length > 0) {
+          pasteData.split('').forEach((d, i) => {
+            if (otpBoxes[i]) otpBoxes[i].value = d;
+          });
+          const targetIndex = Math.min(pasteData.length, otpBoxes.length - 1);
+          otpBoxes[targetIndex].focus();
+        }
+      });
+    });
+  }
+
   switchAuthMethod(method) {
     document.querySelectorAll('.auth-tab-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-method') === method);
@@ -134,21 +194,40 @@ class AuthManager {
     });
   }
 
+  normalizePhone(phone) {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 10) return `+91${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+    if (phone.startsWith('+')) return `+${digits}`;
+    return digits ? `+${digits}` : '';
+  }
+
+  // ==========================================
+  // MOBILE OTP AUTHENTICATION
+  // ==========================================
   async handleSendOtp() {
     const countryCode = document.getElementById('country-code-select').value;
-    const phoneInput = document.getElementById('mobile-number-input').value.trim();
+    const rawInput = document.getElementById('mobile-number-input').value.trim();
     const phoneError = document.getElementById('phone-error-msg');
+    const sendBtn = document.getElementById('btn-send-otp');
 
-    if (!phoneInput || phoneInput.length < 7) {
+    const cleanDigits = rawInput.replace(/\D/g, '');
+    if (!cleanDigits || cleanDigits.length < 10) {
       if (phoneError) {
-        phoneError.textContent = 'Please enter a valid mobile number.';
+        phoneError.textContent = 'Please enter a valid 10-digit mobile number.';
         phoneError.style.display = 'block';
       }
       return;
     }
 
-    const fullPhone = `${countryCode} ${phoneInput}`;
+    const fullPhone = `${countryCode}${cleanDigits.slice(-10)}`;
     if (phoneError) phoneError.style.display = 'none';
+
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending Code... ⏳';
+    }
 
     try {
       const resp = await fetch('/api/auth/send-otp', {
@@ -158,30 +237,29 @@ class AuthManager {
       });
       const data = await resp.json();
 
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send 6-Digit OTP 🚀';
+      }
+
       if (data.success) {
         document.getElementById('mobile-step-phone').style.display = 'none';
         document.getElementById('mobile-step-otp').style.display = 'block';
         document.getElementById('display-phone-target').textContent = fullPhone;
+        this.startOtpTimer(data.cooldown || 60);
 
-        if (data.devOtp) {
-          const otpBoxes = document.querySelectorAll('.otp-box-input');
-          data.devOtp.split('').forEach((digit, idx) => {
-            if (otpBoxes[idx]) otpBoxes[idx].value = digit;
-          });
-          const banner = document.getElementById('otp-demo-hint');
-          if (banner) {
-            banner.innerHTML = `✨ <b>Code Generated:</b> Auto-filled OTP code <code>${data.devOtp}</code>`;
-            banner.style.display = 'block';
-          }
-        }
-
-        this.startOtpTimer(60);
+        // Focus first OTP box
+        const firstBox = document.querySelector('.otp-box-input');
+        if (firstBox) firstBox.focus();
+      } else {
+        alert(data.error || 'Failed to send OTP. Please try again.');
       }
     } catch (err) {
-      document.getElementById('mobile-step-phone').style.display = 'none';
-      document.getElementById('mobile-step-otp').style.display = 'block';
-      document.getElementById('display-phone-target').textContent = fullPhone;
-      this.startOtpTimer(60);
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send 6-Digit OTP 🚀';
+      }
+      alert('Network error while requesting OTP. Please check your connection.');
     }
   }
 
@@ -206,15 +284,226 @@ class AuthManager {
 
   async handleVerifyOtp() {
     const countryCode = document.getElementById('country-code-select').value;
-    const phoneInput = document.getElementById('mobile-number-input').value.trim();
-    const displayName = document.getElementById('mobile-name-input')?.value.trim() || `User ${phoneInput.slice(-4)}`;
-    const fullPhone = `${countryCode} ${phoneInput}`;
+    const rawInput = document.getElementById('mobile-number-input').value.trim();
+    const cleanDigits = rawInput.replace(/\D/g, '').slice(-10);
+    const displayName = document.getElementById('mobile-name-input')?.value.trim() || `User ${cleanDigits.slice(-4)}`;
+    const fullPhone = `${countryCode}${cleanDigits}`;
 
     const otpBoxes = document.querySelectorAll('.otp-box-input');
     const otp = Array.from(otpBoxes).map(b => b.value).join('');
 
     if (otp.length < 6) {
-      alert('Please enter complete 6-digit OTP');
+      alert('Please enter complete 6-digit OTP code.');
+      return;
+    }
+
+    const verifyBtn = document.getElementById('btn-verify-otp');
+    const loadingState = document.getElementById('auth-loading-state');
+    const mobilePanel = document.getElementById('auth-panel-mobile');
+
+    if (verifyBtn) verifyBtn.disabled = true;
+    if (mobilePanel) mobilePanel.style.display = 'none';
+    if (loadingState) {
+      loadingState.style.display = 'block';
+      document.getElementById('auth-loading-text').textContent = 'Verifying Code & Authorizing...';
+    }
+
+    try {
+      const resp = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: fullPhone,
+          otp,
+          name: displayName,
+          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanDigits}`
+        })
+      });
+      const data = await resp.json();
+
+      if (loadingState) loadingState.style.display = 'none';
+      if (mobilePanel) mobilePanel.style.display = 'block';
+      if (verifyBtn) verifyBtn.disabled = false;
+
+      if (data.success && data.user && data.token) {
+        this.loginSuccess(data.user, data.token);
+      } else {
+        alert(data.error || 'Verification failed. Please check the code entered.');
+      }
+    } catch (err) {
+      if (loadingState) loadingState.style.display = 'none';
+      if (mobilePanel) mobilePanel.style.display = 'block';
+      if (verifyBtn) verifyBtn.disabled = false;
+      alert('Network error during verification. Please check your connection.');
+    }
+  }
+
+  // ==========================================
+  // GOOGLE SIGN-IN FLOW
+  // ==========================================
+  async handleGoogleLogin() {
+    const name = document.getElementById('google-name-input')?.value.trim() || 'Google User';
+    const email = document.getElementById('google-email-input')?.value.trim();
+
+    if (!email || !email.includes('@')) {
+      alert('Please enter a valid Gmail / Email address.');
+      const inp = document.getElementById('google-email-input');
+      if (inp) inp.focus();
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email })
+      });
+      const data = await resp.json();
+
+      if (data.success) {
+        if (data.phoneVerificationRequired) {
+          this.pendingSocialUser = { name, email, userId: data.userId };
+          this.openMandatoryPhoneModal();
+        } else if (data.user && data.token) {
+          this.loginSuccess(data.user, data.token);
+        }
+      } else {
+        alert(data.error || 'Google login failed.');
+      }
+    } catch (err) {
+      alert('Network error connecting to Google Auth service.');
+    }
+  }
+
+  // ==========================================
+  // EMAIL / PASSWORD FLOW
+  // ==========================================
+  async handleEmailAuth() {
+    const name = document.getElementById('email-name-input')?.value.trim() || 'User';
+    const email = document.getElementById('email-addr-input')?.value.trim();
+    const password = document.getElementById('email-password-input')?.value;
+
+    if (!email || !password || password.length < 6) {
+      alert('Please enter a valid email and a password of at least 6 characters.');
+      return;
+    }
+
+    try {
+      // Try login first, or register if new
+      let resp = await fetch('/api/auth/email/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      let data = await resp.json();
+
+      if (!resp.ok) {
+        // Try registering
+        resp = await fetch('/api/auth/email/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password })
+        });
+        data = await resp.json();
+      }
+
+      if (data.success) {
+        if (data.phoneVerificationRequired) {
+          this.pendingSocialUser = { name, email, userId: data.userId };
+          this.openMandatoryPhoneModal();
+        } else if (data.user && data.token) {
+          this.loginSuccess(data.user, data.token);
+        }
+      } else {
+        alert(data.error || 'Email authentication failed.');
+      }
+    } catch (err) {
+      alert('Network error connecting to email authentication.');
+    }
+  }
+
+  // ==========================================
+  // MANDATORY PHONE VERIFICATION MODAL
+  // ==========================================
+  openMandatoryPhoneModal() {
+    this.hideLoginModal();
+    const modal = document.getElementById('mandatory-phone-verify-modal');
+    if (modal) modal.classList.add('active');
+  }
+
+  async sendMandatoryPhoneOtp() {
+    const rawInput = document.getElementById('mandatory-phone-input').value.trim();
+    const cleanDigits = rawInput.replace(/\D/g, '').slice(-10);
+    const errElem = document.getElementById('mandatory-phone-error');
+    const sendBtn = document.getElementById('btn-send-mandatory-otp');
+
+    if (cleanDigits.length < 10) {
+      if (errElem) {
+        errElem.textContent = 'Please enter a valid 10-digit mobile number.';
+        errElem.style.display = 'block';
+      }
+      return;
+    }
+
+    const fullPhone = `+91${cleanDigits}`;
+    if (errElem) errElem.style.display = 'none';
+    if (sendBtn) sendBtn.disabled = true;
+
+    try {
+      const resp = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: fullPhone })
+      });
+      const data = await resp.json();
+      if (sendBtn) sendBtn.disabled = false;
+
+      if (data.success) {
+        document.getElementById('mandatory-step-phone').style.display = 'none';
+        document.getElementById('mandatory-step-otp').style.display = 'block';
+        document.getElementById('mandatory-display-phone').textContent = fullPhone;
+        this.startMandatoryOtpTimer(data.cooldown || 60);
+
+        const firstBox = document.querySelector('.mandatory-otp-box');
+        if (firstBox) firstBox.focus();
+      } else {
+        alert(data.error || 'Failed to send OTP.');
+      }
+    } catch (e) {
+      if (sendBtn) sendBtn.disabled = false;
+      alert('Network error sending OTP.');
+    }
+  }
+
+  startMandatoryOtpTimer(seconds) {
+    this.mandatoryOtpSecondsLeft = seconds;
+    const timerElem = document.getElementById('mandatory-otp-countdown');
+    const resendBtn = document.getElementById('btn-resend-mandatory-otp');
+    if (resendBtn) resendBtn.disabled = true;
+
+    clearInterval(this.mandatoryOtpTimer);
+    this.mandatoryOtpTimer = setInterval(() => {
+      this.mandatoryOtpSecondsLeft--;
+      if (timerElem) timerElem.textContent = `(${this.mandatoryOtpSecondsLeft}s)`;
+
+      if (this.mandatoryOtpSecondsLeft <= 0) {
+        clearInterval(this.mandatoryOtpTimer);
+        if (timerElem) timerElem.textContent = '';
+        if (resendBtn) resendBtn.disabled = false;
+      }
+    }, 1000);
+  }
+
+  async verifyMandatoryPhoneOtp() {
+    const rawInput = document.getElementById('mandatory-phone-input').value.trim();
+    const cleanDigits = rawInput.replace(/\D/g, '').slice(-10);
+    const fullPhone = `+91${cleanDigits}`;
+
+    const otpBoxes = document.querySelectorAll('.mandatory-otp-box');
+    const otp = Array.from(otpBoxes).map(b => b.value).join('');
+
+    if (otp.length < 6) {
+      alert('Please enter complete 6-digit OTP code.');
       return;
     }
 
@@ -225,146 +514,174 @@ class AuthManager {
         body: JSON.stringify({
           phone: fullPhone,
           otp,
-          displayName,
-          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phoneInput}`
+          name: this.pendingSocialUser ? this.pendingSocialUser.name : `User ${cleanDigits.slice(-4)}`,
+          email: this.pendingSocialUser ? this.pendingSocialUser.email : ''
         })
       });
       const data = await resp.json();
 
-      if (data.success && data.user) {
-        this.loginSuccess(data.user);
+      if (data.success && data.user && data.token) {
+        const modal = document.getElementById('mandatory-phone-verify-modal');
+        if (modal) modal.classList.remove('active');
+        this.loginSuccess(data.user, data.token);
       } else {
-        alert(data.error || 'Verification failed. Please check OTP.');
+        alert(data.error || 'Verification failed.');
       }
-    } catch (err) {
-      const user = {
-        id: 'user_' + phoneInput.replace(/[^0-9]/g, ''),
-        name: displayName,
-        phone: fullPhone,
-        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phoneInput}`,
-        status: 'Hey there! I am using ChatterPatter 🚀'
-      };
-      this.loginSuccess(user);
+    } catch (e) {
+      alert('Network error verifying OTP.');
     }
   }
 
-  handleGoogleLogin() {
-    const phoneInput = document.getElementById('google-mobile-number-input')?.value.trim();
-    if (!phoneInput || phoneInput.length < 10) {
-      alert('⚠️ Mobile Number is mandatory! Please enter a valid 10-digit mobile number before continuing with Google.');
-      const inp = document.getElementById('google-mobile-number-input');
-      if (inp) inp.focus();
-      return;
-    }
-
-    const googleName = prompt('Enter your Name for Google Sign-In:', 'Google User') || 'Google User';
-    const cleanPhone = phoneInput.replace(/\D/g, '').slice(-10);
-    const googleUser = {
-      id: 'user_' + cleanPhone,
-      name: googleName,
-      phone: '+91 ' + cleanPhone,
-      email: `${googleName.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${cleanPhone}`,
-      status: 'Chatting on GitPit ✨'
-    };
-    this.loginSuccess(googleUser);
-  }
-
-  handleEmailAuth() {
-    const name = document.getElementById('email-name-input').value.trim() || 'GitPit User';
-    const phoneInput = document.getElementById('email-phone-input')?.value.trim();
-    const email = document.getElementById('email-addr-input').value.trim();
-    const avatarChoice = document.querySelector('input[name="avatar-choice"]:checked')?.value || 'adventurer';
-
-    if (!phoneInput || phoneInput.length < 10) {
-      alert('⚠️ Mobile Number is mandatory! Please enter your 10-digit mobile number.');
-      const inp = document.getElementById('email-phone-input');
-      if (inp) inp.focus();
-      return;
-    }
-
-    const cleanPhone = phoneInput.replace(/\D/g, '').slice(-10);
-    const user = {
-      id: 'user_' + cleanPhone,
-      name: name,
-      phone: '+91 ' + cleanPhone,
-      email: email,
-      avatar: `https://api.dicebear.com/7.x/${avatarChoice}/svg?seed=${cleanPhone}`,
-      status: 'Chatting on GitPit ✨'
-    };
-    this.loginSuccess(user);
-  }
-
-  loginSuccess(user) {
+  // ==========================================
+  // SUCCESSFUL LOGIN HANDLER
+  // ==========================================
+  loginSuccess(user, token) {
     this.currentUser = {
       ...user,
-      privacy: user.privacy || {
-        hidePhone: false,
-        hideEmail: false,
-        hideDob: false,
-        hideLastSeen: false
-      }
+      phoneVerified: true
     };
+    this.authToken = token;
 
-    localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
     localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
+    localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
+    localStorage.setItem('gitpit_auth_token', token);
+    localStorage.setItem('chatterpatter_token', token);
 
-    const authModal = document.getElementById('auth-overlay-modal');
-    if (authModal) authModal.classList.remove('active');
-
-    const profileAvatar = document.getElementById('current-user-avatar');
-    if (profileAvatar) profileAvatar.src = this.currentUser.avatar;
-
-    if (window.ChatterApp && window.ChatterApp.socket) {
-      window.ChatterApp.socket.emit('user_join', this.currentUser);
-    }
-
-    if (window.ChatEngine) {
-      window.ChatEngine.syncRegisteredUsers();
-    }
-
-    alert(`🎉 Welcome to GitPit, ${this.currentUser.name}!`);
+    this.renderAuthenticatedUI();
   }
 
-  logout() {
-    if (confirm('Are you sure you want to log out and start a fresh login?')) {
+  // ==========================================
+  // NATIVE CONTACT SYNC VIA CAPACITOR / WEB
+  // ==========================================
+  async grantContactsAndSync() {
+    const consentModal = document.getElementById('contact-sync-consent-modal');
+    if (consentModal) consentModal.classList.remove('active');
+    localStorage.setItem('gitpit_contacts_synced', 'true');
+
+    let rawContacts = [];
+
+    // 1. Try Native Capacitor Plugin
+    if (window.Capacitor && window.Capacitor.isPluginAvailable('Contacts')) {
+      try {
+        const result = await window.Capacitor.Plugins.Contacts.getContacts();
+        if (result && result.contacts) {
+          rawContacts = result.contacts;
+        }
+      } catch (err) {
+        console.warn('[CONTACTS] Capacitor plugin access warning:', err.message);
+      }
+    }
+
+    // 2. Try Web Contacts API
+    if (rawContacts.length === 0 && 'contacts' in navigator && 'ContactsManager' in window) {
+      try {
+        const props = ['name', 'tel'];
+        const webContacts = await navigator.contacts.select(props, { multiple: true });
+        if (webContacts && Array.isArray(webContacts)) {
+          rawContacts = webContacts.map(c => ({
+            name: Array.isArray(c.name) ? c.name[0] : (c.name || 'Friend'),
+            phones: c.tel || []
+          }));
+        }
+      } catch (e) {}
+    }
+
+    // Process & Sync Found Contacts
+    if (rawContacts.length > 0) {
+      const phonebook = JSON.parse(localStorage.getItem('gitpit_phonebook') || '{}');
+      const phonesToSync = [];
+
+      rawContacts.forEach(c => {
+        const contactName = c.name || c.displayName || 'Friend';
+        const numbers = Array.isArray(c.phones) ? c.phones : [c.phoneNumber || c.phone || ''];
+        
+        numbers.forEach(num => {
+          if (!num) return;
+          const clean10 = num.replace(/\D/g, '').slice(-10);
+          if (clean10.length === 10) {
+            const normalized = `+91${clean10}`;
+            phonesToSync.push(normalized);
+            phonebook[clean10] = {
+              savedName: contactName,
+              phone: normalized,
+              contactId: `user_${clean10}`
+            };
+          }
+        });
+      });
+
+      localStorage.setItem('gitpit_phonebook', JSON.stringify(phonebook));
+
+      // Match against backend registered users
+      if (phonesToSync.length > 0 && this.authToken) {
+        try {
+          const resp = await fetch('/api/contacts/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.authToken}`
+            },
+            body: JSON.stringify({ phoneNumbers: phonesToSync })
+          });
+          const data = await resp.json();
+          if (data.matchedUsers) {
+            alert(`✅ Contacts Synced! Found ${data.matchedUsers.length} people using ChatterPatter.`);
+            if (window.ChatEngine) {
+              window.ChatEngine.syncRegisteredUsers();
+            }
+          }
+        } catch (e) {
+          console.warn('[CONTACTS SYNC API] Error matching contacts:', e.message);
+        }
+      }
+    } else {
+      // Prompt quick manual contact entry
+      if (window.ChatEngine) {
+        window.ChatEngine.syncRegisteredUsers();
+      }
+    }
+  }
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+  async logout() {
+    if (confirm('Are you sure you want to log out?')) {
+      if (this.authToken) {
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${this.authToken}` }
+          });
+        } catch (e) {}
+      }
+
       localStorage.removeItem('chatterpatter_user');
       localStorage.removeItem('gitpit_user');
-      localStorage.removeItem('gitpit_auth_user');
+      localStorage.removeItem('gitpit_auth_token');
+      localStorage.removeItem('chatterpatter_token');
+      localStorage.removeItem('gitpit_contacts_synced');
       sessionStorage.clear();
-      this.currentUser = null;
 
-      // Close open modals
+      this.currentUser = null;
+      this.authToken = null;
+
+      // Close all modals
       document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
 
-      // Close active chat
       if (window.ChatEngine) {
         window.ChatEngine.closeActiveChat();
       }
 
-      // Reset avatar
+      // Reset profile avatar
       const profileAvatar = document.getElementById('current-user-avatar');
       if (profileAvatar) {
         profileAvatar.src = 'assets/logo-icon.svg';
-        profileAvatar.title = 'Guest / Logged Out';
+        profileAvatar.title = 'Logged Out';
       }
 
-      // Reset login form fields
-      const phoneInput = document.getElementById('mobile-number-input');
-      if (phoneInput) phoneInput.value = '';
-      const stepPhone = document.getElementById('mobile-step-phone');
-      const stepOtp = document.getElementById('mobile-step-otp');
-      if (stepPhone) stepPhone.style.display = 'block';
-      if (stepOtp) stepOtp.style.display = 'none';
-
-      // Open fresh Auth modal
-      const authModal = document.getElementById('auth-overlay-modal');
-      if (authModal) {
-        authModal.classList.add('active');
-        authModal.style.display = 'flex';
-      }
-
-      alert('👋 You have been logged out. Please log in with your phone or email!');
+      // Show fresh login modal
+      this.showLoginModal();
     }
   }
 
@@ -385,14 +702,13 @@ class AuthManager {
     if (!modal) return;
 
     const u = this.currentUser || {
-      name: 'Guest User',
-      username: '@guest',
+      name: 'User',
+      username: '@user',
       phone: '',
       email: '',
-      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Guest',
+      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=user',
       bio: 'Hey there! I am using ChatterPatter 🚀',
-      dob: '',
-      privacy: { hidePhone: false, hideEmail: false, hideDob: false, hideLastSeen: false }
+      privacy: {}
     };
 
     const avatarImg = document.getElementById('profile-modal-avatar');
@@ -400,9 +716,6 @@ class AuthManager {
 
     const nameInp = document.getElementById('profile-name-input');
     if (nameInp) nameInp.value = u.name || '';
-
-    const userInp = document.getElementById('profile-username-input');
-    if (userInp) userInp.value = u.username || '';
 
     const bioInp = document.getElementById('profile-bio-input');
     if (bioInp) bioInp.value = u.bio || u.status || '';
@@ -413,23 +726,6 @@ class AuthManager {
     const emailInp = document.getElementById('profile-email-input');
     if (emailInp) emailInp.value = u.email || '';
 
-    const dobInp = document.getElementById('profile-dob-input');
-    if (dobInp) dobInp.value = u.dob || '';
-
-    // Privacy Toggles
-    const priv = u.privacy || {};
-    const hidePhoneCb = document.getElementById('privacy-hide-phone');
-    if (hidePhoneCb) hidePhoneCb.checked = !!priv.hidePhone;
-
-    const hideEmailCb = document.getElementById('privacy-hide-email');
-    if (hideEmailCb) hideEmailCb.checked = !!priv.hideEmail;
-
-    const hideDobCb = document.getElementById('privacy-hide-dob');
-    if (hideDobCb) hideDobCb.checked = !!priv.hideDob;
-
-    const hideLastSeenCb = document.getElementById('privacy-hide-lastseen');
-    if (hideLastSeenCb) hideLastSeenCb.checked = !!priv.hideLastSeen;
-
     modal.classList.add('active');
   }
 
@@ -438,16 +734,6 @@ class AuthManager {
 
     const name = document.getElementById('profile-name-input')?.value.trim() || this.currentUser.name;
     const bio = document.getElementById('profile-bio-input')?.value.trim() || '';
-    const phone = document.getElementById('profile-phone-input')?.value.trim() || '';
-    const email = document.getElementById('profile-email-input')?.value.trim() || '';
-    const dob = document.getElementById('profile-dob-input')?.value || '';
-
-    const privacy = {
-      hidePhone: document.getElementById('privacy-hide-phone')?.checked || false,
-      hideEmail: document.getElementById('privacy-hide-email')?.checked || false,
-      hideDob: document.getElementById('privacy-hide-dob')?.checked || false,
-      hideLastSeen: document.getElementById('privacy-hide-lastseen')?.checked || false
-    };
 
     if (this.currentUser.tempAvatar) {
       this.currentUser.avatar = this.currentUser.tempAvatar;
@@ -457,177 +743,20 @@ class AuthManager {
     this.currentUser.name = name;
     this.currentUser.bio = bio;
     this.currentUser.status = bio;
-    this.currentUser.phone = phone;
-    this.currentUser.email = email;
-    this.currentUser.dob = dob;
-    this.currentUser.privacy = privacy;
 
-    localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
     localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
+    localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
 
     const profileAvatar = document.getElementById('current-user-avatar');
     if (profileAvatar) profileAvatar.src = this.currentUser.avatar;
 
-    // Send privacy and profile update to server
-    try {
-      await fetch('/api/user/privacy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: this.currentUser.id, privacy })
-      });
-    } catch(e) {}
-
-    alert('✅ Profile and Privacy Settings updated successfully!');
     const modal = document.getElementById('user-profile-modal');
     if (modal) modal.classList.remove('active');
-  }
-
-  // ================= PHONEBOOK CONTACTS STORAGE =================
-  getPhonebook() {
-    try {
-      return JSON.parse(localStorage.getItem('gitpit_phonebook') || '{}');
-    } catch(e) {
-      return {};
-    }
-  }
-
-  saveContactToPhonebook(contactId, savedName, phoneNumber = '') {
-    const phonebook = this.getPhonebook();
-    phonebook[contactId] = {
-      savedName: savedName.trim(),
-      phone: phoneNumber.trim(),
-      updatedAt: Date.now()
-    };
-    if (phoneNumber) {
-      const clean = phoneNumber.replace(/\D/g, '').slice(-10);
-      if (clean) phonebook[clean] = { savedName: savedName.trim(), contactId, phone: phoneNumber.trim() };
-    }
-    localStorage.setItem('gitpit_phonebook', JSON.stringify(phonebook));
-    
-    // Update active chat if open
-    if (window.ChatEngine) {
-      const chat = window.ChatEngine.chats.find(c => c.id === contactId);
-      if (chat) {
-        chat.savedName = savedName.trim();
-        chat.name = savedName.trim();
-        window.ChatEngine.saveChats();
-        window.ChatEngine.renderChatList();
-        if (window.ChatEngine.activeChatId === contactId) {
-          const headerName = document.getElementById('active-chat-name');
-          if (headerName) headerName.textContent = savedName.trim();
-        }
-      }
-    }
-    return phonebook;
-  }
-
-  // ================= LINKED DEVICES MODAL =================
-  openLinkedDevicesModal() {
-    const modal = document.getElementById('linked-devices-modal');
-    if (!modal) return;
-
-    const list = document.getElementById('linked-devices-list');
-    if (list) {
-      list.innerHTML = `
-        <div class="linked-device-card active">
-          <div class="device-icon">💻</div>
-          <div class="device-details">
-            <div class="device-name">Current Device (${navigator.platform || 'Web'})</div>
-            <div class="device-meta">Active now • IP: Local • Web Browser</div>
-          </div>
-          <div class="device-status-badge">Active</div>
-        </div>
-        <div class="linked-device-card">
-          <div class="device-icon">📱</div>
-          <div class="device-details">
-            <div class="device-name">Android Phone (GitPit App)</div>
-            <div class="device-meta">Linked • Real-time Sync Active</div>
-          </div>
-          <button class="btn-unlink-device" onclick="alert('Device unlinked successfully!')">Unlink</button>
-        </div>
-      `;
-    }
-
-    modal.classList.add('active');
-  }
-
-  // ================= CONTACT SYNC MODAL =================
-  openContactSyncModal() {
-    const modal = document.getElementById('contact-sync-modal');
-    if (!modal) return;
-    modal.classList.add('active');
-  }
-
-  async syncPhoneContacts() {
-    // 1. If Web Contacts API is supported in mobile browser
-    if ('contacts' in navigator && 'ContactsManager' in window) {
-      try {
-        const props = ['name', 'tel'];
-        const contacts = await navigator.contacts.select(props, { multiple: true });
-        const phones = contacts.flatMap(c => c.tel || []);
-        
-        contacts.forEach(c => {
-          const name = Array.isArray(c.name) ? c.name[0] : (c.name || 'Friend');
-          const tels = c.tel || [];
-          tels.forEach(t => {
-            const clean = (t || '').replace(/\D/g, '').slice(-10);
-            if (clean) {
-              this.saveContactToPhonebook('user_' + clean, name, t);
-            }
-          });
-        });
-
-        const resp = await fetch('/api/contacts/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phoneNumbers: phones })
-        });
-        const data = await resp.json();
-        alert(`✅ Synced! Found ${data.matchedUsers ? data.matchedUsers.length : 0} contacts on GitPit!`);
-        if (window.ChatEngine) window.ChatEngine.syncRegisteredUsers();
-      } catch(e) {
-        console.log('Native contact selection fallback');
-      }
-    } else {
-      // 2. Interactive quick add contact to phonebook
-      const name = prompt('Enter Contact Name to add to Phonebook:', '');
-      if (!name) return;
-      const phone = prompt(`Enter 10-digit Mobile Number for "${name}":`, '');
-      if (!phone) return;
-
-      const cleanPhone = phone.replace(/\D/g, '').slice(-10);
-      const contactId = 'user_' + cleanPhone;
-      this.saveContactToPhonebook(contactId, name, '+91 ' + cleanPhone);
-
-      // Add to chats list directly so it's on the panel
-      if (window.ChatEngine) {
-        let existing = window.ChatEngine.chats.find(c => c.id === contactId || (c.phone && c.phone.includes(cleanPhone)));
-        if (!existing) {
-          existing = {
-            id: contactId,
-            name: name,
-            savedName: name,
-            phone: '+91 ' + cleanPhone,
-            avatar: 'assets/logo-icon.svg',
-            unreadCount: 0,
-            online: true,
-            messages: []
-          };
-          window.ChatEngine.chats.push(existing);
-        } else {
-          existing.name = name;
-          existing.savedName = name;
-        }
-        window.ChatEngine.saveChats();
-        window.ChatEngine.renderChatList();
-        window.ChatEngine.openChat(contactId);
-        alert(`✅ "${name}" (${phone}) added to your Phonebook & Chat Panel!`);
-      }
-    }
+    alert('✅ Profile updated successfully!');
   }
 }
 
-// Global instance
+// Instantiate globally
 window.addEventListener('DOMContentLoaded', () => {
   window.AuthManager = new AuthManager();
 });

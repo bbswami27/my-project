@@ -986,18 +986,28 @@
   <div class="auth-overlay" id="auth-overlay-modal" style="display: none;">
     <div class="auth-card">
       <img class="auth-brand-logo" src="assets/logo.svg" alt="GitPit">
-      <h2 class="auth-headline">Welcome to GitPit</h2>
-      <p class="auth-subline">Connect with friends, share stories, enjoy video calls, UPI payments & live news.</p>
+      <h2 class="auth-headline">Welcome to ChatterPatter</h2>
+      <p class="auth-subline">Connect with friends, share stories, enjoy HD video calls & real-time messaging.</p>
 
       <div class="auth-methods-tabs">
         <button class="auth-tab-btn active" data-method="mobile">📱 Mobile OTP</button>
         <button class="auth-tab-btn" data-method="google">🌐 Google Sign-In</button>
         <button class="auth-tab-btn" data-method="email">✉️ Email</button>
-        <button class="auth-tab-btn" data-method="demo">⚡ Demo Profiles</button>
       </div>
 
+      <!-- Loading State Overlay -->
+      <div id="auth-loading-state" style="display: none; text-align: center; padding: 24px 0;">
+        <div style="font-size: 36px; animation: spin 1s infinite linear;">⏳</div>
+        <div style="font-weight: 700; color: var(--text-primary); margin-top: 10px; font-size: 15px;" id="auth-loading-text">Verifying...</div>
+      </div>
+
+      <!-- Mobile OTP Panel -->
       <div class="auth-form-panel active" id="auth-panel-mobile">
         <div id="mobile-step-phone">
+          <div class="form-group">
+            <label class="form-label">Full Name (Optional)</label>
+            <input type="text" id="mobile-name-input" class="auth-input" placeholder="Your Name">
+          </div>
           <div class="form-group">
             <label class="form-label">Enter Mobile Number</label>
             <div class="phone-input-group">
@@ -1020,38 +1030,39 @@
           <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">
             OTP code sent to <b id="display-phone-target" style="color: var(--text-primary)"></b>
           </p>
-          <div id="otp-demo-hint" style="background: rgba(2, 132, 199, 0.15); border: 1px solid var(--brand-blue); border-radius: 6px; padding: 8px; font-size: 12px; color: var(--text-primary); margin-bottom: 12px; display: none;"></div>
           
           <div class="otp-boxes-grid">
-            <input type="text" maxlength="1" class="otp-box-input">
-            <input type="text" maxlength="1" class="otp-box-input">
-            <input type="text" maxlength="1" class="otp-box-input">
-            <input type="text" maxlength="1" class="otp-box-input">
-            <input type="text" maxlength="1" class="otp-box-input">
-            <input type="text" maxlength="1" class="otp-box-input">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
           </div>
 
           <div class="otp-resend-row">
             <span>Didn't receive code? <span id="otp-countdown"></span></span>
-            <button class="resend-link-btn" id="btn-resend-otp" onclick="window.AuthManager.handleSendOtp()">Resend OTP</button>
+            <button class="resend-link-btn" id="btn-resend-otp" onclick="window.AuthManager && window.AuthManager.handleSendOtp()">Resend OTP</button>
           </div>
 
           <button class="auth-submit-btn" id="btn-verify-otp">
-            Verify & Enter GitPit ✨
+            Verify & Continue ✨
           </button>
         </div>
       </div>
 
+      <!-- Google Sign-In Panel -->
       <div class="auth-form-panel" id="auth-panel-google">
         <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 12px;">
-          Instant 1-Click access with Google (Mobile Number required for chats & calling):
+          Continue with Google account (Verified mobile number is required before accessing chats):
         </p>
         <div class="form-group" style="margin-bottom: 14px;">
-          <label class="form-label">📱 Mobile Number (Mandatory)</label>
-          <div class="phone-input-group">
-            <span style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px 0 0 8px; font-weight: 600; color: var(--text-primary); font-size: 13px;">🇮🇳 +91</span>
-            <input type="tel" id="google-mobile-number-input" class="auth-input" placeholder="Enter 10-digit mobile number" style="border-radius: 0 8px 8px 0;" required>
-          </div>
+          <label class="form-label">Full Name</label>
+          <input type="text" id="google-name-input" class="auth-input" placeholder="e.g. Rahul Sharma">
+        </div>
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Gmail / Email Address</label>
+          <input type="email" id="google-email-input" class="auth-input" placeholder="username@gmail.com">
         </div>
         <button class="google-auth-btn" id="btn-google-sign-in">
           <svg class="google-icon" viewBox="0 0 48 48">
@@ -1064,6 +1075,7 @@
         </button>
       </div>
 
+      <!-- Email / Password Panel -->
       <div class="auth-form-panel" id="auth-panel-email">
         <form id="email-auth-form">
           <div class="form-group">
@@ -1071,32 +1083,92 @@
             <input type="text" id="email-name-input" class="auth-input" placeholder="e.g. Vikramaditya" required>
           </div>
           <div class="form-group">
-            <label class="form-label">📱 Mobile Number (Mandatory)</label>
-            <input type="tel" id="email-phone-input" class="auth-input" placeholder="e.g. 9876543210" required>
-          </div>
-          <div class="form-group">
             <label class="form-label">Email Address</label>
             <input type="email" id="email-addr-input" class="auth-input" placeholder="name@domain.com" required>
           </div>
           <div class="form-group">
-            <label class="form-label">Choose Avatar</label>
-            <div style="display: flex; gap: 10px; margin-top: 6px;">
-              <label style="cursor: pointer;"><input type="radio" name="avatar-choice" value="bottts" checked> 🤖 Robot</label>
-              <label style="cursor: pointer;"><input type="radio" name="avatar-choice" value="adventurer"> 🧑 Person</label>
-              <label style="cursor: pointer;"><input type="radio" name="avatar-choice" value="fun-emoji"> 😎 Emoji</label>
-            </div>
+            <label class="form-label">Password</label>
+            <input type="password" id="email-password-input" class="auth-input" placeholder="Enter secure password" required>
           </div>
           <button type="submit" class="auth-submit-btn">
-            Create Profile & Start Chatting
+            Create Account & Verify Phone
           </button>
         </form>
       </div>
+    </div>
+  </div>
 
-      <div class="auth-form-panel" id="auth-panel-demo">
-        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
-          Choose any test profile to instantly test multi-user chat and calls:
+  <!-- CONTACT SYNC CONSENT & ONBOARDING MODAL -->
+  <div class="modal-overlay" id="contact-sync-consent-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: center;">
+      <div class="modal-body" style="padding: 24px 20px;">
+        <div style="font-size: 48px; margin-bottom: 12px;">📖 ⇄ 👥</div>
+        <h3 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">Find Your Friends on ChatterPatter</h3>
+        <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
+          ChatterPatter matches your device phonebook contacts with registered users so you can instantly message and video call with your real contacts.
         </p>
-        <div class="demo-profiles-grid" id="demo-profiles-container"></div>
+        
+        <div style="background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle); text-align: left; margin-bottom: 20px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--brand-blue); margin-bottom: 4px;">🔒 Privacy Notice:</div>
+          <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">
+            • Contact phone numbers are only matched to identify existing accounts.<br>
+            • Your address book remains private, isolated per user, and is never sold or spammed.
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="auth-submit-btn" id="btn-consent-sync-contacts" style="background: var(--brand-green); font-weight: 700;" onclick="window.AuthManager && window.AuthManager.grantContactsAndSync()">
+            Grant Permission & Sync Contacts 📲
+          </button>
+          <button class="auth-submit-btn" id="btn-skip-sync-contacts" style="background: transparent; color: var(--text-muted); border: 1px solid var(--border-subtle);" onclick="document.getElementById('contact-sync-consent-modal').classList.remove('active')">
+            Skip for Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MANDATORY MOBILE VERIFICATION MODAL FOR EMAIL/GOOGLE -->
+  <div class="modal-overlay" id="mandatory-phone-verify-modal">
+    <div class="modal-card" style="max-width: 420px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">📱 Mobile Verification Required</h3>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          Every ChatterPatter account requires a verified mobile number for calling, group chats, and end-to-end security.
+        </p>
+
+        <div id="mandatory-step-phone">
+          <div class="form-group">
+            <label class="form-label">Enter Your Mobile Number</label>
+            <div class="phone-input-group">
+              <span style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px 0 0 8px; font-weight: 600; color: var(--text-primary); font-size: 13px;">🇮🇳 +91</span>
+              <input type="tel" id="mandatory-phone-input" class="auth-input" placeholder="98765 43210" style="border-radius: 0 8px 8px 0;">
+            </div>
+            <div id="mandatory-phone-error" style="color: var(--brand-danger); font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <button class="auth-submit-btn" id="btn-send-mandatory-otp" onclick="window.AuthManager && window.AuthManager.sendMandatoryPhoneOtp()">Send Verification OTP 🚀</button>
+        </div>
+
+        <div id="mandatory-step-otp" style="display: none;">
+          <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 10px;">
+            Code sent to <b id="mandatory-display-phone"></b>
+          </p>
+          <div class="otp-boxes-grid">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+          </div>
+          <div class="otp-resend-row" style="margin: 10px 0;">
+            <span>Resend in <span id="mandatory-otp-countdown"></span></span>
+            <button class="resend-link-btn" id="btn-resend-mandatory-otp" onclick="window.AuthManager && window.AuthManager.sendMandatoryPhoneOtp()">Resend OTP</button>
+          </div>
+          <button class="auth-submit-btn" id="btn-verify-mandatory-otp" onclick="window.AuthManager && window.AuthManager.verifyMandatoryPhoneOtp()">Verify & Complete Setup ✨</button>
+        </div>
       </div>
     </div>
   </div>

@@ -1,5 +1,5 @@
 {
-  "appId": "com.gitpit.app",
+  "appId": "com.chatterpatter.app",
   "appName": "ChatterPatter",
   "webDir": "public",
   "server": {
