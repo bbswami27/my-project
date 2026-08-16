@@ -48,6 +48,23 @@ app.get('/api/health', (req, res) => res.status(200).json({
 }));
 app.get('/ping', (req, res) => res.json({ status: 'live', app: 'ChatterPatter', time: new Date().toISOString() }));
 
+// Safe Isolated R2 Object Storage Health Self-Check Endpoint
+app.get('/api/storage/r2-check', async (req, res) => {
+  try {
+    const report = await storageService.runR2SelfCheck();
+    res.json({
+      status: 'ok',
+      time: new Date().toISOString(),
+      report
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      error: err.message
+    });
+  }
+});
+
 // Active Sockets Mapping: socketId -> user profile
 const activeUsers = new Map();
 
