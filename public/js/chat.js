@@ -93,8 +93,9 @@ class ChatEngine {
       const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
       
       // 1. Sync from Server API
+      const base = window.API_BASE || '';
       const token = localStorage.getItem('gitpit_auth_token') || (window.AuthManager ? window.AuthManager.authToken : '');
-      const resp = await fetch(`/api/users${currentUserId ? '?userId=' + currentUserId : ''}`, {
+      const resp = await fetch(`${base}/api/users${currentUserId ? '?userId=' + currentUserId : ''}`, {
         headers: { 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const users = await resp.json();
@@ -1040,8 +1041,9 @@ class ChatEngine {
 
     // Persist via REST API Fallback
     try {
+      const base = window.API_BASE || '';
       const token = localStorage.getItem('gitpit_auth_token') || (window.AuthManager ? window.AuthManager.authToken : '');
-      fetch('/api/messages', {
+      fetch(`${base}/api/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -60,7 +60,8 @@ class NewsService {
 
   async fetchFlashNews() {
     try {
-      const resp = await fetch('/api/news/flash');
+      const base = window.API_BASE || '';
+      const resp = await fetch(`${base}/api/news/flash`);
       const data = await resp.json();
       if (data.ticker && data.ticker.length > 0) {
         this.tickerItems = data.ticker;
@@ -79,7 +80,8 @@ class NewsService {
 
   async fetchArticles(category = 'All') {
     try {
-      const url = category === 'All' ? '/api/news' : `/api/news?category=${category}`;
+      const base = window.API_BASE || '';
+      const url = category === 'All' ? `${base}/api/news` : `${base}/api/news?category=${category}`;
       const resp = await fetch(url);
       const data = await resp.json();
       if (Array.isArray(data) && data.length > 0) {

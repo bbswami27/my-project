@@ -162,14 +162,17 @@ app.post('/api/auth/send-otp', async (req, res) => {
   db.storeOtp(normalized, otpNumber, 600); // 10 mins expiry
 
   // Dispatch SMS
+  const smsProvider = process.env.SMS_PROVIDER;
+  const isExternalSmsConfigured = (smsProvider === 'twilio' && process.env.TWILIO_ACCOUNT_SID) || (smsProvider === 'fast2sms' && process.env.FAST2SMS_API_KEY);
   await sendSmsOtp(normalized, otpNumber);
 
   res.json({
     success: true,
-    message: `Verification code sent to ${normalized}`,
+    message: `Verification code generated for ${normalized}`,
     phone: normalized,
     expiresIn: 600,
-    cooldown: 60
+    cooldown: 60,
+    codeHint: !isExternalSmsConfigured ? otpNumber : null
   });
 });
 

@@ -1,5 +1,19 @@
 // ChatterPatter - Production Authentication, Persistent Sessions, Mandatory Phone Verification & Contact Sync Manager
 
+function getApiBaseUrl() {
+  if (typeof window !== 'undefined' && window.location) {
+    const origin = window.location.origin;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    if (protocol === 'file:' || hostname === 'localhost' || hostname === '127.0.0.1' || origin.includes('capacitor://') || origin.includes('ionic://')) {
+      return 'https://chitchat-chatterpatter.onrender.com';
+    }
+  }
+  return '';
+}
+
+window.API_BASE = getApiBaseUrl();
+
 class AuthManager {
   constructor() {
     this.currentUser = null;
@@ -16,9 +30,21 @@ class AuthManager {
     this.authToken = localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token');
     const savedUser = localStorage.getItem('gitpit_user') || localStorage.getItem('chatterpatter_user');
     
+    // Purge any legacy stale mock/guest users
     if (savedUser) {
       try {
-        this.currentUser = JSON.parse(savedUser);
+        const u = JSON.parse(savedUser);
+        const isLegacyDemo = !u || !u.id || u.id === 'user_guest' || u.id === 'user_demo' || u.name === 'Guest User' || ['user_alex', 'user_priya', 'user_rahul', 'user_sarah'].includes(u.id);
+        if (isLegacyDemo || !this.authToken) {
+          localStorage.removeItem('gitpit_user');
+          localStorage.removeItem('chatterpatter_user');
+          localStorage.removeItem('gitpit_auth_token');
+          localStorage.removeItem('chatterpatter_token');
+          this.currentUser = null;
+          this.authToken = null;
+        } else {
+          this.currentUser = u;
+        }
       } catch (e) {
         this.currentUser = null;
       }
@@ -26,29 +52,34 @@ class AuthManager {
 
     this.bindEvents();
 
-    // Verify session on server
+    // Verify session on server if token and user exist
     if (this.authToken && this.currentUser && this.currentUser.phoneVerified) {
       try {
-        const resp = await fetch('/api/auth/session', {
+        const resp = await fetch(`${window.API_BASE}/api/auth/session`, {
           headers: { 'Authorization': `Bearer ${this.authToken}` }
         });
         const data = await resp.json();
         if (data.success && data.user && data.user.phoneVerified) {
           this.currentUser = data.user;
           localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
+          localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
           this.renderAuthenticatedUI();
+          return;
+        } else {
+          // Token expired or invalid on server
+          this.logout(false);
           return;
         }
       } catch (err) {
-        console.warn('[AUTH] Session validation offline or network issue, using cached verified session');
-        if (this.currentUser && this.currentUser.phoneVerified) {
+        console.warn('[AUTH] Offline or network check, validating cached session');
+        if (this.currentUser && this.currentUser.phoneVerified && this.authToken) {
           this.renderAuthenticatedUI();
           return;
         }
       }
     }
 
-    // If not authenticated or unverified, force Login modal
+    // Default: Show Login modal for all fresh / unauthenticated visits
     this.showLoginModal();
   }
 
@@ -82,6 +113,11 @@ class AuthManager {
       window.ChatterApp.socket.emit('user_join', this.currentUser);
     }
 
+    // Sync Contacts
+    if (window.ChatEngine) {
+      window.ChatEngine.syncRegisteredUsers();
+    }
+
     // If first time login, prompt contact sync consent
     const syncDone = localStorage.getItem('gitpit_contacts_synced');
     if (!syncDone) {
@@ -89,10 +125,6 @@ class AuthManager {
         const consentModal = document.getElementById('contact-sync-consent-modal');
         if (consentModal) consentModal.classList.add('active');
       }, 800);
-    } else {
-      if (window.ChatEngine) {
-        window.ChatEngine.syncRegisteredUsers();
-      }
     }
   }
 
@@ -146,7 +178,7 @@ class AuthManager {
     // Logout button
     const logoutBtns = document.querySelectorAll('.btn-logout-account');
     logoutBtns.forEach(btn => {
-      btn.addEventListener('click', () => this.logout());
+      btn.addEventListener('click', () => this.logout(true));
     });
 
     // Avatar generation trigger in profile
@@ -230,7 +262,7 @@ class AuthManager {
     }
 
     try {
-      const resp = await fetch('/api/auth/send-otp', {
+      const resp = await fetch(`${window.API_BASE}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: fullPhone })
@@ -248,7 +280,14 @@ class AuthManager {
         document.getElementById('display-phone-target').textContent = fullPhone;
         this.startOtpTimer(data.cooldown || 60);
 
-        // Focus first OTP box
+        if (data.codeHint) {
+          const otpBoxes = document.querySelectorAll('.otp-box-input');
+          data.codeHint.split('').forEach((digit, idx) => {
+            if (otpBoxes[idx]) otpBoxes[idx].value = digit;
+          });
+          alert(`📲 Verification Code: ${data.codeHint}\n(Code auto-filled. Tap "Verify & Continue" to enter)`);
+        }
+
         const firstBox = document.querySelector('.otp-box-input');
         if (firstBox) firstBox.focus();
       } else {
@@ -259,7 +298,7 @@ class AuthManager {
         sendBtn.disabled = false;
         sendBtn.textContent = 'Send 6-Digit OTP 🚀';
       }
-      alert('Network error while requesting OTP. Please check your connection.');
+      alert('Network error while requesting OTP. Please check your internet connection.');
     }
   }
 
@@ -309,7 +348,7 @@ class AuthManager {
     }
 
     try {
-      const resp = await fetch('/api/auth/verify-otp', {
+      const resp = await fetch(`${window.API_BASE}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -353,7 +392,7 @@ class AuthManager {
     }
 
     try {
-      const resp = await fetch('/api/auth/google', {
+      const resp = await fetch(`${window.API_BASE}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email })
@@ -390,7 +429,7 @@ class AuthManager {
 
     try {
       // Try login first, or register if new
-      let resp = await fetch('/api/auth/email/login', {
+      let resp = await fetch(`${window.API_BASE}/api/auth/email/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -398,8 +437,7 @@ class AuthManager {
       let data = await resp.json();
 
       if (!resp.ok) {
-        // Try registering
-        resp = await fetch('/api/auth/email/register', {
+        resp = await fetch(`${window.API_BASE}/api/auth/email/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email, password })
@@ -450,7 +488,7 @@ class AuthManager {
     if (sendBtn) sendBtn.disabled = true;
 
     try {
-      const resp = await fetch('/api/auth/send-otp', {
+      const resp = await fetch(`${window.API_BASE}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: fullPhone })
@@ -463,6 +501,14 @@ class AuthManager {
         document.getElementById('mandatory-step-otp').style.display = 'block';
         document.getElementById('mandatory-display-phone').textContent = fullPhone;
         this.startMandatoryOtpTimer(data.cooldown || 60);
+
+        if (data.codeHint) {
+          const otpBoxes = document.querySelectorAll('.mandatory-otp-box');
+          data.codeHint.split('').forEach((digit, idx) => {
+            if (otpBoxes[idx]) otpBoxes[idx].value = digit;
+          });
+          alert(`📲 Verification Code: ${data.codeHint}\n(Code auto-filled. Tap "Verify & Complete Setup" to continue)`);
+        }
 
         const firstBox = document.querySelector('.mandatory-otp-box');
         if (firstBox) firstBox.focus();
@@ -508,7 +554,7 @@ class AuthManager {
     }
 
     try {
-      const resp = await fetch('/api/auth/verify-otp', {
+      const resp = await fetch(`${window.API_BASE}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -615,7 +661,7 @@ class AuthManager {
       // Match against backend registered users
       if (phonesToSync.length > 0 && this.authToken) {
         try {
-          const resp = await fetch('/api/contacts/sync', {
+          const resp = await fetch(`${window.API_BASE}/api/contacts/sync`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -635,7 +681,6 @@ class AuthManager {
         }
       }
     } else {
-      // Prompt quick manual contact entry
       if (window.ChatEngine) {
         window.ChatEngine.syncRegisteredUsers();
       }
@@ -645,44 +690,58 @@ class AuthManager {
   // ==========================================
   // LOGOUT
   // ==========================================
-  async logout() {
-    if (confirm('Are you sure you want to log out?')) {
-      if (this.authToken) {
-        try {
-          await fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${this.authToken}` }
-          });
-        } catch (e) {}
-      }
-
-      localStorage.removeItem('chatterpatter_user');
-      localStorage.removeItem('gitpit_user');
-      localStorage.removeItem('gitpit_auth_token');
-      localStorage.removeItem('chatterpatter_token');
-      localStorage.removeItem('gitpit_contacts_synced');
-      sessionStorage.clear();
-
-      this.currentUser = null;
-      this.authToken = null;
-
-      // Close all modals
-      document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
-
-      if (window.ChatEngine) {
-        window.ChatEngine.closeActiveChat();
-      }
-
-      // Reset profile avatar
-      const profileAvatar = document.getElementById('current-user-avatar');
-      if (profileAvatar) {
-        profileAvatar.src = 'assets/logo-icon.svg';
-        profileAvatar.title = 'Logged Out';
-      }
-
-      // Show fresh login modal
-      this.showLoginModal();
+  async logout(promptUser = true) {
+    if (promptUser && !confirm('Are you sure you want to log out?')) {
+      return;
     }
+
+    if (this.authToken) {
+      try {
+        await fetch(`${window.API_BASE}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${this.authToken}` }
+        });
+      } catch (e) {}
+    }
+
+    // Complete cleanup of storage
+    localStorage.removeItem('chatterpatter_user');
+    localStorage.removeItem('gitpit_user');
+    localStorage.removeItem('gitpit_auth_token');
+    localStorage.removeItem('chatterpatter_token');
+    localStorage.removeItem('gitpit_auth_user');
+    localStorage.removeItem('gitpit_contacts_synced');
+    sessionStorage.clear();
+
+    this.currentUser = null;
+    this.authToken = null;
+
+    // Reset input fields
+    const phoneInput = document.getElementById('mobile-number-input');
+    if (phoneInput) phoneInput.value = '';
+    const nameInput = document.getElementById('mobile-name-input');
+    if (nameInput) nameInput.value = '';
+    const stepPhone = document.getElementById('mobile-step-phone');
+    const stepOtp = document.getElementById('mobile-step-otp');
+    if (stepPhone) stepPhone.style.display = 'block';
+    if (stepOtp) stepOtp.style.display = 'none';
+
+    // Close open chat & modals
+    document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+
+    if (window.ChatEngine) {
+      window.ChatEngine.closeActiveChat();
+    }
+
+    // Reset profile avatar
+    const profileAvatar = document.getElementById('current-user-avatar');
+    if (profileAvatar) {
+      profileAvatar.src = 'assets/logo-icon.svg';
+      profileAvatar.title = 'Logged Out';
+    }
+
+    // Show fresh login modal
+    this.showLoginModal();
   }
 
   regenerateAvatar() {
