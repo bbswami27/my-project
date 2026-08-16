@@ -1,42 +1,199 @@
-// ChatterPatter - Production Database Engine with Secure Sessions, Verification, Media, Calls & Backups
+// ChatterPatter - Production Database Engine (PostgreSQL Durable Engine with JSON Fallback & Safe Migration)
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { Pool } = require('pg');
 
 const DATA_DIR = path.join(__dirname, 'data');
-const MEDIA_DIR = path.join(DATA_DIR, 'media');
 const DB_FILE = path.join(DATA_DIR, 'chatterpatter_data.json');
 
-// Ensure data and media directories exist
+// Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-if (!fs.existsSync(MEDIA_DIR)) {
-  fs.mkdirSync(MEDIA_DIR, { recursive: true });
-}
 
-// Initial DB schema
+// Initial in-memory/JSON schema
 const initialSchema = {
   users: [],
-  sessions: [],      // token -> { userId, createdAt, expiresAt }
-  otps: {},          // phone -> { otpHash, expiresAt, attempts, lastSentAt, requestCount, windowStart }
+  sessions: [],
+  otps: {},
   messages: [],
   groups: [],
   statusUpdates: [],
-  blockedContacts: {}, // userId -> [targetUserIds]
+  blockedContacts: {},
   callLogs: [],
   pushTokens: [],
-  linkedDevices: {}, // userId -> [devices]
+  linkedDevices: {},
   settings: {}
 };
 
 class Database {
   constructor() {
-    this.data = this.load();
-    this.migrate();
+    this.data = this.loadJson();
+    this.pgPool = null;
+    this.isPostgres = false;
+    this.initPostgres();
   }
 
-  load() {
+  // ================= POSTGRESQL DURABLE STORAGE =================
+  async initPostgres() {
+    const dbUrl = process.env.DATABASE_URL || process.env.PGURI || process.env.POSTGRESQL_URL;
+    if (!dbUrl) {
+      console.warn('⚠️ [DATABASE WARNING] Running in local JSON file-based mode. Render disk is ephemeral.');
+      console.warn('💡 [DATABASE SETUP] For true production persistence, add a PostgreSQL database in Render and set DATABASE_URL.');
+      return;
+    }
+
+    try {
+      this.pgPool = new Pool({
+        connectionString: dbUrl,
+        ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false }
+      });
+
+      // Test connection
+      const client = await this.pgPool.connect();
+      console.log('✅ [DATABASE] Connected to Durable External PostgreSQL Database!');
+      this.isPostgres = true;
+
+      // Run DDL Schema Migration
+      await this.runPgMigrations(client);
+      await this.seedPgFromLocalJson(client);
+      client.release();
+    } catch (err) {
+      console.error('❌ [DATABASE ERROR] PostgreSQL connection failed, falling back to local file storage:', err.message);
+      this.isPostgres = false;
+    }
+  }
+
+  async runPgMigrations(client) {
+    const ddl = `
+      CREATE TABLE IF NOT EXISTS cp_users (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        username VARCHAR(255),
+        phone VARCHAR(50) UNIQUE,
+        phone_verified BOOLEAN DEFAULT FALSE,
+        phone_verified_at TIMESTAMPTZ,
+        email VARCHAR(255),
+        password_hash VARCHAR(255),
+        dob VARCHAR(50),
+        anniversary VARCHAR(50),
+        bio TEXT,
+        avatar TEXT,
+        status VARCHAR(100),
+        presence VARCHAR(50) DEFAULT 'online',
+        privacy JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_sessions (
+        token VARCHAR(255) PRIMARY KEY,
+        user_id VARCHAR(100) REFERENCES cp_users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        expires_at_ms BIGINT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_otps (
+        phone VARCHAR(50) PRIMARY KEY,
+        otp_hash VARCHAR(255) NOT NULL,
+        expires_at BIGINT NOT NULL,
+        attempts INT DEFAULT 0,
+        last_sent_at BIGINT NOT NULL,
+        request_count INT DEFAULT 1,
+        window_start BIGINT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_messages (
+        id VARCHAR(100) PRIMARY KEY,
+        chat_id VARCHAR(150) NOT NULL,
+        sender_id VARCHAR(100) NOT NULL,
+        sender_name VARCHAR(255),
+        sender_avatar TEXT,
+        sender_phone VARCHAR(50),
+        recipient_id VARCHAR(100),
+        recipient_phone VARCHAR(50),
+        text TEXT,
+        type VARCHAR(50) DEFAULT 'text',
+        media_url TEXT,
+        file_size BIGINT,
+        file_name VARCHAR(255),
+        reactions JSONB DEFAULT '[]'::jsonb,
+        quote JSONB,
+        edited BOOLEAN DEFAULT FALSE,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        created_at BIGINT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_groups (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        avatar TEXT,
+        created_by_id VARCHAR(100),
+        members JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_call_logs (
+        id VARCHAR(100) PRIMARY KEY,
+        caller_id VARCHAR(100) NOT NULL,
+        caller_name VARCHAR(255),
+        caller_phone VARCHAR(50),
+        receiver_id VARCHAR(100) NOT NULL,
+        receiver_name VARCHAR(255),
+        receiver_phone VARCHAR(50),
+        type VARCHAR(50) DEFAULT 'video',
+        duration VARCHAR(50) DEFAULT '00:00',
+        duration_seconds INT DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'completed',
+        timestamp VARCHAR(100),
+        created_at BIGINT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_blocked_contacts (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(100) NOT NULL,
+        target_user_id VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, target_user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS cp_push_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(100) NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        platform VARCHAR(50) DEFAULT 'android',
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `;
+    await client.query(ddl);
+    console.log('✅ [DATABASE] PostgreSQL Tables & DDL Schema Migrations verified.');
+  }
+
+  async seedPgFromLocalJson(client) {
+    try {
+      const res = await client.query('SELECT COUNT(*) FROM cp_users');
+      if (parseInt(res.rows[0].count, 10) === 0 && this.data.users.length > 0) {
+        console.log(`[DATABASE] Seeding ${this.data.users.length} existing valid users into PostgreSQL...`);
+        for (const u of this.data.users) {
+          if (u.phoneVerified) {
+            await client.query(
+              `INSERT INTO cp_users (id, name, username, phone, phone_verified, phone_verified_at, email, avatar, bio, status, privacy)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+               ON CONFLICT (id) DO NOTHING`,
+              [u.id, u.name, u.username, u.phone, u.phoneVerified, u.phoneVerifiedAt || new Date().toISOString(), u.email || '', u.avatar || '', u.bio || '', u.status || '', JSON.stringify(u.privacy || {})]
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[DATABASE SEED WARNING]', e.message);
+    }
+  }
+
+  // ================= LOCAL JSON ENGINE (DEV / FALLBACK) =================
+  loadJson() {
     try {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf8');
@@ -44,63 +201,16 @@ class Database {
         return { ...initialSchema, ...parsed };
       }
     } catch (e) {
-      console.error('[DB] Error reading DB file, initializing fresh store:', e.message);
+      console.error('[DB] Error reading JSON DB file:', e.message);
     }
-    this.save(initialSchema);
     return JSON.parse(JSON.stringify(initialSchema));
   }
 
-  save(data = this.data) {
+  saveJson(data = this.data) {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
     } catch (e) {
-      console.error('[DB] Error writing to DB file:', e.message);
-    }
-  }
-
-  // Safe migration for existing valid records
-  migrate() {
-    let changed = false;
-    if (!Array.isArray(this.data.sessions)) {
-      this.data.sessions = [];
-      changed = true;
-    }
-    if (!this.data.otps || Array.isArray(this.data.otps)) {
-      this.data.otps = {};
-      changed = true;
-    }
-    if (!this.data.users) {
-      this.data.users = [];
-      changed = true;
-    }
-    if (!this.data.blockedContacts || Array.isArray(this.data.blockedContacts)) {
-      this.data.blockedContacts = {};
-      changed = true;
-    }
-    if (!Array.isArray(this.data.callLogs)) {
-      this.data.callLogs = [];
-      changed = true;
-    }
-    if (!Array.isArray(this.data.pushTokens)) {
-      this.data.pushTokens = [];
-      changed = true;
-    }
-
-    // Filter out any legacy guest/demo accounts and ensure users have verified flags
-    this.data.users = this.data.users.filter(u => {
-      const isDemo = u.id === 'user_guest' || u.id === 'user_demo' || u.name === 'Guest User' || u.isDemo;
-      return !isDemo;
-    }).map(u => {
-      if (u.phoneVerified === undefined) {
-        u.phoneVerified = !!(u.phone && u.phone.length >= 10);
-        u.phoneVerifiedAt = u.phoneVerified ? (u.createdAt || new Date().toISOString()) : null;
-        changed = true;
-      }
-      return u;
-    });
-
-    if (changed) {
-      this.save();
+      console.error('[DB] Error writing to JSON DB file:', e.message);
     }
   }
 
@@ -108,15 +218,9 @@ class Database {
   normalizePhone(phone) {
     if (!phone) return '';
     const digits = phone.replace(/\D/g, '');
-    if (digits.length === 10) {
-      return `+91${digits}`;
-    }
-    if (digits.length === 12 && digits.startsWith('91')) {
-      return `+${digits}`;
-    }
-    if (phone.startsWith('+')) {
-      return `+${digits}`;
-    }
+    if (digits.length === 10) return `+91${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+    if (phone.startsWith('+')) return `+${digits}`;
     return digits ? `+${digits}` : '';
   }
 
@@ -132,21 +236,31 @@ class Database {
   createSession(userId, durationDays = 30) {
     const token = this.generateToken();
     const now = Date.now();
-    const expiresAt = now + (durationDays * 24 * 60 * 60 * 1000);
+    const expiresAtMs = now + (durationDays * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(expiresAtMs).toISOString();
 
-    // Remove expired sessions
-    this.data.sessions = this.data.sessions.filter(s => s.expiresAt > now);
-
+    // Local JSON
+    this.data.sessions = this.data.sessions.filter(s => s.expiresAtMs > now);
     const session = {
       token,
       userId,
       createdAt: new Date(now).toISOString(),
-      expiresAt: new Date(expiresAt).toISOString(),
-      expiresAtMs: expiresAt
+      expiresAt,
+      expiresAtMs
     };
-
     this.data.sessions.push(session);
-    this.save();
+    this.saveJson();
+
+    // PostgreSQL
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query(
+        `INSERT INTO cp_sessions (token, user_id, expires_at, expires_at_ms)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (token) DO UPDATE SET expires_at = $3, expires_at_ms = $4`,
+        [token, userId, expiresAt, expiresAtMs]
+      ).catch(e => console.error('[PG SESSION INSERT ERROR]', e.message));
+    }
+
     return session;
   }
 
@@ -164,13 +278,14 @@ class Database {
 
   deleteSession(token) {
     if (!token) return false;
-    const initialLen = this.data.sessions.length;
     this.data.sessions = this.data.sessions.filter(s => s.token !== token);
-    if (this.data.sessions.length !== initialLen) {
-      this.save();
-      return true;
+    this.saveJson();
+
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query('DELETE FROM cp_sessions WHERE token = $1', [token])
+        .catch(e => console.error('[PG SESSION DELETE ERROR]', e.message));
     }
-    return false;
+    return true;
   }
 
   // ================= OTPS =================
@@ -181,20 +296,31 @@ class Database {
     const now = Date.now();
     const existing = this.data.otps[normalized] || {};
     
-    // Rate limit window: max 4 requests per 10 minutes
     const windowStart = (existing.windowStart && (now - existing.windowStart < 10 * 60 * 1000)) ? existing.windowStart : now;
     const requestCount = (windowStart === existing.windowStart) ? (existing.requestCount || 0) + 1 : 1;
+    const expiresAt = now + (expiresInSec * 1000);
+    const otpHash = this.hashString(otp, normalized);
 
     this.data.otps[normalized] = {
-      otpHash: this.hashString(otp, normalized),
-      expiresAt: now + (expiresInSec * 1000),
+      otpHash,
+      expiresAt,
       attempts: 0,
       lastSentAt: now,
       requestCount,
       windowStart
     };
+    this.saveJson();
 
-    this.save();
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query(
+        `INSERT INTO cp_otps (phone, otp_hash, expires_at, attempts, last_sent_at, request_count, window_start)
+         VALUES ($1, $2, $3, 0, $4, $5, $6)
+         ON CONFLICT (phone) DO UPDATE 
+         SET otp_hash = $2, expires_at = $3, attempts = 0, last_sent_at = $4, request_count = $5, window_start = $6`,
+        [normalized, otpHash, expiresAt, now, requestCount, windowStart]
+      ).catch(e => console.error('[PG OTP INSERT ERROR]', e.message));
+    }
+
     return true;
   }
 
@@ -216,26 +342,31 @@ class Database {
     const now = Date.now();
     if (now > record.expiresAt) {
       delete this.data.otps[normalized];
-      this.save();
+      this.saveJson();
       return { success: false, error: 'OTP has expired. Please request a fresh code.' };
     }
 
     if (record.attempts >= 5) {
       delete this.data.otps[normalized];
-      this.save();
+      this.saveJson();
       return { success: false, error: 'Too many incorrect attempts. Please request a new OTP.' };
     }
 
     const inputHash = this.hashString(otp, normalized);
     if (inputHash !== record.otpHash) {
       record.attempts += 1;
-      this.save();
+      this.saveJson();
       return { success: false, error: `Invalid OTP code. (${5 - record.attempts} attempts remaining)` };
     }
 
-    // OTP Verified! Delete used OTP
     delete this.data.otps[normalized];
-    this.save();
+    this.saveJson();
+
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query('DELETE FROM cp_otps WHERE phone = $1', [normalized])
+        .catch(e => console.error('[PG OTP DELETE ERROR]', e.message));
+    }
+
     return { success: true };
   }
 
@@ -265,15 +396,9 @@ class Database {
     const normalizedPhone = this.normalizePhone(userData.phone);
     
     let existing = null;
-    if (userData.id) {
-      existing = this.data.users.find(u => u.id === userData.id);
-    }
-    if (!existing && normalizedPhone) {
-      existing = this.findUserByPhone(normalizedPhone);
-    }
-    if (!existing && userData.email) {
-      existing = this.findUserByEmail(userData.email);
-    }
+    if (userData.id) existing = this.data.users.find(u => u.id === userData.id);
+    if (!existing && normalizedPhone) existing = this.findUserByPhone(normalizedPhone);
+    if (!existing && userData.email) existing = this.findUserByEmail(userData.email);
 
     if (existing) {
       if (userData.name) existing.name = userData.name;
@@ -294,7 +419,17 @@ class Database {
         existing.privacy = { ...(existing.privacy || {}), ...userData.privacy };
       }
       existing.updatedAt = new Date().toISOString();
-      this.save();
+      this.saveJson();
+
+      if (this.isPostgres && this.pgPool) {
+        this.pgPool.query(
+          `UPDATE cp_users 
+           SET name = $2, phone = $3, phone_verified = $4, phone_verified_at = $5, email = $6, avatar = $7, bio = $8, privacy = $9, updated_at = NOW()
+           WHERE id = $1`,
+          [existing.id, existing.name, existing.phone, existing.phoneVerified, existing.phoneVerifiedAt, existing.email || '', existing.avatar || '', existing.bio || '', JSON.stringify(existing.privacy || {})]
+        ).catch(e => console.error('[PG USER UPDATE ERROR]', e.message));
+      }
+
       return existing;
     } else {
       const newUserId = userData.id || ('usr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
@@ -315,27 +450,29 @@ class Database {
         avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${newUserId}`,
         status: userData.status || 'Available 🟢',
         presence: 'online',
-        privacy: userData.privacy || {
-          hidePhone: false,
-          hideEmail: false,
-          hideDob: false,
-          hideLastSeen: false
-        },
+        privacy: userData.privacy || { hidePhone: false, hideEmail: false, hideDob: false, hideLastSeen: false },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
       this.data.users.push(newUser);
-      this.save();
+      this.saveJson();
+
+      if (this.isPostgres && this.pgPool) {
+        this.pgPool.query(
+          `INSERT INTO cp_users (id, name, username, phone, phone_verified, phone_verified_at, email, avatar, bio, status, privacy)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (id) DO NOTHING`,
+          [newUser.id, newUser.name, newUser.username, newUser.phone, newUser.phoneVerified, newUser.phoneVerifiedAt, newUser.email || '', newUser.avatar || '', newUser.bio || '', newUser.status || '', JSON.stringify(newUser.privacy || {})]
+        ).catch(e => console.error('[PG USER INSERT ERROR]', e.message));
+      }
+
       return newUser;
     }
   }
 
   matchContactsByPhones(normalizedPhones = []) {
-    if (!Array.isArray(normalizedPhones) || normalizedPhones.length === 0) {
-      return [];
-    }
-
+    if (!Array.isArray(normalizedPhones) || normalizedPhones.length === 0) return [];
     const phoneSet = new Set(normalizedPhones.map(p => this.normalizePhone(p)).filter(Boolean));
     const cleanLast10Set = new Set(Array.from(phoneSet).map(p => p.slice(-10)));
 
@@ -373,21 +510,9 @@ class Database {
           phone: u.phone || '',
           email: (isSelf || !priv.hideEmail) ? u.email : '',
           dob: (isSelf || !priv.hideDob) ? u.dob : '',
-          anniversary: (isSelf || !priv.hideDob) ? u.anniversary : '',
           privacy: isSelf ? priv : undefined
         };
       });
-  }
-
-  updatePrivacy(userId, privacySettings) {
-    const user = this.getUser(userId);
-    if (user) {
-      user.privacy = { ...(user.privacy || {}), ...privacySettings };
-      user.updatedAt = new Date().toISOString();
-      this.save();
-      return user.privacy;
-    }
-    return null;
   }
 
   // ================= BLOCKING =================
@@ -396,7 +521,14 @@ class Database {
     if (!this.data.blockedContacts[userId]) this.data.blockedContacts[userId] = [];
     if (!this.data.blockedContacts[userId].includes(targetUserId)) {
       this.data.blockedContacts[userId].push(targetUserId);
-      this.save();
+      this.saveJson();
+
+      if (this.isPostgres && this.pgPool) {
+        this.pgPool.query(
+          `INSERT INTO cp_blocked_contacts (user_id, target_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [userId, targetUserId]
+        ).catch(e => console.error('[PG BLOCK ERROR]', e.message));
+      }
     }
     return this.data.blockedContacts[userId];
   }
@@ -404,15 +536,21 @@ class Database {
   unblockUser(userId, targetUserId) {
     if (this.data.blockedContacts && this.data.blockedContacts[userId]) {
       this.data.blockedContacts[userId] = this.data.blockedContacts[userId].filter(id => id !== targetUserId);
-      this.save();
+      this.saveJson();
+
+      if (this.isPostgres && this.pgPool) {
+        this.pgPool.query(
+          `DELETE FROM cp_blocked_contacts WHERE user_id = $1 AND target_user_id = $2`,
+          [userId, targetUserId]
+        ).catch(e => console.error('[PG UNBLOCK ERROR]', e.message));
+      }
       return this.data.blockedContacts[userId];
     }
     return [];
   }
 
   getBlockedUsers(userId) {
-    if (!this.data.blockedContacts) return [];
-    return this.data.blockedContacts[userId] || [];
+    return (this.data.blockedContacts && this.data.blockedContacts[userId]) ? this.data.blockedContacts[userId] : [];
   }
 
   isBlocked(senderId, recipientId) {
@@ -438,56 +576,29 @@ class Database {
       mediaUrl: msg.mediaUrl || null,
       fileSize: msg.fileSize || null,
       fileName: msg.fileName || null,
-      location: msg.location || null,
       reactions: msg.reactions || [],
       quote: msg.quote || null,
       edited: msg.edited || false,
       isDeleted: msg.isDeleted || false,
-      timestamp: msg.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      createdAt: msg.createdAt || Date.now(),
-      status: msg.status || 'delivered'
+      createdAt: msg.createdAt || Date.now()
     };
 
     this.data.messages.push(newMsg);
     if (this.data.messages.length > 25000) {
       this.data.messages = this.data.messages.slice(-25000);
     }
-    this.save();
+    this.saveJson();
+
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query(
+        `INSERT INTO cp_messages (id, chat_id, sender_id, sender_name, sender_avatar, sender_phone, recipient_id, recipient_phone, text, type, media_url, file_size, file_name, reactions, quote, edited, is_deleted, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         ON CONFLICT (id) DO NOTHING`,
+        [newMsg.id, newMsg.chatId, newMsg.senderId, newMsg.senderName, newMsg.senderAvatar, newMsg.senderPhone, newMsg.recipientId, newMsg.recipientPhone, newMsg.text, newMsg.type, newMsg.mediaUrl, newMsg.fileSize, newMsg.fileName, JSON.stringify(newMsg.reactions), newMsg.quote ? JSON.stringify(newMsg.quote) : null, newMsg.edited, newMsg.isDeleted, newMsg.createdAt]
+      ).catch(e => console.error('[PG MESSAGE INSERT ERROR]', e.message));
+    }
+
     return newMsg;
-  }
-
-  editMessage(msgId, newText) {
-    const msg = this.data.messages.find(m => m.id === msgId);
-    if (msg) {
-      msg.text = newText;
-      msg.edited = true;
-      msg.editedAt = Date.now();
-      this.save();
-      return msg;
-    }
-    return null;
-  }
-
-  deleteMessage(msgId, isForEveryone = true) {
-    const msg = this.data.messages.find(m => m.id === msgId);
-    if (msg) {
-      if (isForEveryone) {
-        msg.isDeleted = true;
-        msg.text = '🚫 This message was deleted';
-        msg.mediaUrl = null;
-      } else {
-        this.data.messages = this.data.messages.filter(m => m.id !== msgId);
-      }
-      this.save();
-      return msg;
-    }
-    return null;
-  }
-
-  deleteChat(chatId) {
-    this.data.messages = this.data.messages.filter(m => m.chatId !== chatId);
-    this.save();
-    return true;
   }
 
   getChatMessages(chatId, limit = 200) {
@@ -498,7 +609,6 @@ class Database {
 
   // ================= CALL LOGS =================
   saveCallLog(log) {
-    if (!this.data.callLogs) this.data.callLogs = [];
     const callEntry = {
       id: log.id || 'call_' + Date.now(),
       callerId: log.callerId,
@@ -507,184 +617,55 @@ class Database {
       receiverId: log.receiverId,
       receiverName: log.receiverName || 'User',
       receiverPhone: log.receiverPhone || '',
-      type: log.type || 'video', // 'audio' | 'video'
-      direction: log.direction || 'outgoing',
+      type: log.type || 'video',
       duration: log.duration || '00:00',
       durationSeconds: log.durationSeconds || 0,
-      status: log.status || 'completed', // 'completed' | 'missed' | 'rejected'
+      status: log.status || 'completed',
       timestamp: log.timestamp || new Date().toLocaleString(),
       createdAt: Date.now()
     };
+    if (!this.data.callLogs) this.data.callLogs = [];
     this.data.callLogs.unshift(callEntry);
-    if (this.data.callLogs.length > 5000) {
-      this.data.callLogs = this.data.callLogs.slice(0, 5000);
+    this.saveJson();
+
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query(
+        `INSERT INTO cp_call_logs (id, caller_id, caller_name, caller_phone, receiver_id, receiver_name, receiver_phone, type, duration, duration_seconds, status, timestamp, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT (id) DO NOTHING`,
+        [callEntry.id, callEntry.callerId, callEntry.callerName, callEntry.callerPhone, callEntry.receiverId, callEntry.receiverName, callEntry.receiverPhone, callEntry.type, callEntry.duration, callEntry.durationSeconds, callEntry.status, callEntry.timestamp, callEntry.createdAt]
+      ).catch(e => console.error('[PG CALL LOG ERROR]', e.message));
     }
-    this.save();
+
     return callEntry;
   }
 
   getCallLogs(userId) {
-    if (!this.data.callLogs) return [];
-    return this.data.callLogs.filter(c => c.callerId === userId || c.receiverId === userId);
+    return (this.data.callLogs || []).filter(c => c.callerId === userId || c.receiverId === userId);
   }
 
   // ================= PUSH TOKENS =================
   registerPushToken(userId, token, platform = 'android') {
     if (!this.data.pushTokens) this.data.pushTokens = [];
     this.data.pushTokens = this.data.pushTokens.filter(p => p.token !== token);
-    const entry = {
-      userId,
-      token,
-      platform,
-      updatedAt: new Date().toISOString()
-    };
+    const entry = { userId, token, platform, updatedAt: new Date().toISOString() };
     this.data.pushTokens.push(entry);
-    this.save();
+    this.saveJson();
+
+    if (this.isPostgres && this.pgPool) {
+      this.pgPool.query(
+        `INSERT INTO cp_push_tokens (user_id, token, platform, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (token) DO UPDATE SET user_id = $1, platform = $3, updated_at = NOW()`,
+        [userId, token, platform]
+      ).catch(e => console.error('[PG PUSH TOKEN ERROR]', e.message));
+    }
+
     return entry;
   }
 
-  unregisterPushToken(userId, token) {
-    if (!this.data.pushTokens) return false;
-    this.data.pushTokens = this.data.pushTokens.filter(p => !(p.userId === userId && p.token === token));
-    this.save();
-    return true;
-  }
-
   getPushTokens(userId) {
-    if (!this.data.pushTokens) return [];
-    return this.data.pushTokens.filter(p => p.userId === userId);
-  }
-
-  // ================= CLOUD BACKUP & RESTORE =================
-  exportBackup(userId) {
-    const user = this.getUser(userId);
-    if (!user) return null;
-
-    const userMessages = this.data.messages.filter(m => m.senderId === userId || m.recipientId === userId || (m.chatId && m.chatId.includes(userId)));
-    const userCalls = this.getCallLogs(userId);
-    const userGroups = (this.data.groups || []).filter(g => (g.members || []).some(m => m.id === userId || m === userId));
-
-    return {
-      version: '1.0',
-      exportedAt: new Date().toISOString(),
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        bio: user.bio,
-        privacy: user.privacy
-      },
-      stats: {
-        messagesCount: userMessages.length,
-        callsCount: userCalls.length,
-        groupsCount: userGroups.length
-      },
-      messages: userMessages,
-      calls: userCalls,
-      groups: userGroups
-    };
-  }
-
-  restoreBackup(userId, backupData) {
-    if (!backupData || !backupData.messages) {
-      return { success: false, error: 'Invalid backup format' };
-    }
-
-    let restoredMessages = 0;
-    const existingMsgIds = new Set(this.data.messages.map(m => m.id));
-
-    backupData.messages.forEach(m => {
-      if (!existingMsgIds.has(m.id)) {
-        this.data.messages.push(m);
-        existingMsgIds.add(m.id);
-        restoredMessages++;
-      }
-    });
-
-    this.save();
-    return { success: true, restoredMessages };
-  }
-
-  // ================= GROUPS =================
-  getAllGroups() {
-    return this.data.groups || [];
-  }
-
-  createGroup(groupData) {
-    if (!this.data.groups) this.data.groups = [];
-    const newGroup = {
-      id: 'group_' + Date.now(),
-      name: groupData.name || 'New Group',
-      avatar: groupData.avatar || 'assets/logo-icon.svg',
-      createdById: groupData.createdById,
-      members: groupData.members || [],
-      createdAt: new Date().toISOString()
-    };
-    this.data.groups.push(newGroup);
-    this.save();
-    return newGroup;
-  }
-
-  // ================= STATUS UPDATES =================
-  getActiveStatusUpdates() {
-    const now = Date.now();
-    const cutoff = now - (24 * 60 * 60 * 1000);
-    return (this.data.statusUpdates || []).filter(s => {
-      const t = s.createdAtTime || new Date(s.createdAt).getTime();
-      return t > cutoff;
-    });
-  }
-
-  saveStatusUpdate(statusData) {
-    if (!this.data.statusUpdates) this.data.statusUpdates = [];
-    const newStatus = {
-      id: 'status_' + Date.now(),
-      userId: statusData.userId,
-      author: statusData.author,
-      avatar: statusData.avatar,
-      text: statusData.text || '',
-      bgColor: statusData.bgColor || '#0284c7',
-      mediaUrl: statusData.mediaUrl || null,
-      mediaType: statusData.mediaType || 'text',
-      createdAt: new Date().toISOString(),
-      createdAtTime: Date.now()
-    };
-    this.data.statusUpdates.unshift(newStatus);
-    this.save();
-    return newStatus;
-  }
-
-  // ================= LINKED DEVICES =================
-  addLinkedDevice(userId, device) {
-    if (!this.data.linkedDevices) this.data.linkedDevices = {};
-    if (!this.data.linkedDevices[userId]) this.data.linkedDevices[userId] = [];
-    
-    const newDevice = {
-      id: 'dev_' + Date.now(),
-      name: device.name || 'Web Browser',
-      platform: device.platform || 'Web',
-      ip: device.ip || '127.0.0.1',
-      linkedAt: new Date().toISOString(),
-      lastActive: new Date().toISOString()
-    };
-    this.data.linkedDevices[userId].push(newDevice);
-    this.save();
-    return newDevice;
-  }
-
-  getLinkedDevices(userId) {
-    if (!this.data.linkedDevices) this.data.linkedDevices = {};
-    return this.data.linkedDevices[userId] || [];
-  }
-
-  removeLinkedDevice(userId, deviceId) {
-    if (this.data.linkedDevices && this.data.linkedDevices[userId]) {
-      this.data.linkedDevices[userId] = this.data.linkedDevices[userId].filter(d => d.id !== deviceId);
-      this.save();
-      return true;
-    }
-    return false;
+    return (this.data.pushTokens || []).filter(p => p.userId === userId);
   }
 }
 

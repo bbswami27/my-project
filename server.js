@@ -25,8 +25,13 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/media', express.static(path.join(__dirname, 'data', 'media')));
 
-// Database Engine
+// Database Engine (PostgreSQL / JSON Fallback)
 const db = require('./database');
+
+// Phase 1 Modular Services
+const smsService = require('./services/smsService');
+const fcmService = require('./services/fcmService');
+const storageService = require('./services/storageService');
 
 // Health Check Routes for Cloud Deployment & Monitoring
 app.get('/health', (req, res) => res.status(200).send('OK'));
@@ -35,7 +40,11 @@ app.get('/api/health', (req, res) => res.status(200).json({
   time: new Date().toISOString(),
   app: 'ChatterPatter',
   version: '1.0.0',
-  uptime: process.uptime()
+  uptime: process.uptime(),
+  database: db.isPostgres ? 'PostgreSQL (Durable)' : 'JSON File / Ephemeral Disk',
+  storage: storageService.getProviderName(),
+  smsProvider: smsService.getProviderName(),
+  fcmPush: fcmService.isConfigured() ? 'FCM HTTP v1 (Configured)' : 'Unconfigured'
 }));
 app.get('/ping', (req, res) => res.json({ status: 'live', app: 'ChatterPatter', time: new Date().toISOString() }));
 
@@ -82,59 +91,10 @@ function requirePhoneVerified(req, res, next) {
 }
 
 // ==========================================
-// SMS / OTP DISPATCH SERVICE
-// ==========================================
-async function sendSmsOtp(normalizedPhone, otp) {
-  const provider = process.env.SMS_PROVIDER || 'console';
-  console.log(`[SMS-SERVICE] Dispatching OTP for ${normalizedPhone} via provider: ${provider}`);
-
-  try {
-    if (provider === 'twilio' && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-      const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
-      const body = new URLSearchParams({
-        To: normalizedPhone,
-        From: process.env.TWILIO_PHONE_NUMBER,
-        Body: `Your ChatterPatter verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`
-      });
-      await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: body.toString()
-      });
-      console.log(`[SMS-SERVICE] Twilio SMS dispatched to ${normalizedPhone}`);
-    } else if (provider === 'fast2sms' && process.env.FAST2SMS_API_KEY) {
-      const clean10 = normalizedPhone.slice(-10);
-      await fetch('https://www.fast2sms.com/dev/bulkV2', {
-        method: 'POST',
-        headers: {
-          'authorization': process.env.FAST2SMS_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          route: 'otp',
-          variables_values: otp,
-          numbers: clean10
-        })
-      });
-      console.log(`[SMS-SERVICE] Fast2SMS OTP dispatched to ${clean10}`);
-    } else {
-      console.log(`[AUTH-OTP-VERIFICATION-CODE] Mobile: ${normalizedPhone} | Code: [${otp}]`);
-    }
-    return true;
-  } catch (err) {
-    console.error('[SMS-SERVICE] Error sending SMS:', err.message);
-    return false;
-  }
-}
-
-// ==========================================
 // AUTHENTICATION ROUTES
 // ==========================================
 
-// 1. Send OTP
+// 1. Send Real Carrier OTP
 app.post('/api/auth/send-otp', async (req, res) => {
   const { phone } = req.body;
   if (!phone) {
@@ -165,19 +125,20 @@ app.post('/api/auth/send-otp', async (req, res) => {
     });
   }
 
-  // Generate real cryptographically random 6-digit OTP
+  // Generate cryptographically random 6-digit OTP
   const otpNumber = crypto.randomInt(100000, 999999).toString();
   db.storeOtp(normalized, otpNumber, 600); // 10 mins expiry
 
-  // Dispatch SMS
-  await sendSmsOtp(normalized, otpNumber);
+  // Dispatch carrier SMS
+  const smsResult = await smsService.sendOtp(normalized, otpNumber);
 
   res.json({
     success: true,
     message: `Verification code sent to ${normalized}`,
     phone: normalized,
     expiresIn: 600,
-    cooldown: 60
+    cooldown: 60,
+    smsDelivered: smsResult.success
   });
 });
 
@@ -268,7 +229,7 @@ app.post('/api/auth/email/register', (req, res) => {
     email: cleanEmail,
     passwordHash,
     phone: normalizedPhone,
-    phoneVerified: false // Must be verified with OTP before chat access
+    phoneVerified: false
   });
 
   res.json({
@@ -458,25 +419,6 @@ app.get('/api/user/blocked', requirePhoneVerified, (req, res) => {
   res.json({ success: true, blockedUsers: list });
 });
 
-// Linked Devices API
-app.get('/api/devices/:userId', requirePhoneVerified, (req, res) => {
-  const devices = db.getLinkedDevices(req.params.userId);
-  res.json({ success: true, devices });
-});
-
-app.post('/api/devices/link', requirePhoneVerified, (req, res) => {
-  const { device } = req.body;
-  const newDev = db.addLinkedDevice(req.currentUser.id, device || {});
-  io.emit(`device_linked_${req.currentUser.id}`, newDev);
-  res.json({ success: true, device: newDev });
-});
-
-app.delete('/api/devices/:userId/:deviceId', requirePhoneVerified, (req, res) => {
-  const { deviceId } = req.params;
-  const removed = db.removeLinkedDevice(req.currentUser.id, deviceId);
-  res.json({ success: removed });
-});
-
 // Messages History API
 app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
   const messages = db.getChatMessages(req.params.chatId);
@@ -500,6 +442,19 @@ app.post('/api/messages', requirePhoneVerified, (req, res) => {
     io.emit(`receive_message_${req.body.chatId}`, savedMsg);
   }
   io.emit('receive_message', savedMsg);
+
+  // Background Push Notification via FCM HTTP v1 if target has registered devices
+  if (targetId) {
+    const tokens = db.getPushTokens(targetId);
+    tokens.forEach(t => {
+      fcmService.sendPushNotification(t.token, {
+        title: req.currentUser.name,
+        body: msgData.text || (msgData.type === 'image' ? '📷 Sent a photo' : msgData.type === 'video' ? '🎥 Sent a video' : msgData.type === 'voice' ? '🎤 Sent a voice note' : 'Sent an attachment'),
+        data: { chatId: msgData.chatId, senderId: req.currentUser.id }
+      });
+    });
+  }
+
   res.json({ success: true, message: savedMsg });
 });
 
@@ -532,44 +487,26 @@ app.delete('/api/chats/:chatId', requirePhoneVerified, (req, res) => {
   res.json({ success: true });
 });
 
-// Media Storage Upload API (Durable File Storage)
-app.post('/api/media/upload', requirePhoneVerified, (req, res) => {
+// Durable Media Storage Upload API (S3 / R2 / Supabase / Local Fallback)
+app.post('/api/media/upload', requirePhoneVerified, async (req, res) => {
   const { dataUrl, fileName, fileType } = req.body;
   if (!dataUrl) {
     return res.status(400).json({ error: 'Media payload required' });
   }
 
   try {
-    const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      return res.status(400).json({ error: 'Invalid media format' });
-    }
-
-    const mime = matches[1];
-    const buffer = Buffer.from(matches[2], 'base64');
-    
-    // Max 50MB check
-    if (buffer.length > 50 * 1024 * 1024) {
-      return res.status(400).json({ error: 'File exceeds 50MB size limit' });
-    }
-
-    const ext = (fileName && fileName.includes('.')) ? path.extname(fileName) : (mime.includes('image') ? '.jpg' : mime.includes('video') ? '.mp4' : mime.includes('audio') ? '.webm' : '.bin');
-    const secureName = `media_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`;
-    const targetPath = path.join(__dirname, 'data', 'media', secureName);
-
-    fs.writeFileSync(targetPath, buffer);
-
-    const mediaUrl = `/media/${secureName}`;
+    const uploadResult = await storageService.uploadMedia(dataUrl, fileName, fileType);
     res.json({
       success: true,
-      mediaUrl,
-      fileName: fileName || secureName,
-      fileSize: buffer.length,
-      mimeType: mime
+      mediaUrl: uploadResult.mediaUrl,
+      fileName: uploadResult.fileName,
+      fileSize: uploadResult.fileSize,
+      mimeType: uploadResult.mimeType,
+      storageProvider: uploadResult.storageProvider
     });
   } catch (err) {
     console.error('[MEDIA UPLOAD ERROR]', err.message);
-    res.status(500).json({ error: 'Failed to save media file' });
+    res.status(500).json({ error: err.message || 'Failed to save media file' });
   }
 });
 
@@ -588,7 +525,7 @@ app.post('/api/calls', requirePhoneVerified, (req, res) => {
   res.json({ success: true, callLog: log });
 });
 
-// Push Notification Token Registration
+// Push Notification Token Registration (FCM HTTP v1)
 app.post('/api/push/register', requirePhoneVerified, (req, res) => {
   const { token, platform } = req.body;
   if (!token) return res.status(400).json({ error: 'Token is required' });
@@ -600,18 +537,6 @@ app.post('/api/push/unregister', requirePhoneVerified, (req, res) => {
   const { token } = req.body;
   if (token) db.unregisterPushToken(req.currentUser.id, token);
   res.json({ success: true });
-});
-
-// Cloud Backup Export & Restore
-app.post('/api/backup/export', requirePhoneVerified, (req, res) => {
-  const backup = db.exportBackup(req.currentUser.id);
-  res.json({ success: true, backup });
-});
-
-app.post('/api/backup/restore', requirePhoneVerified, (req, res) => {
-  const { backupData } = req.body;
-  const result = db.restoreBackup(req.currentUser.id, backupData);
-  res.json(result);
 });
 
 // Groups List & Create API
@@ -754,7 +679,6 @@ io.on('connection', (socket) => {
     if (!userData || !userData.id) return;
     const user = db.getUser(userData.id);
     if (!user || !user.phoneVerified) {
-      console.warn(`[SOCKET AUTH REJECTED] Unverified user ${userData.id}`);
       socket.emit('auth_error', { message: 'Authentication and mobile verification required.' });
       return;
     }
@@ -782,10 +706,7 @@ io.on('connection', (socket) => {
   // Direct Message
   socket.on('send_message', (msgData) => {
     const sender = activeUsers.get(socket.id);
-    if (!sender) {
-      console.warn(`[MSG BLOCKED] Unauthenticated socket: ${socket.id}`);
-      return;
-    }
+    if (!sender) return;
 
     const targetId = msgData.recipientId;
     if (targetId && db.isBlocked(sender.id, targetId)) {
@@ -870,6 +791,18 @@ io.on('connection', (socket) => {
     } else {
       socket.broadcast.emit('incoming-call', payload);
       socket.broadcast.emit('incoming_call', payload);
+      
+      // Dispatch background FCM call notification if receiver is offline
+      if (targetRecipientId) {
+        const tokens = db.getPushTokens(targetRecipientId);
+        tokens.forEach(t => {
+          fcmService.sendCallNotification(t.token, {
+            callerName: sender.name,
+            callType: callData.type || 'video',
+            callId: callData.callId
+          });
+        });
+      }
     }
   });
 
@@ -981,19 +914,8 @@ io.on('connection', (socket) => {
       avatar: u.avatar,
       online: true
     })));
-    console.log(`[SOCKET] Disconnected: ${socket.id}`);
   });
 });
-
-// Periodic Flash News Broadcaster
-let newsIndex = 0;
-setInterval(() => {
-  if (newsArticles.length > 0) {
-    newsIndex = (newsIndex + 1) % newsArticles.length;
-    const news = newsArticles[newsIndex];
-    io.emit('news_flash_update', news);
-  }
-}, 30000);
 
 // Fallback for SPA routing
 app.get('*', (req, res) => {
@@ -1003,7 +925,10 @@ app.get('*', (req, res) => {
 server.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`🚀 ChatterPatter Production Server on Port: ${PORT}`);
-  console.log(`🔒 Authentication, Contact Sync & Durable Storage Active`);
+  console.log(`📦 Database: ${db.isPostgres ? 'PostgreSQL (Durable)' : 'JSON File (Ephemeral)'}`);
+  console.log(`☁️ Object Storage: ${storageService.getProviderName()}`);
+  console.log(`📲 Carrier SMS Provider: ${smsService.getProviderName()}`);
+  console.log(`🔔 Push Service: ${fcmService.isConfigured() ? 'FCM HTTP v1' : 'Unconfigured'}`);
   console.log(`🌐 Production URL: https://chitchat-chatterpatter.onrender.com`);
   console.log(`=======================================================`);
 });
