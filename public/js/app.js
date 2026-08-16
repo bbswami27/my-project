@@ -90,7 +90,14 @@ class ChatterApp {
       if (typeof io !== 'undefined') {
         this.socket = io();
         this.socket.on('connect', () => {
-          console.log('⚡ Connected to ChatterPatter Socket.io Server:', this.socket.id);
+          console.log('⚡ Connected to GitPit Socket.io Server:', this.socket.id);
+          const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
+          if (currentUser) {
+            this.socket.emit('user_join', currentUser);
+          }
+          if (window.ChatEngine) {
+            window.ChatEngine.syncRegisteredUsers();
+          }
         });
 
         this.socket.on('receive_message', (msg) => {

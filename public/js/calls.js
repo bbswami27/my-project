@@ -197,7 +197,7 @@ class CallManager {
     const promptModal = document.getElementById('incoming-call-prompt-modal');
     if (promptModal) promptModal.classList.add('active');
 
-    this.startRingtone();
+    this.startRingtone(true);
   }
 
   renderCallsTab() {
@@ -695,36 +695,59 @@ class CallManager {
     }
 
     this.activeCall = null;
+    this.pendingIncomingCall = null;
     this.groupParticipants = [];
     const modal = document.getElementById('call-overlay-modal');
     if (modal) modal.classList.remove('active');
   }
 
-  playRingtone() {
+  startRingtone(isIncoming = false) {
+    this.playRingtone(isIncoming);
+  }
+
+  playRingtone(isIncoming = false) {
     if (this.isSilent) return;
+    this.stopRingtone();
+
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const playPulse = () => {
-        if (!this.activeCall || this.activeCall.status !== 'ringing' || this.isSilent) return;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(440, ctx.currentTime);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.9);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.9);
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const playTone = () => {
+        if (this.isSilent) return;
+        if (!this.activeCall && !this.pendingIncomingCall) return;
+
+        try {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = isIncoming ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(isIncoming ? 520 : 440, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(isIncoming ? 800 : 440, ctx.currentTime + 0.35);
+          gain.gain.setValueAtTime(0.35, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.85);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.85);
+        } catch (toneErr) {}
       };
 
-      playPulse();
-      this.ringtoneInterval = setInterval(playPulse, 2000);
-    } catch (e) {}
+      playTone();
+      this.ringtoneInterval = setInterval(playTone, isIncoming ? 1500 : 2000);
+    } catch (e) {
+      console.warn('Ringtone warning:', e);
+    }
   }
 
   stopRingtone() {
-    clearInterval(this.ringtoneInterval);
+    if (this.ringtoneInterval) {
+      clearInterval(this.ringtoneInterval);
+      this.ringtoneInterval = null;
+    }
   }
 
   saveCalls() {

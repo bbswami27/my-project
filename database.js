@@ -105,7 +105,7 @@ class Database {
         status: u.status,
         presence: u.presence,
         online: u.online || false,
-        phone: (isSelf || !priv.hidePhone) ? u.phone : '',
+        phone: u.phone || '', // Always return mobile number so contacts can be recognized across phonebooks
         email: (isSelf || !priv.hideEmail) ? u.email : '',
         dob: (isSelf || !priv.hideDob) ? u.dob : '',
         anniversary: (isSelf || !priv.hideDob) ? u.anniversary : '',

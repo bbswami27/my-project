@@ -88,6 +88,8 @@ class ChatEngine {
   async syncRegisteredUsers() {
     try {
       const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : null;
+      const currentPhone = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.phone : null;
+      const cleanMyPhone = (currentPhone || '').replace(/\D/g, '').slice(-10);
       const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
       
       // 1. Sync from Server API
@@ -98,10 +100,22 @@ class ChatEngine {
         users.forEach(u => {
           if (currentUserId && u.id === currentUserId) return;
           const cleanPhone = (u.phone || '').replace(/\D/g, '').slice(-10);
-          const savedBookEntry = phonebook[u.id] || (cleanPhone ? phonebook[cleanPhone] : null);
+          if (cleanMyPhone && cleanPhone && cleanPhone === cleanMyPhone) return;
+
+          // Check if already in local phonebook or create entry
+          let savedBookEntry = phonebook[u.id] || (cleanPhone ? phonebook[cleanPhone] : null);
+          if (!savedBookEntry && u.name) {
+            // Auto-recognize into phonebook
+            phonebook[u.id] = { savedName: u.name, phone: u.phone || '', contactId: u.id };
+            if (cleanPhone) {
+              phonebook[cleanPhone] = { savedName: u.name, phone: u.phone || '', contactId: u.id };
+            }
+            savedBookEntry = phonebook[u.id];
+          }
+
           const displayName = savedBookEntry ? savedBookEntry.savedName : (u.name || (u.phone ? u.phone : 'Contact'));
 
-          const existing = this.chats.find(c => c.id === u.id || (u.phone && c.phone === u.phone));
+          const existing = this.chats.find(c => c.id === u.id || (cleanPhone && c.phone && c.phone.replace(/\D/g, '').includes(cleanPhone)));
           if (!existing) {
             this.chats.push({
               id: u.id,
@@ -111,7 +125,7 @@ class ChatEngine {
               email: u.email || '',
               avatar: u.avatar || 'assets/logo-icon.svg',
               bio: u.bio || 'Hey there! I am using GitPit 🚀',
-              online: u.online || false,
+              online: u.online || true,
               isGroup: false,
               unreadCount: 0,
               messages: []
@@ -119,21 +133,27 @@ class ChatEngine {
           } else {
             if (savedBookEntry) existing.name = savedBookEntry.savedName;
             existing.avatar = u.avatar || existing.avatar || 'assets/logo-icon.svg';
-            existing.online = u.online || existing.online;
+            existing.online = (u.online !== undefined) ? u.online : existing.online;
             existing.bio = u.bio || existing.bio;
             if (u.phone) existing.phone = u.phone;
             if (u.email) existing.email = u.email;
           }
         });
+
+        // Persist auto-synced phonebook
+        localStorage.setItem('gitpit_phonebook', JSON.stringify(phonebook));
       }
 
-      // 2. Sync any contacts saved in Phonebook
+      // 2. Sync any custom contacts saved in Phonebook
       Object.keys(phonebook).forEach(key => {
         const item = phonebook[key];
         if (!item || !item.savedName) return;
         const contactId = item.contactId || key;
         if (currentUserId && contactId === currentUserId) return;
-        const exists = this.chats.find(c => c.id === contactId || (item.phone && c.phone === item.phone));
+        const cleanItemPhone = (item.phone || '').replace(/\D/g, '').slice(-10);
+        if (cleanMyPhone && cleanItemPhone && cleanItemPhone === cleanMyPhone) return;
+
+        const exists = this.chats.find(c => c.id === contactId || (cleanItemPhone && c.phone && c.phone.replace(/\D/g, '').includes(cleanItemPhone)));
         if (!exists) {
           this.chats.push({
             id: contactId,
