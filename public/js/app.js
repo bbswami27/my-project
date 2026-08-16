@@ -170,28 +170,47 @@ class ChatterApp {
 
         // 📞 Real-Time Audio & Video Call Notifications
         this.socket.on('incoming_call', (callData) => {
-          const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : null;
-          const currentPhone = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.phone : null;
+          if (!callData) return;
+          const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
+          const currentUserId = currentUser ? currentUser.id : null;
+          const currentPhone = currentUser ? currentUser.phone : null;
           const cleanMyPhone = (currentPhone || '').replace(/\D/g, '').slice(-10);
-          const cleanTargetPhone = (callData.recipientPhone || '').replace(/\D/g, '').slice(-10);
+          const cleanTargetPhone = (callData.recipientPhone || callData.recipientId || '').replace(/\D/g, '').slice(-10);
+          const cleanCallerPhone = (callData.callerPhone || callData.callerId || '').replace(/\D/g, '').slice(-10);
 
-          if (!callData || (currentUserId && callData.callerId === currentUserId)) {
-            return; // Ignore own outgoing call
+          // 1. Ignore if call originated from myself
+          if (currentUserId && callData.callerId === currentUserId) return;
+          if (cleanMyPhone && cleanCallerPhone && cleanMyPhone === cleanCallerPhone) return;
+
+          // 2. Validate recipient match: matches ID or matches 10-digit mobile number
+          let isTargetRecipient = false;
+          if (callData.recipientId && currentUserId && (callData.recipientId === currentUserId || callData.recipientId === ('user_' + cleanMyPhone))) {
+            isTargetRecipient = true;
+          }
+          if (cleanMyPhone && cleanTargetPhone && (cleanMyPhone === cleanTargetPhone || cleanTargetPhone.includes(cleanMyPhone) || cleanMyPhone.includes(cleanTargetPhone))) {
+            isTargetRecipient = true;
+          }
+          if (!callData.recipientId && !cleanTargetPhone) {
+            isTargetRecipient = true;
           }
 
-          // Check target recipient
-          if (callData.recipientId && currentUserId && callData.recipientId !== currentUserId) {
-            if (!cleanMyPhone || cleanMyPhone !== cleanTargetPhone) {
-              return;
-            }
+          if (!isTargetRecipient) {
+            console.log('[CALL] Incoming call was for another recipient');
+            return;
           }
+
+          // 3. Look up Phonebook for saved contact name
+          const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
+          const savedEntry = phonebook[callData.callerId] || (cleanCallerPhone ? phonebook[cleanCallerPhone] : null);
+          const callerDisplayName = savedEntry ? savedEntry.savedName : (callData.callerName || callData.callerPhone || 'Incoming Caller');
+          const callerAvatar = callData.callerAvatar || 'assets/logo-icon.svg';
 
           if (window.CallManager) {
             window.CallManager.showIncomingCallPrompt(
-              callData.callerName || 'Incoming Caller',
-              callData.callerAvatar || 'assets/logo-icon.svg',
+              callerDisplayName,
+              callerAvatar,
               callData.callType || 'audio',
-              callData.callerId || null
+              callData.callerId || ('user_' + cleanCallerPhone)
             );
           }
         });

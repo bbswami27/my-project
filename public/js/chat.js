@@ -1090,12 +1090,38 @@ class ChatEngine {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      this.sendMessage({
-        type: 'image',
-        mediaUrl: event.target.result,
-        fileName: file.name,
-        fileSize: (file.size / 1024).toFixed(1) + ' KB'
-      });
+      const img = new Image();
+      img.onload = () => {
+        // High Definition Resizing (Max 1920px)
+        const maxDimension = 1920;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        this.sendMessage({
+          type: 'image',
+          mediaUrl: optimizedDataUrl,
+          fileName: file.name || 'Photo.jpg',
+          fileSize: (file.size / 1024).toFixed(1) + ' KB'
+        });
+      };
+      img.src = event.target.result;
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -1147,43 +1173,62 @@ class ChatEngine {
   }
 
   onReceiveMessage(msg) {
-    const currentUserId = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser.id : 'me';
-    
-    // Map conversation ID correctly for direct vs group/AI messages
-    let convId = msg.chatId;
-    const isGroupOrAi = msg.chatId === 'chat_ai' || (msg.chatId && msg.chatId.startsWith('group_'));
-    if (!isGroupOrAi && msg.recipientId && msg.senderId) {
-      if (currentUserId === msg.recipientId) {
-        convId = msg.senderId;
-      } else if (currentUserId === msg.senderId) {
-        convId = msg.recipientId;
-      }
+    if (!msg) return;
+    const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
+    const currentUserId = currentUser ? currentUser.id : 'me';
+    const currentPhone = currentUser ? currentUser.phone : '';
+    const cleanMyPhone = (currentPhone || '').replace(/\D/g, '').slice(-10);
+
+    // If this is an incoming message from myself, don't duplicate
+    const isFromMe = msg.senderId === currentUserId || (cleanMyPhone && msg.senderPhone && msg.senderPhone.includes(cleanMyPhone));
+    if (isFromMe && msg.senderId === currentUserId) {
+      return;
     }
 
-    let chat = this.chats.find(c => c.id === convId);
-    if (!chat) {
-      chat = {
-        id: convId,
-        name: msg.senderName || 'Chatter User',
-        avatar: msg.senderAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${convId}`,
+    const isGroupOrAi = msg.chatId === 'chat_ai' || (msg.chatId && msg.chatId.startsWith('group_'));
+    let targetChat = null;
+
+    if (isGroupOrAi) {
+      targetChat = this.chats.find(c => c.id === msg.chatId);
+    } else {
+      const cleanSenderPhone = (msg.senderPhone || msg.senderId || '').replace(/\D/g, '').slice(-10);
+      targetChat = this.chats.find(c => {
+        if (c.id === msg.senderId || c.id === msg.chatId) return true;
+        if (cleanSenderPhone && c.phone && c.phone.replace(/\D/g, '').includes(cleanSenderPhone)) return true;
+        return false;
+      });
+    }
+
+    const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
+    const cleanSender = (msg.senderPhone || msg.senderId || '').replace(/\D/g, '').slice(-10);
+    const savedEntry = phonebook[msg.senderId] || (cleanSender ? phonebook[cleanSender] : null);
+    const displayName = savedEntry ? savedEntry.savedName : (msg.senderName || msg.senderPhone || 'Friend');
+
+    if (!targetChat) {
+      targetChat = {
+        id: msg.senderId || msg.chatId || ('user_' + Date.now()),
+        name: displayName,
+        savedName: savedEntry ? savedEntry.savedName : '',
+        phone: msg.senderPhone || '',
+        avatar: msg.senderAvatar || 'assets/logo-icon.svg',
         messages: [],
         unreadCount: 0,
         online: true
       };
-      this.chats.unshift(chat);
+      this.chats.unshift(targetChat);
     }
 
     // Check duplicate
-    if (!chat.messages.some(m => m.id === msg.id)) {
-      chat.messages.push(msg);
-      if (this.activeChatId !== convId) {
-        chat.unreadCount = (chat.unreadCount || 0) + 1;
+    if (!targetChat.messages.some(m => m.id === msg.id)) {
+      targetChat.messages.push(msg);
+      if (this.activeChatId !== targetChat.id) {
+        targetChat.unreadCount = (targetChat.unreadCount || 0) + 1;
       }
     }
 
     this.saveChats();
     this.renderChatList();
-    if (this.activeChatId === convId) {
+    if (this.activeChatId === targetChat.id) {
       this.renderMessages();
       this.scrollToBottom();
     }
@@ -1392,14 +1437,50 @@ class ChatEngine {
   }
 
   toggleVoiceRecording() {
-    if (window.VoiceRecorder) {
-      window.VoiceRecorder.toggleRecording();
+    if (!window.VoiceRecorder) return;
+    const recBar = document.getElementById('recording-bar-ui');
+    const inputArea = document.getElementById('chat-input-wrapper');
+    const timerDisplay = document.getElementById('recording-time-display');
+
+    if (window.VoiceRecorder.isRecording) {
+      window.VoiceRecorder.stopRecording((audioData) => {
+        this.resetRecordingUI();
+        if (audioData) {
+          this.sendMessage({
+            type: 'voice',
+            audioUrl: audioData.audioUrl,
+            duration: audioData.duration || '0:05'
+          });
+        }
+      });
+    } else {
+      if (recBar) recBar.style.display = 'flex';
+      if (inputArea) inputArea.style.display = 'none';
+      if (timerDisplay) timerDisplay.textContent = '0:00';
+
+      window.VoiceRecorder.startRecording(
+        (timeStr) => {
+          if (timerDisplay) timerDisplay.textContent = timeStr;
+        },
+        (audioData) => {
+          this.resetRecordingUI();
+          if (audioData) {
+            this.sendMessage({
+              type: 'voice',
+              audioUrl: audioData.audioUrl,
+              duration: audioData.duration || '0:05'
+            });
+          }
+        }
+      );
     }
   }
 
   resetRecordingUI() {
-    const bar = document.getElementById('recording-bar-ui');
-    if (bar) bar.style.display = 'none';
+    const recBar = document.getElementById('recording-bar-ui');
+    const inputArea = document.getElementById('chat-input-wrapper');
+    if (recBar) recBar.style.display = 'none';
+    if (inputArea) inputArea.style.display = 'flex';
   }
 
   renderSettingsBlockedList() {

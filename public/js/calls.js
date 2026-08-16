@@ -133,31 +133,32 @@ class CallManager {
   }
 
   showIncomingCallPrompt(name, avatar, type = 'video', contactId = null) {
-    const videoPrivacy = localStorage.getItem('gitpit_video_call_privacy') || 'contacts';
-    const isSavedContact = window.ChatEngine && window.ChatEngine.chats.some(c => c.id === contactId || c.name === name);
+    const videoPrivacy = localStorage.getItem('gitpit_video_call_privacy') || 'everyone';
+    const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
+    const cleanContactPhone = (contactId || '').replace(/\D/g, '').slice(-10);
+    const isSavedInPhonebook = !!(phonebook[contactId] || (cleanContactPhone && phonebook[cleanContactPhone]));
+    const isSavedContact = (window.ChatEngine && window.ChatEngine.chats.some(c => c.id === contactId || c.name === name || (cleanContactPhone && c.phone && c.phone.includes(cleanContactPhone)))) || isSavedInPhonebook;
+
     const videoBlockedList = JSON.parse(localStorage.getItem('gitpit_video_blocked_contacts') || '[]');
     const isPerContactVideoBlocked = contactId && videoBlockedList.includes(contactId);
 
     // 1. Check Per-Contact Video Block
     if (type === 'video' && isPerContactVideoBlocked) {
       console.log('Video calls from this contact are blocked in personal settings.');
-      alert(`🚫 Incoming video call from "${name}" was blocked because video calling is blocked for this contact.`);
       return;
     }
 
     // 2. Block All Video Calls (Nobody / Voice Only Mode)
     if (type === 'video' && videoPrivacy === 'nobody') {
       console.log('All incoming video calls are blocked in privacy settings.');
-      alert(`🚫 Incoming video call from "${name}" was declined because "Block All Video Calls" is active in your Settings.`);
       return;
     }
 
     // 3. Selected Persons Only Video Privacy
     if (type === 'video' && videoPrivacy === 'selected') {
       const allowedList = JSON.parse(localStorage.getItem('gitpit_allowed_video_contacts') || '[]');
-      if (!contactId || !allowedList.includes(contactId)) {
+      if (!contactId || (!allowedList.includes(contactId) && !isSavedContact)) {
         console.log('Caller is not in allowed video callers list.');
-        alert(`🚫 Incoming video call from "${name}" was blocked because your Privacy Settings only allow video calls from Selected Persons.`);
         return;
       }
     }
@@ -165,7 +166,6 @@ class CallManager {
     // 4. Contacts Only Video Privacy (Block Unknown)
     if (type === 'video' && videoPrivacy === 'contacts' && !isSavedContact) {
       console.log('Blocked incoming video call from unknown caller due to privacy settings.');
-      alert(`🚫 Incoming video call from unknown caller "${name}" was automatically blocked by your privacy settings.`);
       return;
     }
 
