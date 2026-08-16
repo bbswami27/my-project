@@ -419,6 +419,15 @@ app.get('/api/user/blocked', requirePhoneVerified, (req, res) => {
   res.json({ success: true, blockedUsers: list });
 });
 
+// Linked Devices API
+app.get('/api/devices/:userId', requirePhoneVerified, (req, res) => {
+  res.json({ success: true, devices: [] });
+});
+
+app.post('/api/devices/link', requirePhoneVerified, (req, res) => {
+  res.json({ success: true });
+});
+
 // Messages History API
 app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
   const messages = db.getChatMessages(req.params.chatId);
