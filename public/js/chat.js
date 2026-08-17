@@ -1,4 +1,4 @@
-// ChatterPatter - Production Chat Engine with Real Users, Media Lightbox, Calendar Date Jump, Profile Media Gallery & Editing
+// GitPit - Production Chat Engine with Real Users, Media Lightbox, Calendar Date Jump, Profile Media Gallery & Editing
 
 class ChatEngine {
   constructor() {
@@ -36,7 +36,7 @@ class ChatEngine {
     const aiChatIndex = this.chats.findIndex(c => c.id === 'chat_ai' || c.isAi);
     const defaultAiChat = {
       id: 'chat_ai',
-      name: 'ChatterPatter AI 🤖',
+      name: 'GitPit AI 🤖',
       username: '@ai_assistant',
       phone: '+91 80000 00000',
       email: 'ai@chatterpatter.app',
@@ -46,12 +46,12 @@ class ChatEngine {
       unreadCount: 1,
       pinned: true,
       online: true,
-      bio: 'Smart AI Bot • Powered by ChatterPatter Neural Intelligence',
+      bio: 'Smart AI Bot • Powered by GitPit Neural Intelligence',
       messages: [
         {
           id: 'm_welcome',
           senderId: 'ai_assistant',
-          senderName: 'ChatterPatter AI 🤖',
+          senderName: 'GitPit AI 🤖',
           senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
           text: 'Namaste! 🙏 Main aapka Smart AI Assistant hoon.\n\nMujhse koi bhi sawaal poochein, emails ya leave application likhwayein, coding help lein, video calling tips lein ya chutkula sunein! ✨',
           timestamp: '10:00 AM',
@@ -65,7 +65,7 @@ class ChatEngine {
       this.chats.unshift(defaultAiChat);
     } else {
       this.chats[aiChatIndex].isAi = true;
-      this.chats[aiChatIndex].name = 'ChatterPatter AI 🤖';
+      this.chats[aiChatIndex].name = 'GitPit AI 🤖';
       if (!this.chats[aiChatIndex].messages || this.chats[aiChatIndex].messages.length === 0) {
         this.chats[aiChatIndex].messages = defaultAiChat.messages;
       }
@@ -397,7 +397,7 @@ class ChatEngine {
     listElem.innerHTML = this.chats.map(chat => {
       const cleanPhone = (chat.phone || '').replace(/\D/g, '').slice(-10);
       const savedEntry = phonebook[chat.id] || (cleanPhone ? phonebook[cleanPhone] : null);
-      const displayName = chat.isAi ? 'ChatterPatter AI 🤖' : (savedEntry ? savedEntry.savedName : (chat.savedName || chat.name || chat.phone || 'Contact'));
+      const displayName = chat.isAi ? 'GitPit AI 🤖' : (savedEntry ? savedEntry.savedName : (chat.savedName || chat.name || chat.phone || 'Contact'));
       const displayAvatar = chat.avatar || 'assets/logo-icon.svg';
 
       const lastMsg = chat.messages && chat.messages.length > 0
@@ -496,7 +496,7 @@ class ChatEngine {
       email: target.includes('@') ? target : '',
       username: '@' + target.toLowerCase().replace(/[^a-z0-9_]/g, ''),
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(target)}`,
-      bio: 'ChatterPatter Member 🚀',
+      bio: 'GitPit Member 🚀',
       messages: [],
       unreadCount: 0,
       online: true
@@ -525,7 +525,7 @@ class ChatEngine {
     const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
     const cleanPhone = (chat.phone || '').replace(/\D/g, '').slice(-10);
     const savedEntry = phonebook[chat.id] || (cleanPhone ? phonebook[cleanPhone] : null);
-    const displayName = chat.isAi ? 'ChatterPatter AI 🤖' : (savedEntry ? savedEntry.savedName : (chat.savedName || chat.name || chat.phone || 'Contact'));
+    const displayName = chat.isAi ? 'GitPit AI 🤖' : (savedEntry ? savedEntry.savedName : (chat.savedName || chat.name || chat.phone || 'Contact'));
     const displayAvatar = chat.avatar || 'assets/logo-icon.svg';
 
     document.getElementById('active-chat-avatar').src = displayAvatar;
@@ -861,7 +861,7 @@ class ChatEngine {
     imgElem.src = imageUrl;
     if (captionElem) captionElem.textContent = caption || '';
     if (downloadBtn) {
-      downloadBtn.onclick = () => this.downloadDocument('ChatterPatter_Image_' + Date.now() + '.jpg', imageUrl);
+      downloadBtn.onclick = () => this.downloadDocument('GitPit_Image_' + Date.now() + '.jpg', imageUrl);
     }
 
     modal.classList.add('active');
@@ -889,7 +889,7 @@ class ChatEngine {
       return;
     }
     if (activeChat.isAi || activeChat.id === 'chat_ai') {
-      alert('ChatterPatter AI is already saved in your system contacts.');
+      alert('GitPit AI is already saved in your system contacts.');
       return;
     }
 
@@ -1066,7 +1066,7 @@ class ChatEngine {
 
     const statusElem = document.getElementById('active-chat-status');
     if (statusElem) {
-      statusElem.textContent = '🤖 ChatterPatter AI is typing...';
+      statusElem.textContent = '🤖 GitPit AI is typing...';
       statusElem.classList.add('typing');
     }
 
@@ -1105,7 +1105,7 @@ class ChatEngine {
         id: 'msg_ai_' + Date.now(),
         chatId: activeChat.id,
         senderId: 'ai_assistant',
-        senderName: 'ChatterPatter AI 🤖',
+        senderName: 'GitPit AI 🤖',
         senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
         text: answer,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

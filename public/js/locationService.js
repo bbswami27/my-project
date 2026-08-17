@@ -1,4 +1,4 @@
-// ChatterPatter - Location Sharing Service
+// GitPit - Location Sharing Service
 
 class LocationService {
   constructor() {

@@ -1,4 +1,4 @@
-// ChatterPatter - Production Backend Server with Real WebRTC, OTP Authentication, Contact Sync & Durable Storage
+// GitPit - Production Backend Server with Real WebRTC, OTP Authentication, Contact Sync & Durable Storage
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -38,7 +38,7 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/api/health', (req, res) => res.status(200).json({
   status: 'ok',
   time: new Date().toISOString(),
-  app: 'ChatterPatter',
+  app: 'GitPit',
   version: '1.0.0',
   uptime: process.uptime(),
   database: db.isPostgres ? 'PostgreSQL (Durable)' : 'JSON File / Ephemeral Disk',
@@ -46,7 +46,7 @@ app.get('/api/health', (req, res) => res.status(200).json({
   smsProvider: smsService.getProviderName(),
   fcmPush: fcmService.isConfigured() ? 'FCM HTTP v1 (Configured)' : 'Unconfigured'
 }));
-app.get('/ping', (req, res) => res.json({ status: 'live', app: 'ChatterPatter', time: new Date().toISOString() }));
+app.get('/ping', (req, res) => res.json({ status: 'live', app: 'GitPit', time: new Date().toISOString() }));
 
 // Safe Isolated R2 Object Storage Health Self-Check Endpoint
 app.get('/api/storage/r2-check', async (req, res) => {
@@ -213,7 +213,7 @@ app.post('/api/auth/verify-otp', (req, res) => {
       phoneVerifiedAt: new Date().toISOString(),
       email: email || '',
       avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${normalized}`,
-      bio: bio || 'Hey there! I am using ChatterPatter 🚀'
+      bio: bio || 'Hey there! I am using GitPit 🚀'
     });
   }
 
@@ -300,7 +300,7 @@ app.post('/api/auth/email/login', (req, res) => {
       phoneVerificationRequired: true,
       userId: user.id,
       email: user.email,
-      message: 'Mobile number verification is mandatory before accessing ChatterPatter.'
+      message: 'Mobile number verification is mandatory before accessing GitPit.'
     });
   }
 
@@ -699,10 +699,10 @@ function generateSmartAiResponse(prompt = '', userName = 'Friend') {
   }
 
   if (/^(hi|hello|hey|namaste|kem cho|pranam|salam|hola)/i.test(query)) {
-    return `Namaste ${userName}! 🙏✨\n\nMain aapka **ChatterPatter Smart AI Assistant** hoon. Main aapke sawaalon ke jawaab, formal emails, coding guidance, aur translation me poori madad kar sakta hoon!\n\nAap kya poochhna chahte hain?`;
+    return `Namaste ${userName}! 🙏✨\n\nMain aapka **GitPit Smart AI Assistant** hoon. Main aapke sawaalon ke jawaab, formal emails, coding guidance, aur translation me poori madad kar sakta hoon!\n\nAap kya poochhna chahte hain?`;
   }
 
-  return `🤖 **ChatterPatter AI:**\n\nAapke sawaal *"**${prompt}**"* ke liye main poori madad kar sakta hoon. Kripya apna vishay batayein!`;
+  return `🤖 **GitPit AI:**\n\nAapke sawaal *"**${prompt}**"* ke liye main poori madad kar sakta hoon. Kripya apna vishay batayein!`;
 }
 
 app.post('/api/ai/chat', requirePhoneVerified, (req, res) => {
@@ -777,7 +777,7 @@ io.on('connection', (socket) => {
         const replyMsg = db.saveMessage({
           chatId: msgData.chatId,
           senderId: 'ai_assistant',
-          senderName: 'ChatterPatter AI 🤖',
+          senderName: 'GitPit AI 🤖',
           senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
           text: aiAnswer,
           status: 'read'
@@ -967,7 +967,7 @@ app.get('*', (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`=======================================================`);
-  console.log(`🚀 ChatterPatter Production Server on Port: ${PORT}`);
+  console.log(`🚀 GitPit Production Server on Port: ${PORT}`);
   console.log(`📦 Database: ${db.isPostgres ? 'PostgreSQL (Durable)' : 'JSON File (Ephemeral)'}`);
   console.log(`☁️ Object Storage: ${storageService.getProviderName()}`);
   console.log(`📲 Carrier SMS Provider: ${smsService.getProviderName()}`);

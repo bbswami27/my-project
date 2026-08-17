@@ -1,4 +1,4 @@
-// ChatterPatter - Production Authentication, Persistent Sessions, Mandatory Phone Verification & Contact Sync Manager
+// GitPit - Production Authentication, Persistent Sessions, Mandatory Phone Verification & Contact Sync Manager
 
 function getApiBaseUrl() {
   if (typeof window !== 'undefined' && window.location) {
@@ -655,7 +655,7 @@ class AuthManager {
           });
           const data = await resp.json();
           if (data.matchedUsers) {
-            alert(`✅ Contacts Synced! Found ${data.matchedUsers.length} people using ChatterPatter.`);
+            alert(`✅ Contacts Synced! Found ${data.matchedUsers.length} people using GitPit.`);
             if (window.ChatEngine) {
               window.ChatEngine.syncRegisteredUsers();
             }
@@ -750,7 +750,7 @@ class AuthManager {
       phone: '',
       email: '',
       avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=user',
-      bio: 'Hey there! I am using ChatterPatter 🚀',
+      bio: 'Hey there! I am using GitPit 🚀',
       privacy: {}
     };
 

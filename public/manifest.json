@@ -1,6 +1,6 @@
 {
-  "name": "ChatterPatter",
-  "short_name": "ChatterPatter",
+  "name": "GitPit",
+  "short_name": "GitPit",
   "description": "Real-time Social Chatting, Smart AI Assistant, Video Calls & Live News",
   "start_url": "/",
   "display": "standalone",

@@ -1,4 +1,4 @@
-// ChatterPatter - Firebase Admin SDK & FCM HTTP v1 Production Push Notification Service
+// GitPit - Firebase Admin SDK & FCM HTTP v1 Production Push Notification Service
 const fs = require('fs');
 
 let admin = null;
@@ -115,7 +115,7 @@ class FcmService {
       const message = {
         token: deviceToken,
         notification: {
-          title: title || 'ChatterPatter',
+          title: title || 'GitPit',
           body: body || 'New message'
         },
         data: {
@@ -164,7 +164,7 @@ class FcmService {
         token: deviceToken,
         notification: {
           title: `Incoming ${isVideo ? 'Video' : 'Audio'} Call 📞`,
-          body: `${callerName || 'Someone'} is calling you on ChatterPatter...`
+          body: `${callerName || 'Someone'} is calling you on GitPit...`
         },
         data: {
           type: 'incoming_call',

@@ -388,7 +388,7 @@ class LocalizationManager {
     // 3. Update Empty Welcome Screen
     const emptyTitle = document.querySelector('.empty-title');
     if (emptyTitle) {
-      emptyTitle.textContent = langCode === 'hi' ? 'चैटरपैट्टर वेब' : 'ChatterPatter Web';
+      emptyTitle.textContent = langCode === 'hi' ? 'चैटरपैट्टर वेब' : 'GitPit Web';
     }
 
     const emptyDesc = document.querySelector('.empty-desc');

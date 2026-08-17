@@ -1,4 +1,4 @@
-// ChatterPatter - Status & Stories Controller
+// GitPit - Status & Stories Controller
 
 class StoriesManager {
   constructor() {

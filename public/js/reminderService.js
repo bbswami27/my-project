@@ -1,4 +1,4 @@
-// ChatterPatter - Call & Message Reminder Manager
+// GitPit - Call & Message Reminder Manager
 
 class ReminderManager {
   constructor() {
@@ -70,7 +70,7 @@ class ReminderManager {
       dueTime: dueTime,
       dueTimeFormatted: new Date(dueTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       chatId: this.selectedItemForReminder.chatId || null,
-      contactName: this.selectedItemForReminder.contactName || 'ChatterPatter'
+      contactName: this.selectedItemForReminder.contactName || 'GitPit'
     };
 
     this.reminders.push(reminder);

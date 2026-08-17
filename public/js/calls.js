@@ -1,4 +1,4 @@
-// ChatterPatter - Real WebRTC Audio & Video Calling Manager
+// GitPit - Real WebRTC Audio & Video Calling Manager
 // Features: Real peer-to-peer WebRTC streaming, STUN configuration, Socket.IO signaling,
 // Camera flip, Mic mute, Speaker mute, Screen share, and clean track lifecycle management.
 
@@ -180,7 +180,7 @@ class CallManager {
     try {
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(`Incoming ${callType.toUpperCase()} Call`, {
-          body: `${callerDisplayName} is calling you on ChatterPatter...`,
+          body: `${callerDisplayName} is calling you on GitPit...`,
           icon: callerAvatar || 'assets/logo-icon.svg'
         });
       }

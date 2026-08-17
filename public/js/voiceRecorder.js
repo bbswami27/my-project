@@ -1,4 +1,4 @@
-// ChatterPatter - Web Audio Voice Note Recorder & Audio Player
+// GitPit - Web Audio Voice Note Recorder & Audio Player
 
 class VoiceRecorderManager {
   constructor() {

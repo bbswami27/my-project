@@ -1,4 +1,4 @@
-// ChatterPatter - SMS Dispatch Service (Fast2SMS & Twilio)
+// GitPit - SMS Dispatch Service (Fast2SMS & Twilio)
 
 class SmsService {
   isConfigured() {
@@ -53,7 +53,7 @@ class SmsService {
         const body = new URLSearchParams({
           To: normalizedPhone,
           From: process.env.TWILIO_PHONE_NUMBER,
-          Body: `Your ChatterPatter verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`
+          Body: `Your GitPit verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`
         });
         const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
           method: 'POST',

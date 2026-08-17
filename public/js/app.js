@@ -1,4 +1,4 @@
-// ChatterPatter - Main Application Controller & Tab Navigation
+// GitPit - Main Application Controller & Tab Navigation
 
 class ChatterApp {
   constructor() {
@@ -76,7 +76,7 @@ class ChatterApp {
       this.deferredPrompt.prompt();
       this.deferredPrompt.userChoice.then((choiceResult) => {
         if (choiceResult.outcome === 'accepted') {
-          alert('🎉 ChatterPatter app installed on your device Home Screen!');
+          alert('🎉 GitPit app installed on your device Home Screen!');
         }
         this.deferredPrompt = null;
       });
@@ -187,7 +187,7 @@ class ChatterApp {
         this.socket.on('news_flash_update', (news) => {
           const textElem = document.getElementById('ticker-headline-text');
           if (textElem) {
-            textElem.textContent = `🚨 ${news.title} (${news.source || 'ChatterPatter'})`;
+            textElem.textContent = `🚨 ${news.title} (${news.source || 'GitPit'})`;
           }
         });
 

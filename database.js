@@ -1,4 +1,4 @@
-// ChatterPatter - Production Database Engine (PostgreSQL Durable Engine with JSON Fallback & Safe Migration)
+// GitPit - Production Database Engine (PostgreSQL Durable Engine with JSON Fallback & Safe Migration)
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -446,7 +446,7 @@ class Database {
         passwordHash: userData.passwordHash || null,
         dob: userData.dob || '',
         anniversary: userData.anniversary || '',
-        bio: userData.bio || 'Hey there! I am using ChatterPatter 🚀',
+        bio: userData.bio || 'Hey there! I am using GitPit 🚀',
         avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${newUserId}`,
         status: userData.status || 'Available 🟢',
         presence: 'online',
@@ -487,7 +487,7 @@ class Database {
       username: u.username,
       avatar: u.avatar,
       phone: u.phone,
-      bio: u.bio || u.status || 'Hey there! I am using ChatterPatter 🚀',
+      bio: u.bio || u.status || 'Hey there! I am using GitPit 🚀',
       online: u.online || false
     }));
   }

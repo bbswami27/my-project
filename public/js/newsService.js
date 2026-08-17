@@ -1,4 +1,4 @@
-// ChatterPatter - News Ticker & Channels Service
+// GitPit - News Ticker & Channels Service
 
 class NewsService {
   constructor() {

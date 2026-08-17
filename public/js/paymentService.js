@@ -1,4 +1,4 @@
-// ChatterPatter - UPI Payments & QR Code Manager
+// GitPit - UPI Payments & QR Code Manager
 
 class PaymentManager {
   constructor() {
@@ -131,7 +131,7 @@ class PaymentManager {
     document.getElementById('upi-recipient-vpa').textContent = `${activeChat.name.toLowerCase().replace(/[^a-z]/g, '')}@chatterupi`;
     
     document.getElementById('upi-amount-input').value = '500';
-    document.getElementById('upi-note-input').value = 'ChatterPatter Payment 🚀';
+    document.getElementById('upi-note-input').value = 'GitPit Payment 🚀';
 
     const modal = document.getElementById('upi-send-modal');
     if (modal) modal.classList.add('active');
@@ -208,7 +208,7 @@ class PaymentManager {
       window.ChatEngine.sendMessage({
         type: 'payment',
         amount: this.currentAmount,
-        note: this.currentNote || 'ChatterPatter UPI Transfer',
+        note: this.currentNote || 'GitPit UPI Transfer',
         txnId: txnId,
         text: `⚡ UPI Transfer of ₹${this.currentAmount} to ${recipientName} is Successful!`
       });
@@ -269,7 +269,7 @@ class PaymentManager {
 
   renderMyQrCode() {
     const user = window.AuthManager ? window.AuthManager.currentUser : null;
-    const name = user ? user.name : 'ChatterPatter User';
+    const name = user ? user.name : 'GitPit User';
     const upiId = user ? `${user.name.toLowerCase().replace(/[^a-z]/g, '')}@chatterupi` : 'chatterpatter@upi';
 
     document.getElementById('my-qr-user-name').textContent = name;

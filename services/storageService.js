@@ -1,4 +1,4 @@
-// ChatterPatter - Production Cloudflare R2 / S3-Compatible Durable Object Storage Service
+// GitPit - Production Cloudflare R2 / S3-Compatible Durable Object Storage Service
 const crypto = require('crypto');
 const path = require('path');
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
@@ -257,7 +257,7 @@ class StorageService {
 
     const testTimestamp = Date.now();
     const testKey = `health-check/${testTimestamp}-r2-test.txt`;
-    const testContent = `ChatterPatter R2 Health Check Verification [${testTimestamp}]`;
+    const testContent = `GitPit R2 Health Check Verification [${testTimestamp}]`;
     const testBuffer = Buffer.from(testContent, 'utf8');
 
     let uploadOk = false;

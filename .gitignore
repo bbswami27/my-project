@@ -33,4 +33,6 @@ android/local.properties
 firebase-service-account.json
 *.key
 *.pem
+*.jks
+*.keystore
 secrets/
