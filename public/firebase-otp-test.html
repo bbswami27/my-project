@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>GitPit Firebase OTP Test</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#0b1215;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}.card{width:min(420px,92vw);background:#121d22;border:1px solid #26343b;border-radius:16px;padding:24px;box-sizing:border-box}.logo{font-size:26px;font-weight:800;margin-bottom:6px}.sub{color:#9fb0b8;font-size:13px;margin-bottom:22px}.field{width:100%;box-sizing:border-box;padding:13px;border-radius:9px;border:1px solid #34454d;background:#1b2a31;color:#fff;margin:7px 0 12px;font-size:16px}.btn{width:100%;padding:13px;border:0;border-radius:9px;background:#00a884;color:#fff;font-weight:700;font-size:15px;cursor:pointer}.btn:disabled{opacity:.5}.msg{margin-top:14px;font-size:13px;line-height:1.45;color:#9fe3c8}.error{color:#ff9d9d}.hidden{display:none}.note{font-size:11px;color:#83949d;margin-top:18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">GitPit • Firebase OTP Test</div>
+    <div class="sub">Temporary testing page — this does not change the main login flow.</div>
+
+    <div id="phoneStep">
+      <label>Mobile Number</label>
+      <input id="phone" class="field" type="tel" value="+91" placeholder="+919876543210" autocomplete="tel">
+      <div id="recaptcha-container"></div>
+      <button id="sendBtn" class="btn">Send Firebase OTP</button>
+    </div>
+
+    <div id="otpStep" class="hidden">
+      <label>6-Digit OTP</label>
+      <input id="otp" class="field" type="text" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code">
+      <button id="verifyBtn" class="btn">Verify OTP</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+    <div class="note">For testing only. Never put service-account private keys in this page.</div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+
+    // TODO: Replace these values with the Web App config from Firebase Console.
+    // Firebase Console → Project settings → General → Your apps → Web app.
+    const firebaseConfig = {
+      apiKey: 'PASTE_WEB_API_KEY_HERE',
+      authDomain: 'chatterpatter-75167.firebaseapp.com',
+      projectId: 'chatterpatter-75167',
+      storageBucket: 'chatterpatter-75167.firebasestorage.app',
+      messagingSenderId: 'PASTE_MESSAGING_SENDER_ID_HERE',
+      appId: 'PASTE_WEB_APP_ID_HERE'
+    };
+
+    const msg = document.getElementById('msg');
+    const sendBtn = document.getElementById('sendBtn');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const phoneStep = document.getElementById('phoneStep');
+    const otpStep = document.getElementById('otpStep');
+    const phoneInput = document.getElementById('phone');
+    const otpInput = document.getElementById('otp');
+
+    function show(text, error=false){ msg.textContent=text; msg.className='msg'+(error?' error':''); }
+
+    if (firebaseConfig.apiKey.startsWith('PASTE_')) {
+      show('Firebase Web App config is not filled yet. Open this file and paste the Web config values from Firebase Console.', true);
+      sendBtn.disabled = true;
+    } else {
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      window.__gitpitFirebaseAuth = auth;
+
+      const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'normal',
+        callback: () => show('reCAPTCHA verified. You can send the OTP.')
+      });
+      window.__gitpitRecaptcha = recaptchaVerifier;
+
+      sendBtn.addEventListener('click', async () => {
+        const phone = phoneInput.value.trim();
+        if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+          show('Enter the mobile number in international format, e.g. +919876543210.', true);
+          return;
+        }
+        sendBtn.disabled = true;
+        show('Sending Firebase OTP...');
+        try {
+          window.__gitpitConfirmationResult = await signInWithPhoneNumber(auth, phone, recaptchaVerifier);
+          phoneStep.classList.add('hidden');
+          otpStep.classList.remove('hidden');
+          otpInput.focus();
+          show('Firebase OTP sent. Check the phone and enter the 6-digit code.');
+        } catch (e) {
+          console.error(e);
+          sendBtn.disabled = false;
+          show(`Firebase error: ${e.code || e.message}`, true);
+          try { recaptchaVerifier.clear(); } catch (_) {}
+          window.__gitpitRecaptcha = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'normal' });
+        }
+      });
+
+      verifyBtn.addEventListener('click', async () => {
+        const code = otpInput.value.trim();
+        if (!/^\d{6}$/.test(code)) { show('Enter the complete 6-digit OTP.', true); return; }
+        verifyBtn.disabled = true;
+        show('Verifying Firebase OTP...');
+        try {
+          const result = await window.__gitpitConfirmationResult.confirm(code);
+          show(`SUCCESS: Firebase phone verified. UID: ${result.user.uid}`);
+        } catch (e) {
+          console.error(e);
+          verifyBtn.disabled = false;
+          show(`Verification failed: ${e.code || e.message}`, true);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
