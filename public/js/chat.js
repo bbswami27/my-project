@@ -1999,6 +1999,23 @@ class ChatEngine {
 
   // ================= SENDING MESSAGES =================
   sendMessage(customPayload = null) {
+    // If Voice Note Recording is in progress, stop & dispatch voice note via Send button
+    if (window.VoiceRecorder && window.VoiceRecorder.isRecording) {
+      window.VoiceRecorder.stopRecording((data) => {
+        if (data && data.audioUrl) {
+          this.sendVoiceNote(data);
+        }
+      });
+      this.resetRecordingUI();
+      return;
+    }
+
+    const emojiContainer = document.getElementById('emoji-picker-container');
+    if (emojiContainer) emojiContainer.classList.remove('active');
+
+    const attachPopup = document.getElementById('chat-attach-popup');
+    if (attachPopup) attachPopup.classList.remove('active');
+
     const activeChat = this.getActiveChat();
     if (!activeChat) return;
 
@@ -2013,6 +2030,7 @@ class ChatEngine {
     const senderAvatar = currentUser ? currentUser.avatar : '';
     const senderPhone = currentUser ? currentUser.phone : '';
     const recipientPhone = activeChat ? (activeChat.phone || '') : '';
+    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const newMsg = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -2024,7 +2042,8 @@ class ChatEngine {
       recipientPhone: recipientPhone,
       recipientId: activeChat.id,
       text: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: formattedTime,
+      timestamp: Date.now(),
       createdAt: Date.now(),
       status: 'sent',
       quote: this.replyingToMessage ? { ...this.replyingToMessage } : null,
@@ -2759,6 +2778,8 @@ class ChatEngine {
       textarea.focus();
       textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
     }
+    const container = document.getElementById('emoji-picker-container');
+    if (container) container.classList.remove('active');
   }
 
   sendGifSticker(gifUrl, title) {

@@ -905,6 +905,12 @@ class AuthManager {
     const emailInp = document.getElementById('profile-email-input');
     if (emailInp) emailInp.value = u.email || '';
 
+    const dobInp = document.getElementById('profile-dob-input');
+    if (dobInp) dobInp.value = u.dob || '';
+
+    const genderInp = document.getElementById('profile-gender-input');
+    if (genderInp) genderInp.value = u.gender || '';
+
     modal.classList.add('active');
   }
 
@@ -958,6 +964,8 @@ class AuthManager {
     const rawDigits = (document.getElementById('profile-phone-input')?.value || '').replace(/\D/g, '');
     const phone = rawDigits ? `${countryCode}${rawDigits}` : (this.currentUser.phone || '');
     const email = document.getElementById('profile-email-input')?.value.trim() || this.currentUser.email || '';
+    const dob = document.getElementById('profile-dob-input')?.value || '';
+    const gender = document.getElementById('profile-gender-input')?.value || '';
 
     if (this.currentUser.tempAvatar) {
       this.currentUser.avatar = this.currentUser.tempAvatar;
@@ -969,6 +977,8 @@ class AuthManager {
     this.currentUser.status = bio;
     this.currentUser.phone = phone;
     this.currentUser.email = email;
+    this.currentUser.dob = dob;
+    this.currentUser.gender = gender;
 
     localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
     localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));

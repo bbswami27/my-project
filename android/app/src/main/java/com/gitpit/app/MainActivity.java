@@ -22,6 +22,19 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ContactsPlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        // Support Full-Screen Incoming Call Alerts when Screen is Locked
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        } else {
+            getWindow().addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD |
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            );
+        }
         
         // 1. Request Runtime Permissions on Launch
         requestAllPermissions();
