@@ -241,14 +241,24 @@ class StoriesManager {
       const mediaContainer = document.getElementById('status-preview-media-container');
       const clearBtn = document.getElementById('btn-status-clear-media');
       const colorWrapper = document.getElementById('status-color-palette-wrapper');
+      const previewText = document.getElementById('status-preview-text-display');
 
       if (mediaContainer) {
         mediaContainer.style.display = 'block';
         if (isVideo) {
-          mediaContainer.innerHTML = `<video src="${e.target.result}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;"></video>`;
+          mediaContainer.innerHTML = `<video src="${e.target.result}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: contain; background: #0b141a; border-radius: 12px;"></video>`;
         } else {
-          mediaContainer.innerHTML = `<img src="${e.target.result}" alt="Preview" style="width: 100%; height: 100%; object-fit: cover; border-radius: 10px;">`;
+          mediaContainer.innerHTML = `<img src="${e.target.result}" alt="Preview" style="width: 100%; height: 100%; object-fit: contain; background: #0b141a; border-radius: 12px;">`;
         }
+      }
+
+      if (previewText) {
+        previewText.style.background = 'rgba(0, 0, 0, 0.65)';
+        previewText.style.borderRadius = '8px';
+        previewText.style.position = 'absolute';
+        previewText.style.bottom = '12px';
+        previewText.style.left = '12px';
+        previewText.style.right = '12px';
       }
 
       if (clearBtn) clearBtn.style.display = 'inline-block';
@@ -263,14 +273,22 @@ class StoriesManager {
     const clearBtn = document.getElementById('btn-status-clear-media');
     const fileInput = document.getElementById('status-media-file-input');
     const colorWrapper = document.getElementById('status-color-palette-wrapper');
+    const previewText = document.getElementById('status-preview-text-display');
 
     if (mediaContainer) {
       mediaContainer.innerHTML = '';
       mediaContainer.style.display = 'none';
     }
+    if (previewText) {
+      previewText.style.background = 'transparent';
+      previewText.style.position = 'relative';
+      previewText.style.bottom = 'auto';
+      previewText.style.left = 'auto';
+      previewText.style.right = 'auto';
+    }
     if (clearBtn) clearBtn.style.display = 'none';
-    if (fileInput) fileInput.value = '';
     if (colorWrapper) colorWrapper.style.display = 'block';
+    if (fileInput) fileInput.value = '';
   }
 
   renderStoryItem() {
@@ -399,34 +417,14 @@ class StoriesManager {
     const activeDot = document.querySelector('.color-dot.active');
     const bgColor = activeDot ? activeDot.getAttribute('data-color') : '#0284c7';
     const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    const now = new Date();
+    const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     let storyItem = {};
     if (this.selectedMedia) {
-      let finalMediaUrl = this.selectedMedia.dataUrl;
-
-      // Try uploading to media server for durable persistence
-      try {
-        const base = window.API_BASE || '';
-        const token = localStorage.getItem('gitpit_auth_token') || '';
-        const uploadResp = await fetch(`${base}/api/media/upload`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': token ? `Bearer ${token}` : ''
-          },
-          body: JSON.stringify({
-            dataUrl: this.selectedMedia.dataUrl,
-            fileName: this.selectedMedia.fileName || 'status.jpg',
-            fileType: this.selectedMedia.type === 'video' ? 'video/mp4' : 'image/jpeg'
-          })
-        });
-        const uploadData = await uploadResp.json();
-        if (uploadData && uploadData.url) finalMediaUrl = uploadData.url;
-      } catch (err) {}
-
       storyItem = {
         type: this.selectedMedia.type,
-        mediaUrl: finalMediaUrl,
+        mediaUrl: this.selectedMedia.dataUrl,
         text: text,
         caption: text
       };
@@ -443,7 +441,8 @@ class StoriesManager {
       authorId: currentUser ? currentUser.id : 'me',
       authorName: currentUser ? (currentUser.name || 'My Status') : 'My Status',
       authorAvatar: currentUser ? (currentUser.avatar || 'assets/logo-icon.svg') : 'assets/logo-icon.svg',
-      time: 'Just now',
+      time: `Today, ${timeFormatted}`,
+      timestamp: Date.now(),
       viewed: false,
       items: [storyItem]
     };
@@ -454,13 +453,16 @@ class StoriesManager {
 
     if (textInput) textInput.value = '';
     const previewText = document.getElementById('status-preview-text-display');
-    if (previewText) previewText.textContent = 'Type your status below...';
+    if (previewText) {
+      previewText.textContent = 'Type your status below...';
+      previewText.style.background = 'transparent';
+    }
     this.clearSelectedMedia();
 
     const createModal = document.getElementById('create-status-modal');
     if (createModal) createModal.classList.remove('active');
 
-    alert('🎉 Your Status has been posted successfully! ✨');
+    alert('🎉 Your Status update has been posted successfully! ✨');
   }
 
   saveStories() {
