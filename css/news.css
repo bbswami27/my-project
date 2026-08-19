@@ -1,0 +1,194 @@
+/* GitPit - News & Channels CSS */
+
+.news-tab-container {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Category Filter Chips */
+.news-categories-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.category-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.category-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.category-chip.active {
+  background: var(--brand-orange);
+  color: #ffffff;
+  border-color: var(--brand-orange);
+}
+
+/* Channel Header Banner */
+.channels-hero-banner {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hero-banner-text h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.hero-banner-text p {
+  font-size: 12.5px;
+  opacity: 0.9;
+}
+
+.hero-banner-icon {
+  font-size: 32px;
+}
+
+/* News Article Card */
+.news-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.news-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.news-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.news-card-img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+}
+
+.news-card-body {
+  padding: 12px 14px;
+}
+
+.news-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.news-card-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand-orange);
+  text-transform: uppercase;
+}
+
+.news-card-time {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.news-card-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.news-card-title:hover {
+  color: var(--brand-orange);
+}
+
+.news-card-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.news-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+}
+
+.news-card-source {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.news-share-btn {
+  background: rgba(2, 132, 199, 0.15);
+  color: var(--brand-blue);
+  border: 1px solid rgba(2, 132, 199, 0.3);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--transition-fast);
+}
+
+.news-share-btn:hover {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+/* Share To Chat Modal */
+.share-contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 12px 0;
+}
+
+.share-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.share-contact-item:hover {
+  background: var(--bg-hover);
+}

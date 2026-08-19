@@ -1,0 +1,6 @@
+{
+  "appId": "com.gitpit.app",
+  "appName": "GitPit",
+  "webDir": "public",
+  "bundledWebRuntime": false
+}

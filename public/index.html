@@ -1,0 +1,2376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GitPit - Real-time Social Chat & Smart AI</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo-icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#00a884">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GitPit">
+  
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/stories.css">
+  <link rel="stylesheet" href="css/calls.css">
+  <link rel="stylesheet" href="css/news.css">
+  <link rel="stylesheet" href="css/auth.css">
+  <link rel="stylesheet" href="css/payments.css">
+
+  <!-- Socket.io Client (Bundled Offline + CDN Fallback) -->
+  <script src="socket.io.min.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\\/script>');
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Foreground In-App Notification Banner -->
+  <div id="in-app-notification-banner" class="in-app-banner" style="display: none;" onclick="window.ChatterApp && window.ChatterApp.handleInAppBannerClick()">
+    <img id="in-app-banner-avatar" class="in-app-banner-avatar" src="assets/logo-icon.svg" alt="Sender">
+    <div class="in-app-banner-content">
+      <div id="in-app-banner-title" class="in-app-banner-title">GitPit Notification</div>
+      <div id="in-app-banner-msg" class="in-app-banner-msg">New message received</div>
+    </div>
+    <button class="in-app-banner-close" onclick="event.stopPropagation(); window.ChatterApp && window.ChatterApp.dismissInAppBanner()">✕</button>
+  </div>
+
+  <!-- Main Application Wrapper -->
+  <div id="app-container">
+
+    <!-- Top Live Breaking News Flash Ticker Bar -->
+    <div class="news-flash-ticker" id="news-flash-ticker-bar">
+      <div class="flash-badge">LIVE NEWS</div>
+      <div class="ticker-content-wrapper">
+        <div class="ticker-item" id="ticker-headline-text" onclick="window.ChatterApp && window.ChatterApp.switchTab('news')">
+          🚨 Loading latest breaking updates...
+        </div>
+      </div>
+      <div class="ticker-actions">
+        <button class="ticker-btn" title="View News Channels" onclick="window.ChatterApp && window.ChatterApp.switchTab('news')">📰</button>
+        <button class="ticker-btn" title="Turn OFF News Flash" onclick="window.ChatterApp && window.ChatterApp.toggleNewsFlash(false)">✕</button>
+      </div>
+    </div>
+
+    <!-- App Main Split View -->
+    <div class="app-main">
+
+      <!-- Left Sidebar -->
+      <aside class="sidebar" id="sidebar-container">
+        
+        <!-- Sidebar Top Header (Left: Official Logo Digital Graphic, Right: 3-Dots Menu) -->
+        <div class="sidebar-header">
+          <div class="brand-wrapper" onclick="window.ChatterApp && window.ChatterApp.switchTab('chats')" style="cursor: pointer; display: flex; align-items: center;">
+            <img class="brand-logo-img" src="assets/logo.svg" alt="GitPit Official" style="height: 38px; width: auto; max-width: 150px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,168,132,0.35));">
+          </div>
+          <div class="sidebar-header-actions">
+            <button class="three-dots-btn" id="btn-main-three-dots" title="More Options">⋮</button>
+
+            <!-- 3-Dots Vertical Dropdown Menu (Drill-Down Navigation System) -->
+            <div class="three-dots-dropdown" id="main-three-dots-dropdown">
+              
+              <!-- Root View -->
+              <div class="dropdown-panel active" id="menu-panel-root">
+                <button class="dropdown-item dropdown-drilldown-item" onclick="window.ChatterApp && window.ChatterApp.drillDownMenu('ai')">
+                  <span class="dropdown-item-icon">🤖</span>
+                  <span style="flex: 1;">AI & Collaboration</span>
+                  <span class="drilldown-arrow">›</span>
+                </button>
+                <button class="dropdown-item dropdown-drilldown-item" onclick="window.ChatterApp && window.ChatterApp.drillDownMenu('chat')">
+                  <span class="dropdown-item-icon">💬</span>
+                  <span style="flex: 1;">Chat & Contacts</span>
+                  <span class="drilldown-arrow">›</span>
+                </button>
+                <button class="dropdown-item dropdown-drilldown-item" onclick="window.ChatterApp && window.ChatterApp.drillDownMenu('settings')">
+                  <span class="dropdown-item-icon">⚙️</span>
+                  <span style="flex: 1;">Settings & Account</span>
+                  <span class="drilldown-arrow">›</span>
+                </button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatEngine && window.ChatEngine.clearOldChatsCache()">
+                  <span class="dropdown-item-icon">🧹</span>
+                  <span>Clear & Reset Chats</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.toggleTheme()">
+                  <span class="dropdown-item-icon">🌓</span>
+                  <span>Switch Theme</span>
+                </button>
+                <button class="dropdown-item" style="color: var(--brand-danger);" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.AuthManager && window.AuthManager.logout()">
+                  <span class="dropdown-item-icon">🚪</span>
+                  <span>Log Out</span>
+                </button>
+              </div>
+
+              <!-- Sub-Panel 1: AI & Collaboration (Drill-down screen) -->
+              <div class="dropdown-panel" id="menu-panel-ai">
+                <div class="dropdown-panel-header" onclick="window.ChatterApp && window.ChatterApp.drillDownMenu('root')">
+                  <span class="panel-back-btn">‹ Back</span>
+                  <span class="panel-title">AI & Collaboration</span>
+                </div>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
+                  <span class="dropdown-item-icon">🤖</span>
+                  <span>GitPit AI Assistant</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.startScreenSharing()">
+                  <span class="dropdown-item-icon">🖥️</span>
+                  <span>Screen Sharing Room</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.switchTab('meetings')">
+                  <span class="dropdown-item-icon">📅</span>
+                  <span>GitPit Meetings</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.switchTab('email')">
+                  <span class="dropdown-item-icon">✉️</span>
+                  <span>GitPit Email / Memos</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.switchTab('news')">
+                  <span class="dropdown-item-icon">📡</span>
+                  <span>GitPit News Channels</span>
+                </button>
+              </div>
+
+              <!-- Sub-Panel 2: Chat & Contacts (Drill-down screen) -->
+              <div class="dropdown-panel" id="menu-panel-chat">
+                <div class="dropdown-panel-header" onclick="window.ChatterApp && window.ChatterApp.drillDownMenu('root')">
+                  <span class="panel-back-btn">‹ Back</span>
+                  <span class="panel-title">Chat & Contacts</span>
+                </div>
+                <button class="dropdown-item" id="menu-opt-new-group" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.openNewGroupModal()">
+                  <span class="dropdown-item-icon">💬</span>
+                  <span>New Group</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatEngine && window.ChatEngine.markAllChatsAsRead()">
+                  <span class="dropdown-item-icon">✔️</span>
+                  <span>Mark All as Read</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatEngine && window.ChatEngine.openStarredMessagesModal()">
+                  <span class="dropdown-item-icon">⭐</span>
+                  <span>Starred Messages</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatEngine && window.ChatEngine.openSaveContactModal()">
+                  <span class="dropdown-item-icon">➕</span>
+                  <span>Save / Add Contact</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.AuthManager && window.AuthManager.openContactSyncModal()">
+                  <span class="dropdown-item-icon">👥</span>
+                  <span>Sync Phone Contacts</span>
+                </button>
+              </div>
+
+              <!-- Sub-Panel 3: Settings & Account (Drill-down screen) -->
+              <div class="dropdown-panel" id="menu-panel-settings">
+                <div class="dropdown-panel-header" onclick="window.ChatterApp && window.ChatterApp.drillDownMenu('root')">
+                  <span class="panel-back-btn">‹ Back</span>
+                  <span class="panel-title">Settings & Account</span>
+                </div>
+                <button class="dropdown-item" id="menu-opt-stranger-shield" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.AuthManager ? window.AuthManager.openStrangerShieldModal() : (window.ChatterApp && window.ChatterApp.openStrangerShieldModal())">
+                  <span class="dropdown-item-icon">🛡️</span>
+                  <span>Anti-Fraud Stranger Shield</span>
+                </button>
+                <button class="dropdown-item" id="menu-opt-privacy" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.AuthManager && window.AuthManager.openPrivacySettingsModal()">
+                  <span class="dropdown-item-icon">🔒</span>
+                  <span>Privacy Settings</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.openNotificationsModal()">
+                  <span class="dropdown-item-icon">🔔</span>
+                  <span>Notification Settings</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.ChatterApp && window.ChatterApp.openChatPreferencesModal()">
+                  <span class="dropdown-item-icon">⚙️</span>
+                  <span>Chat Preferences</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.AuthManager && window.AuthManager.openLinkedDevicesModal()">
+                  <span class="dropdown-item-icon">💻</span>
+                  <span>Linked Devices</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('main-three-dots-dropdown').classList.remove('active'); window.AuthManager && window.AuthManager.openProfileModal()">
+                  <span class="dropdown-item-icon">👤</span>
+                  <span>My Profile</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Search Bar & Filter Chips -->
+        <div class="search-container" style="padding-bottom: 4px;">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="chat-search-input" class="search-input" placeholder="Search or type phone number to chat..." oninput="window.ChatEngine && window.ChatEngine.filterChatList(this.value)">
+          </div>
+          
+          <!-- Chat Filter Chips (All, Unread, Groups, Contacts, News Flash) -->
+          <div class="chat-filters-row" id="chat-filters-row">
+            <button class="chat-filter-chip active" data-filter="all" onclick="if(window.ChatterApp) window.ChatterApp.switchTab('chats'); if(window.ChatEngine) window.ChatEngine.filterChatsByType('all')">All</button>
+            <button class="chat-filter-chip" data-filter="unread" onclick="if(window.ChatterApp) window.ChatterApp.switchTab('chats'); if(window.ChatEngine) window.ChatEngine.filterChatsByType('unread')">Unread</button>
+            <button class="chat-filter-chip" data-filter="groups" onclick="if(window.ChatterApp) window.ChatterApp.switchTab('chats'); if(window.ChatEngine) window.ChatEngine.filterChatsByType('groups')">Groups</button>
+            <button class="chat-filter-chip" data-filter="contacts" onclick="if(window.ChatterApp) window.ChatterApp.switchTab('chats'); if(window.ChatEngine) window.ChatEngine.filterChatsByType('contacts')">Contacts</button>
+            <button class="chat-filter-chip" data-filter="news" onclick="if(window.ChatterApp) window.ChatterApp.switchTab('news')" style="color: var(--brand-orange); border-color: rgba(249, 115, 22, 0.3);">⚡ News Flash</button>
+          </div>
+        </div>
+
+        <!-- 1. CHATS TAB VIEW -->
+        <div class="tab-view active" id="tab-view-chats">
+          <ul class="chat-list" id="chat-list-items">
+            <!-- Rendered by chat.js -->
+          </ul>
+        </div>
+
+        <!-- 2. STATUS / STORIES TAB VIEW -->
+        <div class="tab-view" id="tab-view-status">
+          <div class="stories-container">
+            <!-- My Status Card -->
+            <div class="my-status-card" id="my-status-add-card">
+              <div class="status-avatar-wrapper">
+                <img class="status-avatar-img" id="my-status-avatar-img" src="assets/logo-icon.svg" alt="My Status">
+                <div class="add-status-badge">+</div>
+              </div>
+              <div class="status-card-info">
+                <h4>My Status</h4>
+                <p>Tap to add status update</p>
+              </div>
+            </div>
+
+            <div class="status-section-title">Recent updates</div>
+            <div id="status-recent-list">
+              <!-- Rendered by stories.js -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. NEWS & CHANNELS TAB VIEW -->
+        <div class="tab-view" id="tab-view-news">
+          <div class="news-tab-container">
+            <!-- News Flash ON / OFF Settings Banner -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">Breaking News Flash Ticker</div>
+                <div style="font-size: 12px; color: var(--text-secondary);">Show live breaking alert banner on top</div>
+              </div>
+              <label style="display: flex; align-items: center; cursor: pointer; gap: 6px;">
+                <input type="checkbox" class="news-flash-toggle-checkbox" style="width: 18px; height: 18px; accent-color: var(--brand-orange);" checked>
+                <span style="font-size: 12px; font-weight: 600; color: var(--brand-orange);" id="news-flash-status-label">ON</span>
+              </label>
+            </div>
+
+            <div class="channels-hero-banner">
+              <div class="hero-banner-text">
+                <h3>GitPit Flash Channels ⚡</h3>
+                <p>Stay updated with curated real-time breaking news!</p>
+              </div>
+              <div class="hero-banner-icon">📡</div>
+            </div>
+
+            <!-- Categories Chips -->
+            <div class="news-categories-bar">
+              <button class="category-chip active" data-category="All">All News</button>
+              <button class="category-chip" data-category="Breaking">🚨 Breaking</button>
+              <button class="category-chip" data-category="Tech">⚡ Tech</button>
+              <button class="category-chip" data-category="India">🇮🇳 India</button>
+              <button class="category-chip" data-category="Business">📈 Business</button>
+              <button class="category-chip" data-category="Sports">🏏 Sports</button>
+              <button class="category-chip" data-category="Entertainment">🎬 Entertainment</button>
+            </div>
+
+            <!-- News Cards List -->
+            <div class="news-cards-list" id="news-cards-container">
+              <!-- Rendered by newsService.js -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. MEETINGS TAB VIEW (DEDICATED) -->
+        <div class="tab-view" id="tab-view-meetings">
+          <div class="meetings-tab-container">
+            <div class="meetings-header-banner">
+              <div>
+                <h3 style="font-size: 16px; font-weight: 800;">GitPit Meetings 📅</h3>
+                <p style="font-size: 12px; opacity: 0.9;">Schedule & join 1-click video conferences</p>
+              </div>
+              <button class="btn-schedule-new" id="btn-schedule-new-meeting-tab" onclick="window.ChatEngine ? window.ChatEngine.openScheduleMeetingModal() : (window.ChatterApp && window.ChatterApp.openScheduleMeetingModal())">
+                ➕ Schedule
+              </button>
+            </div>
+            <div class="status-section-title">Upcoming Meetings</div>
+            <div class="meeting-list-container" id="meetings-list-items">
+              <!-- Rendered by app.js -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. EMAIL / MEMOS TAB VIEW (DEDICATED) -->
+        <div class="tab-view" id="tab-view-email">
+          <div class="email-tab-container">
+            <div class="email-header-banner">
+              <div>
+                <h3 style="font-size: 16px; font-weight: 800;">GitPit Email Memos ✉️</h3>
+                <p style="font-size: 12px; opacity: 0.9;">Formal short messages with priority tags</p>
+              </div>
+              <button class="btn-schedule-new" id="btn-compose-memo-tab" style="background: #ffffff; color: #ea580c;" onclick="window.ChatterApp && window.ChatterApp.openComposeMemoModal()">
+                ✏️ Compose
+              </button>
+            </div>
+            <div class="status-section-title">Inbox Memos</div>
+            <div id="memos-list-items" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Rendered by app.js -->
+            </div>
+          </div>
+        </div>
+
+
+
+        <!-- 7. CALLS TAB VIEW -->
+        <div class="tab-view" id="tab-view-calls">
+          <div class="calls-container">
+            <div class="status-section-title">Recent Calls</div>
+            <div id="calls-list-items">
+              <!-- Rendered by calls.js -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Action Button for New Chat (Lower-Right Corner) -->
+        <button class="fab-new-chat-btn" id="fab-new-chat" title="Start New Chat" onclick="window.ChatEngine && window.ChatEngine.openNewConversationModal()">
+          <span>✏️</span>
+        </button>
+
+        <!-- Bottom Navigation Bar (WhatsApp 3-Tabs Layout: Chats, Status, Calls) -->
+        <nav class="bottom-nav-bar" id="bottom-nav-bar">
+          <button class="tab-btn active" data-tab="chats">
+            <span class="nav-tab-icon">💬</span>
+            <span class="nav-tab-label">Chats</span>
+          </button>
+          <button class="tab-btn" data-tab="status">
+            <span class="nav-tab-icon">⭕</span>
+            <span class="nav-tab-label">Status</span>
+          </button>
+          <button class="tab-btn" data-tab="calls">
+            <span class="nav-tab-icon">📞</span>
+            <span class="nav-tab-label">Calls</span>
+          </button>
+        </nav>
+
+      </aside>
+
+      <!-- Right Chat Main Area -->
+      <main class="chat-main-area" id="chat-main-area">
+
+        <!-- Empty Welcome Screen State -->
+        <div class="chat-empty-state" id="chat-empty-state">
+          <img class="empty-logo" src="assets/logo.svg" alt="GitPit">
+          <h2 class="empty-title">GitPit Web</h2>
+          <p class="empty-desc">
+            Send and receive real-time messages, ask Smart AI Assistant 🤖, share screen 🖥️, make HD audio & video calls 📹, record voice notes, and catch live news updates.
+          </p>
+          <div class="empty-lock">
+            <span>🔒</span> End-to-end encrypted messaging, AI assistant & video calls
+          </div>
+        </div>
+
+        <!-- Active Conversation View -->
+        <div id="chat-active-view" style="display: none; height: 100%; flex-direction: column;">
+          
+          <!-- Conversation Header -->
+          <div class="chat-header">
+            <div class="chat-header-user">
+              <button class="back-btn-mobile" id="btn-chat-back-mobile" onclick="window.ChatEngine && window.ChatEngine.closeActiveChat()" title="Back to Chats">←</button>
+              <div class="avatar-wrapper" style="width: 38px; height: 38px; min-width: 38px;" onclick="window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
+                <img id="active-chat-avatar" class="avatar-img" src="" alt="Contact">
+              </div>
+              <div class="chat-header-meta" onclick="window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)" style="cursor: pointer; min-width: 0; flex: 1;">
+                <h3 id="active-chat-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">Contact Name</h3>
+                <span id="active-chat-status" class="status-text">Online</span>
+              </div>
+            </div>
+
+            <div class="chat-header-actions" style="position: relative; display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+              <button class="header-icon-btn" id="btn-chat-video-call" title="Start Video Call" onclick="const c = window.ChatEngine && window.ChatEngine.getActiveChat(); if (c && window.CallManager) window.CallManager.startCall(c.name, c.avatar, 'video', c.id);">📹</button>
+              <button class="header-icon-btn" id="btn-chat-audio-call" title="Start Voice Call" onclick="const c = window.ChatEngine && window.ChatEngine.getActiveChat(); if (c && window.CallManager) window.CallManager.startCall(c.name, c.avatar, 'audio', c.id);">📞</button>
+              <button class="header-icon-btn" id="btn-chat-header-dots" title="More Options" onclick="document.getElementById('chat-header-dropdown-menu').classList.toggle('active')">⋮</button>
+
+              <!-- Active Chat 3-Dots Dropdown Menu -->
+              <div class="chat-header-dropdown" id="chat-header-dropdown-menu">
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openNewConversationModal()">
+                  <span class="dropdown-item-icon">✏️</span>
+                  <span>Start New Chat</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.promptSaveActiveContactToPhonebook()">
+                  <span class="dropdown-item-icon">➕</span>
+                  <span>Save to Phonebook</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openWallpaperModal()">
+                  <span class="dropdown-item-icon">🖼️</span>
+                  <span>Change Wallpaper</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openContactProfile(window.ChatEngine.activeChatId)">
+                  <span class="dropdown-item-icon">👤</span>
+                  <span>View Contact & Media</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.openJumpToDateModal()">
+                  <span class="dropdown-item-icon">📅</span>
+                  <span>Jump to Date</span>
+                </button>
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
+                  <span class="dropdown-item-icon">🗑️</span>
+                  <span style="color: var(--brand-danger);">Delete Chat</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Messages Scroll View -->
+          <div class="chat-messages-container" id="chat-messages-container">
+            <!-- Messages rendered by chat.js -->
+          </div>
+
+          <!-- Stranger Shield Safety Banner (for unknown / unsaved contacts) -->
+          <div class="chat-stranger-shield-banner" id="stranger-shield-banner" style="background: rgba(2, 132, 199, 0.12); border-bottom: 1px solid rgba(2, 132, 199, 0.25); padding: 9px 16px; display: none; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px;">
+            <div style="display: flex; align-items: center; gap: 8px; color: var(--text-primary);">
+              <span style="font-size: 17px;">🛡️</span>
+              <span><b>Stranger Shield Active:</b> Unsaved number. File attachments & media are restricted.</span>
+            </div>
+            <button class="btn-trust-contact-pill" onclick="window.ChatEngine && window.ChatEngine.trustActiveContact()" style="background: var(--brand-blue); color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+              🛡️ Trust Contact
+            </button>
+          </div>
+
+          <!-- Blocked Contact Banner -->
+          <div class="chat-blocked-banner" id="chat-blocked-banner" style="display: none;">
+            <span>🚫 You have blocked this contact.</span>
+            <button class="btn-unblock-pill" onclick="window.ChatEngine && window.ChatEngine.toggleBlockActiveContact()">Unblock Contact</button>
+          </div>
+
+          <!-- Quoted Reply Preview Bar -->
+          <div class="reply-preview-bar" id="chat-reply-preview" style="display: none;">
+            <!-- Rendered by chat.js -->
+          </div>
+
+          <!-- Smart AI Quick Prompt Chips Bar (Shown in AI Chat) -->
+          <div class="ai-prompt-chips-bar" id="ai-prompt-chips-bar" style="display: none;">
+            <div class="ai-chips-scroll">
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('💡 Summarize today\'s top news highlights')">💡 News Highlights</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('✍️ Draft a professional meeting request email')">✍️ Draft Email</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('💻 Explain how async/await works in JavaScript')">💻 Coding Guidance</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('😂 Tell me a funny clean joke')">😂 Tell a Joke</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('📹 How do I use video calling and screen sharing?')">📹 Video & Screen Share</button>
+              <button class="ai-chip-btn" onclick="window.ChatEngine.sendAiPrompt('🌐 Provide English translation tips')">🌐 Translation</button>
+            </div>
+          </div>
+
+          <!-- Chat Input Bar (Movable / Draggable) -->
+          <div class="chat-input-bar movable-chat-bar" id="chat-input-bar-container">
+            
+            <!-- Draggable Handle on Chat Bar -->
+            <div class="chat-bar-drag-handle" id="chat-bar-drag-handle" title="Drag to adjust position">
+              <span class="drag-bar-pill"></span>
+            </div>
+
+            <!-- Left Actions: Emojis, Attachments, and Dedicated Active Voice Recording Tab -->
+            <div class="chat-bar-actions-left">
+              <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis & GIFs" onclick="window.ChatEngine && window.ChatEngine.toggleEmojiPicker(event)">😊</button>
+              <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options" onclick="window.ChatEngine && window.ChatEngine.toggleAttachMenu(event)">📎</button>
+              <button class="input-action-btn voice-tab-btn" id="btn-direct-record-voice" title="Record Voice Note" onclick="window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">🎙️</button>
+            </div>
+            
+            <input type="file" id="hidden-file-photo" accept="image/*" style="display: none;">
+            <input type="file" id="hidden-file-doc" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style="display: none;">
+
+            <!-- Attachment Menu Dropdown -->
+            <div class="attachment-menu-popup" id="chat-attach-popup">
+              <button class="attachment-option-btn" id="opt-attach-doc" onclick="window.ChatEngine && window.ChatEngine.openDocAttachmentPicker()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);">📄</div>
+                <span>Document / File</span>
+              </button>
+              <button class="attachment-option-btn" id="opt-attach-photo" onclick="window.ChatEngine && window.ChatEngine.openPhotoAttachmentPicker()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #ec4899 0%, #be185d 100%);">📷</div>
+                <span>Photos & Media</span>
+              </button>
+              <button class="attachment-option-btn" id="opt-attach-voice" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">🎙️</div>
+                <span>Voice Note</span>
+              </button>
+              <button class="attachment-option-btn" id="opt-attach-screenshare" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.CallManager && window.CallManager.startCallWithScreenShare()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">🖥️</div>
+                <span>Share Screen</span>
+              </button>
+              <button class="attachment-option-btn" id="opt-attach-ai" onclick="document.getElementById('chat-attach-popup').classList.remove('active'); window.ChatEngine && window.ChatEngine.openChat('chat_ai')">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">🤖</div>
+                <span>Ask AI Assistant</span>
+              </button>
+              <button class="attachment-option-btn" id="opt-attach-location" onclick="window.ChatEngine && window.ChatEngine.sendCurrentLocation()">
+                <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #f97316 0%, #c2410c 100%);">📍</div>
+                <span>Share Location</span>
+              </button>
+            </div>
+
+            <!-- Compact Text Input Wrapper -->
+            <div class="chat-input-wrapper compact-input-wrapper" id="chat-input-wrapper">
+              <textarea id="chat-input-textarea" class="chat-textarea compact-textarea" rows="1" placeholder="Type a message..."></textarea>
+            </div>
+
+            <!-- Voice Recording Active UI Bar -->
+            <div class="recording-bar" id="recording-bar-ui" style="display: none;">
+              <div class="recording-indicator"></div>
+              <span class="recording-time" id="recording-time-display">0:00</span>
+              <button class="recording-cancel-btn" id="btn-cancel-recording">Cancel</button>
+            </div>
+
+            <!-- Dedicated Primary Green Send Arrow Button (➤) -->
+            <button class="send-msg-btn" id="btn-send-message" title="Send Message" onclick="window.ChatEngine && window.ChatEngine.sendMessage()" style="width: 40px; height: 40px; min-width: 40px; background: #00a884; color: #ffffff; border: none; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 168, 132, 0.4); transition: transform 0.15s; flex-shrink: 0;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="#ffffff" style="display: block; margin-left: 2px;">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
+
+            <!-- Emoji & GIF / Sticker Picker Popup -->
+            <div class="emoji-picker-container" id="emoji-picker-container">
+              <div class="picker-tabs-header">
+                <button class="picker-tab-btn active" id="picker-tab-emojis" onclick="window.ChatEngine && window.ChatEngine.switchPickerTab('emojis')">😊 Emojis</button>
+                <button class="picker-tab-btn" id="picker-tab-gifs" onclick="window.ChatEngine && window.ChatEngine.switchPickerTab('gifs')">🎬 GIFs & Stickers</button>
+              </div>
+
+              <!-- Emojis Grid -->
+              <div class="picker-content-panel active" id="picker-panel-emojis">
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😀')">😀</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😂')">😂</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😍')">😍</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🔥')">🔥</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('👍')">👍</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('❤️')">❤️</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🚀')">🚀</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('👏')">👏</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🙏')">🙏</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('😎')">😎</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🥳')">🥳</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('✨')">✨</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🎉')">🎉</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('💯')">💯</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('💡')">💡</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('☕')">☕</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🍕')">🍕</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🇮🇳')">🇮🇳</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🏏')">🏏</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('⚡')">⚡</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🤩')">🤩</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🙌')">🙌</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🌟')">🌟</button>
+                <button class="emoji-btn" onclick="window.ChatEngine.insertEmoji('🌈')">🌈</button>
+              </div>
+
+              <!-- Animated GIFs & Stickers Grid -->
+              <div class="picker-content-panel" id="picker-panel-gifs" style="display: none;">
+                <div class="gif-cards-grid">
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', 'Namaste 🙏')">
+                    <img src="https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif" alt="Namaste">
+                    <span>🙏 Namaste</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif', 'Celebration 🎉')">
+                    <img src="https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif" alt="Celebrate">
+                    <span>🎉 Party</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif', 'Thumbs Up 👍')">
+                    <img src="https://media.giphy.com/media/26AHONQ79FdWZhAI0/giphy.gif" alt="Thumbs Up">
+                    <span>👍 Super</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif', 'Shocked 😲')">
+                    <img src="https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif" alt="Shocked">
+                    <span>😲 Wow</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif', 'Dancing 🕺')">
+                    <img src="https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif" alt="Dance">
+                    <span>🕺 Dance</span>
+                  </div>
+                  <div class="gif-item-card" onclick="window.ChatEngine.sendGifSticker('https://media.giphy.com/media/3oKIPnAiaMCws8nOsE/giphy.gif', 'Smart AI 🤖')">
+                    <img src="https://media.giphy.com/media/3oKIPnAiaMCws8nOsE/giphy.gif" alt="AI Robot">
+                    <span>🤖 AI Bot</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+
+  </div>
+
+  <!-- EDIT MESSAGE MODAL -->
+  <div class="modal-overlay" id="edit-message-modal">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">✏️ Edit Message</h3>
+        <button class="modal-close-btn" id="btn-close-edit-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 10px;">
+          You can edit messages within 15 minutes of sending.
+        </p>
+        <div class="form-group">
+          <textarea id="edit-message-input" class="auth-input" rows="3" placeholder="Edit your message..."></textarea>
+        </div>
+        <button class="auth-submit-btn" id="btn-save-edit-message">
+          Save Changes ✓
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DELETE MESSAGE MODAL -->
+  <div class="modal-overlay" id="delete-message-modal">
+    <div class="modal-card" style="max-width: 380px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete Message?</h3>
+        <button class="modal-close-btn" id="btn-close-delete-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 18px;">
+          Do you want to delete this message?
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="auth-submit-btn" id="btn-delete-for-everyone" style="background: var(--brand-danger);">
+            Delete for Everyone
+          </button>
+          <button class="auth-submit-btn" id="btn-delete-for-me" style="background: var(--bg-input-field); color: var(--text-primary);">
+            Delete for Me
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISAPPEARING MESSAGES SETTINGS MODAL -->
+  <div class="modal-overlay" id="disappearing-settings-modal">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">⏳ Disappearing Messages</h3>
+        <button class="modal-close-btn" id="btn-close-disappearing">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+          When enabled, new messages sent in this chat will automatically disappear after the chosen duration.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: var(--bg-card); border-radius: 8px;">
+            <input type="radio" name="disappearing-duration" value="24h" checked>
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary);">24 Hours</div>
+              <div style="font-size: 11.5px; color: var(--text-secondary);">Messages vanish after 1 day</div>
+            </div>
+          </label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: var(--bg-card); border-radius: 8px;">
+            <input type="radio" name="disappearing-duration" value="7d">
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary);">7 Days</div>
+              <div style="font-size: 11.5px; color: var(--text-secondary);">Messages vanish after 1 week</div>
+            </div>
+          </label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: var(--bg-card); border-radius: 8px;">
+            <input type="radio" name="disappearing-duration" value="90d">
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary);">90 Days</div>
+              <div style="font-size: 11.5px; color: var(--text-secondary);">Messages vanish after 3 months</div>
+            </div>
+          </label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: var(--bg-card); border-radius: 8px;">
+            <input type="radio" name="disappearing-duration" value="never">
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary);">Off (Never)</div>
+              <div style="font-size: 11.5px; color: var(--text-secondary);">Messages are kept permanently</div>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- SET REMINDER MODAL -->
+  <div class="modal-overlay" id="reminder-set-modal">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">⏰ Set Reminder</h3>
+        <button class="modal-close-btn" id="btn-close-reminder-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: var(--bg-card); padding: 10px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+          <b>Item:</b> <span id="reminder-item-preview"></span>
+        </div>
+        <p style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px;">Remind me in:</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
+          <button class="auth-submit-btn reminder-preset-btn" data-mins="15" style="background: var(--bg-input-field); color: var(--text-primary); font-size: 13px;">
+            ⏱️ 15 Minutes
+          </button>
+          <button class="auth-submit-btn reminder-preset-btn" data-mins="60" style="background: var(--bg-input-field); color: var(--text-primary); font-size: 13px;">
+            🕒 1 Hour
+          </button>
+          <button class="auth-submit-btn reminder-preset-btn" data-mins="180" style="background: var(--bg-input-field); color: var(--text-primary); font-size: 13px;">
+            ⏳ 3 Hours
+          </button>
+          <button class="auth-submit-btn reminder-preset-btn" data-mins="1440" style="background: var(--bg-input-field); color: var(--text-primary); font-size: 13px;">
+            🌅 Tomorrow (24h)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REMINDER ALARM ALERT DIALOG -->
+  <div class="modal-overlay" id="reminder-alert-dialog">
+    <div class="modal-card" style="max-width: 380px; text-align: center; border: 2px solid var(--brand-orange);">
+      <div class="modal-body" style="padding: 24px;">
+        <div style="font-size: 42px; margin-bottom: 10px; animation: bouncePin 1s infinite alternate;">⏰</div>
+        <h3 style="font-size: 18px; color: var(--text-primary); font-weight: 700; margin-bottom: 6px;">GitPit Reminder!</h3>
+        <p id="reminder-alert-text" style="font-size: 14px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500;"></p>
+        <div id="reminder-alert-time" style="font-size: 11.5px; color: var(--brand-orange); margin-bottom: 20px;"></div>
+        <button class="auth-submit-btn" id="btn-dismiss-reminder-alert">
+          Dismiss Reminder ✓
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD PARTICIPANT TO CALL (GROUP CALL) MODAL -->
+  <div class="modal-overlay" id="add-participant-modal">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">👥 Add to Call</h3>
+        <button class="modal-close-btn" id="btn-close-add-participant">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">Select a friend to invite to this group call:</p>
+        <div class="share-contact-list" id="add-participant-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPI SEND PAYMENT MODAL -->
+  <div class="modal-overlay" id="upi-send-modal">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: #22c55e; font-weight: 800; font-size: 16px;">⚡ UPI Pay</span>
+          <span style="font-size: 12px; color: var(--text-secondary);">GitPit Payments</span>
+        </div>
+        <button class="modal-close-btn" id="btn-close-upi-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; background: var(--bg-card); padding: 10px 14px; border-radius: var(--radius-md);">
+          <img id="upi-recipient-avatar" class="avatar-img" style="width: 44px; height: 44px;" src="" alt="Recipient">
+          <div>
+            <div id="upi-recipient-name" style="font-weight: 700; color: var(--text-primary); font-size: 15px;">Recipient</div>
+            <div id="upi-recipient-vpa" style="font-size: 12px; color: var(--brand-blue);">user@gitpitupi</div>
+          </div>
+        </div>
+
+        <div class="upi-modal-amount-box">
+          <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Enter Amount (INR)</label>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px;">
+            <span class="upi-amount-currency">₹</span>
+            <input type="number" id="upi-amount-input" class="upi-amount-input" value="500" placeholder="0">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Payment Note (Optional)</label>
+          <input type="text" id="upi-note-input" class="auth-input" placeholder="e.g. Lunch split / Project advance">
+        </div>
+
+        <button class="auth-submit-btn" id="btn-proceed-mpin" style="background: #22c55e;">
+          Proceed to Pay ₹ <span id="upi-btn-amount-label">500</span> 🔒
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPI MPIN SECURITY KEYPAD MODAL -->
+  <div class="modal-overlay" id="upi-mpin-modal">
+    <div class="modal-card" style="max-width: 380px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">Enter 4-Digit UPI PIN</h3>
+        <button class="modal-close-btn" id="btn-close-mpin-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">Paying to contact</p>
+        <h2 id="mpin-amount-display" style="color: var(--text-primary); font-weight: 800; font-size: 28px; margin-bottom: 16px;">₹500</h2>
+
+        <div class="mpin-dots-wrapper">
+          <div class="mpin-dot" id="mpin-dot-0"></div>
+          <div class="mpin-dot" id="mpin-dot-1"></div>
+          <div class="mpin-dot" id="mpin-dot-2"></div>
+          <div class="mpin-dot" id="mpin-dot-3"></div>
+        </div>
+
+        <div class="mpin-keypad-grid">
+          <button class="mpin-key-btn" data-val="1">1</button>
+          <button class="mpin-key-btn" data-val="2">2</button>
+          <button class="mpin-key-btn" data-val="3">3</button>
+          <button class="mpin-key-btn" data-val="4">4</button>
+          <button class="mpin-key-btn" data-val="5">5</button>
+          <button class="mpin-key-btn" data-val="6">6</button>
+          <button class="mpin-key-btn" data-val="7">7</button>
+          <button class="mpin-key-btn" data-val="8">8</button>
+          <button class="mpin-key-btn" data-val="9">9</button>
+          <button class="mpin-key-btn" data-val="back">⌫</button>
+          <button class="mpin-key-btn" data-val="0">0</button>
+          <button class="mpin-key-btn" data-val="submit" style="background: #22c55e; color: #fff;">✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR CODE SCANNER & MY QR MODAL -->
+  <div class="modal-overlay" id="qr-scanner-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">QR Code & Scanner</h3>
+        <button class="modal-close-btn" id="btn-close-qr-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="qr-modal-tabs">
+          <button class="qr-tab-btn active" data-qr-mode="scan">📷 Scan QR</button>
+          <button class="qr-tab-btn" data-qr-mode="myqr">🔲 My QR Code</button>
+        </div>
+
+        <div id="qr-scan-panel">
+          <div class="qr-scanner-viewfinder">
+            <video id="qr-camera-feed" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+            <div class="qr-scan-corners"></div>
+            <div class="qr-scanner-laser"></div>
+          </div>
+          <p style="font-size: 13px; color: var(--text-secondary); margin-top: 12px;">
+            Align QR code within the frame to scan contact or UPI payment.
+          </p>
+        </div>
+
+        <div id="my-qr-panel" style="display: none;">
+          <div class="my-qr-display-card">
+            <div id="my-qr-code-svg-container"></div>
+            <h4 id="my-qr-user-name" style="color: #0f172a; margin-top: 10px; font-weight: 700;">My Name</h4>
+            <p id="my-qr-user-upi" style="color: #0284c7; font-size: 12.5px; font-weight: 600;">user@gitpitupi</p>
+          </div>
+          <p style="font-size: 12.5px; color: var(--text-secondary);">Your personal QR code for instant chats & UPI transfers.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP SETTINGS MODAL -->
+  <div class="modal-overlay" id="app-settings-modal">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button class="btn-modal-back-exit" id="btn-back-settings" title="Back / Exit" onclick="document.getElementById('app-settings-modal').classList.remove('active')">←</button>
+          <h3 class="modal-title" style="margin: 0;">GitPit Settings ⚙️</h3>
+        </div>
+        <button class="modal-close-btn" id="btn-close-settings" title="Close Settings" style="font-size: 22px; font-weight: 800; padding: 6px 12px; background: var(--bg-hover); border-radius: 50%;">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Indian Languages Selector -->
+        <div style="padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">App Language (भारतीय भाषाएं) 🇮🇳</div>
+              <div style="font-size: 12.5px; color: var(--text-secondary);">Select your preferred Indian language</div>
+            </div>
+          </div>
+          <select id="settings-language-select" class="auth-input" style="cursor: pointer; font-weight: 600; background: var(--bg-card);" onchange="window.I18N && window.I18N.setLanguage(this.value)">
+            <option value="en">🇬🇧 English</option>
+            <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
+            <option value="bn">🇮🇳 বাংলা (Bengali)</option>
+            <option value="mr">🇮🇳 मराठी (Marathi)</option>
+            <option value="te">🇮🇳 తెలుగు (Telugu)</option>
+            <option value="ta">🇮🇳 தமிழ் (Tamil)</option>
+            <option value="gu">🇮🇳 ગુજરાતી (Gujarati)</option>
+            <option value="kn">🇮🇳 ಕನ್ನಡ (Kannada)</option>
+            <option value="ml">🇮🇳 മലയാളം (Malayalam)</option>
+            <option value="pa">🇮🇳 ਪੰਜਾਬੀ (Punjabi)</option>
+            <option value="or">🇮🇳 ଓଡ଼ିଆ (Odia)</option>
+            <option value="ur">🇮🇳 اردو (Urdu)</option>
+          </select>
+        </div>
+
+        <!-- 🚫 Blocked Contacts Manager -->
+        <div style="padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">🚫 Blocked Contacts</div>
+              <div style="font-size: 12.5px; color: var(--text-secondary);">Manage and unblock blocked users</div>
+            </div>
+            <span id="blocked-count-badge" style="background: var(--brand-danger); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">0</span>
+          </div>
+          <div class="settings-blocked-container" id="settings-blocked-list-container">
+            <!-- Rendered by chat.js / app.js -->
+            <p style="font-size: 12.5px; color: var(--text-muted); text-align: center; margin: 8px 0;">No contacts currently blocked.</p>
+          </div>
+        </div>
+
+        <!-- 👥 Group Privacy Permission -->
+        <div style="padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div style="margin-bottom: 8px;">
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">👥 Group Privacy (Who can add me)</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Prevent unknown users adding you to groups without permission</div>
+          </div>
+          <select id="setting-group-privacy-select" class="auth-input" style="cursor: pointer; background: var(--bg-card);" onchange="localStorage.setItem('gitpit_group_privacy', this.value); alert('✅ Group privacy updated!')">
+            <option value="approval" selected>🔒 Require My Approval (Nobody without permission)</option>
+            <option value="contacts">👥 My Contacts Only</option>
+            <option value="everyone">🌐 Everyone</option>
+          </select>
+        </div>
+
+        <!-- 📹 Video Calls Privacy (4 Options: Everyone / Contacts / Selected Persons Only / Nobody) -->
+        <div style="padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div style="margin-bottom: 8px;">
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">📹 Video Calls Privacy (4 Options)</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Choose who can initiate video calls with you</div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="setting-video-call-privacy" class="auth-input" style="cursor: pointer; background: var(--bg-card); flex: 1;" onchange="window.ChatterApp && window.ChatterApp.handleVideoPrivacyChange(this.value)">
+              <option value="contacts" selected>👥 My Contacts Only</option>
+              <option value="selected">🔒 Selected Persons Only...</option>
+              <option value="everyone">🌐 Everyone (To All)</option>
+              <option value="nobody">🚫 Nobody (Block All Video Calls)</option>
+            </select>
+            <button id="btn-configure-video-contacts" class="auth-submit-btn" style="width: auto; padding: 6px 12px; font-size: 12px; background: var(--brand-blue); display: none;" onclick="window.ChatterApp && window.ChatterApp.openVideoPrivacyContactsModal()">
+              Select 👥
+            </button>
+          </div>
+        </div>
+
+        <!-- 📁 File & Document Receiving Privacy (4 Options: Everyone / Contacts / Selected Persons Only / Nobody) -->
+        <div style="padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div style="margin-bottom: 8px;">
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">📁 File & Document Receiving Privacy (4 Options)</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Choose who can send you files, documents & photos</div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="setting-file-receiving-privacy" class="auth-input" style="cursor: pointer; background: var(--bg-card); flex: 1;" onchange="window.ChatterApp && window.ChatterApp.handleFilePrivacyChange(this.value)">
+              <option value="contacts" selected>👥 My Contacts Only</option>
+              <option value="selected">🔒 Selected Persons Only...</option>
+              <option value="everyone">🌐 Everyone (To All)</option>
+              <option value="nobody">🚫 Nobody (Block All File Attachments)</option>
+            </select>
+            <button id="btn-configure-file-contacts" class="auth-submit-btn" style="width: auto; padding: 6px 12px; font-size: 12px; background: var(--brand-blue); display: none;" onclick="window.ChatterApp && window.ChatterApp.openFilePrivacyContactsModal()">
+              Select 👥
+            </button>
+          </div>
+        </div>
+
+        <!-- 🛡️ Anti-Fraud Stranger Shield (Only Text & Location Allowed from Unknown) -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle); background: rgba(2, 132, 199, 0.06); border-radius: 8px; margin: 8px 0; padding: 12px;">
+          <div>
+            <div style="font-weight: 700; color: var(--brand-blue); font-size: 14.5px;">🛡️ Anti-Fraud Stranger Shield</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">Unknown persons can ONLY send text & 📍 location. All file attachments, photos & payments are blocked to prevent fraud.</div>
+          </div>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="setting-restrict-unknown-media" style="width: 22px; height: 22px; accent-color: var(--brand-blue);" checked onchange="localStorage.setItem('gitpit_restrict_unknown_media', this.checked); alert('🛡️ Anti-Fraud Stranger Shield updated!')">
+          </label>
+        </div>
+
+        <!-- ⭕ Status Privacy Configuration -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div>
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">⭕ Status Privacy</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Who can see your status updates (All / Contacts / Except / Selected)</div>
+          </div>
+          <button class="auth-submit-btn" style="width: auto; padding: 6px 14px; font-size: 13px; background: var(--brand-blue);" onclick="window.ChatterApp && window.ChatterApp.openStatusPrivacyModal()">
+            Manage 🔒
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div>
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">Breaking News Flash Bar</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Show or hide the real-time top ticker banner</div>
+          </div>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" class="news-flash-toggle-checkbox" style="width: 20px; height: 20px; accent-color: var(--brand-orange);" checked>
+          </label>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div>
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">App Theme</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Switch between WhatsApp Dark and Clean Light</div>
+          </div>
+          <button class="auth-submit-btn" style="width: auto; padding: 6px 14px; font-size: 13px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);" onclick="window.ChatterApp.toggleTheme()">
+            Switch Theme 🌓
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
+          <div>
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">🤖 ChatterAI Assistant & Screen Sharing</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Direct smart AI chat assistance & 1-click video screen share</div>
+          </div>
+          <button class="auth-submit-btn" style="width: auto; padding: 6px 14px; font-size: 13px; background: var(--brand-blue);" onclick="document.getElementById('app-settings-modal').classList.remove('active'); window.ChatEngine && window.ChatEngine.openChat('chat_ai');">
+            Open AI 🤖
+          </button>
+        </div>
+
+        <!-- 🚪 Exit Settings and Logout Bottom Buttons -->
+        <div style="padding-top: 18px; margin-top: 8px; border-top: 2px solid var(--border-subtle); display: flex; gap: 10px;">
+          <button class="auth-submit-btn" id="btn-footer-exit-settings" style="flex: 2; background: var(--brand-green); color: #ffffff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="document.getElementById('app-settings-modal').classList.remove('active')">
+            <span>←</span>
+            <span>Back to Chats</span>
+          </button>
+          <button class="auth-submit-btn btn-logout-account" style="flex: 1; background: var(--brand-danger); color: #ffffff; font-weight: 700; font-size: 13.5px;" onclick="window.AuthManager && window.AuthManager.logout()">
+            🚪 Log Out
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- AUTHENTICATION MODAL OVERLAY (Visible by default for fresh visits/unauthenticated users) -->
+  <div class="auth-overlay active" id="auth-overlay-modal" style="display: flex;">
+    <div class="auth-card">
+      <img class="auth-brand-logo" src="assets/logo.svg" alt="GitPit">
+      <h2 class="auth-headline">Welcome to GitPit</h2>
+      <p class="auth-subline">Connect with friends, share stories, enjoy HD video calls & real-time messaging.</p>
+
+      <div class="auth-methods-tabs">
+        <button class="auth-tab-btn active" data-method="mobile">📱 Mobile OTP</button>
+        <button class="auth-tab-btn" data-method="google">🌐 Google Sign-In</button>
+        <button class="auth-tab-btn" data-method="email">✉️ Email</button>
+      </div>
+
+      <!-- Loading State Overlay -->
+      <div id="auth-loading-state" style="display: none; text-align: center; padding: 24px 0;">
+        <div style="font-size: 36px; animation: spin 1s infinite linear;">⏳</div>
+        <div style="font-weight: 700; color: var(--text-primary); margin-top: 10px; font-size: 15px;" id="auth-loading-text">Verifying...</div>
+      </div>
+
+      <!-- Mobile OTP Panel -->
+      <div class="auth-form-panel active" id="auth-panel-mobile">
+        <div id="mobile-step-phone">
+          <div class="form-group">
+            <label class="form-label">Full Name (Optional)</label>
+            <input type="text" id="mobile-name-input" class="auth-input" placeholder="Your Name">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Enter Mobile Number</label>
+            <div class="phone-input-group">
+              <select id="country-code-select" class="country-code-select">
+                <option value="+91">🇮🇳 +91 (India)</option>
+                <option value="+1">🇺🇸 +1 (USA)</option>
+                <option value="+44">🇬🇧 +44 (UK)</option>
+                <option value="+971">🇦🇪 +971 (UAE)</option>
+              </select>
+              <input type="tel" id="mobile-number-input" class="auth-input" placeholder="98765 43210">
+            </div>
+            <div id="phone-error-msg" style="color: var(--brand-danger); font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <button class="auth-submit-btn" id="btn-send-otp">
+            Send 6-Digit OTP 🚀
+          </button>
+          <div style="margin-top: 10px; text-align: center;">
+            <button type="button" id="btn-quick-test-login" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; border-radius: var(--radius-md); padding: 11px 16px; font-size: 14px; font-weight: 700; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 6px rgba(16,185,129,0.3); transition: all 0.2s;">
+              ⚡ Direct 1-Click Test Login (Bypass OTP)
+            </button>
+          </div>
+        </div>
+
+        <div id="mobile-step-otp" style="display: none;">
+          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">
+            OTP code sent to <b id="display-phone-target" style="color: var(--text-primary)"></b>
+          </p>
+          
+          <div class="otp-boxes-grid">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-box-input" inputmode="numeric">
+          </div>
+
+          <div class="otp-resend-row">
+            <span>Didn't receive code? <span id="otp-countdown"></span></span>
+            <button class="resend-link-btn" id="btn-resend-otp" onclick="window.AuthManager && window.AuthManager.handleSendOtp()">Resend OTP</button>
+          </div>
+
+          <button class="auth-submit-btn" id="btn-verify-otp">
+            Verify & Continue ✨
+          </button>
+          <div style="margin-top: 8px; text-align: center;">
+            <button type="button" id="btn-bypass-verify-otp" style="background: transparent; color: #10b981; border: 1px dashed #10b981; border-radius: var(--radius-md); padding: 9px 12px; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;">
+              ⚡ Testing Shortcut: Bypass OTP & Enter
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Google Sign-In Panel -->
+      <div class="auth-form-panel" id="auth-panel-google">
+        <p style="font-size: 13.5px; color: var(--text-secondary); margin-bottom: 12px;">
+          Continue with Google account (Verified mobile number is required before accessing chats):
+        </p>
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Full Name</label>
+          <input type="text" id="google-name-input" class="auth-input" placeholder="e.g. Rahul Sharma">
+        </div>
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Gmail / Email Address</label>
+          <input type="email" id="google-email-input" class="auth-input" placeholder="username@gmail.com">
+        </div>
+        <button class="google-auth-btn" id="btn-google-sign-in">
+          <svg class="google-icon" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.55 10.78l7.98-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          Continue with Google
+        </button>
+      </div>
+
+      <!-- Email / Password Panel -->
+      <div class="auth-form-panel" id="auth-panel-email">
+        <form id="email-auth-form">
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" id="email-name-input" class="auth-input" placeholder="e.g. Vikramaditya" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="email-addr-input" class="auth-input" placeholder="name@domain.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="email-password-input" class="auth-input" placeholder="Enter secure password" required>
+          </div>
+          <button type="submit" class="auth-submit-btn">
+            Create Account & Verify Phone
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTACT SYNC CONSENT & ONBOARDING MODAL -->
+  <div class="modal-overlay" id="contact-sync-consent-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: center;">
+      <div class="modal-body" style="padding: 24px 20px;">
+        <div style="font-size: 48px; margin-bottom: 12px;">📖 ⇄ 👥</div>
+        <h3 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">Find Your Friends on GitPit</h3>
+        <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
+          GitPit matches your device phonebook contacts with registered users so you can instantly message and video call with your real contacts.
+        </p>
+        
+        <div style="background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle); text-align: left; margin-bottom: 20px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--brand-blue); margin-bottom: 4px;">🔒 Privacy Notice:</div>
+          <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">
+            • Contact phone numbers are only matched to identify existing accounts.<br>
+            • Your address book remains private, isolated per user, and is never sold or spammed.
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="auth-submit-btn" id="btn-consent-sync-contacts" style="background: var(--brand-green); font-weight: 700;" onclick="window.AuthManager && window.AuthManager.grantContactsAndSync()">
+            Grant Permission & Sync Contacts 📲
+          </button>
+          <button class="auth-submit-btn" id="btn-skip-sync-contacts" style="background: transparent; color: var(--text-muted); border: 1px solid var(--border-subtle);" onclick="document.getElementById('contact-sync-consent-modal').classList.remove('active')">
+            Skip for Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MANDATORY MOBILE VERIFICATION MODAL FOR EMAIL/GOOGLE -->
+  <div class="modal-overlay" id="mandatory-phone-verify-modal">
+    <div class="modal-card" style="max-width: 420px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">📱 Mobile Verification Required</h3>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          Every GitPit account requires a verified mobile number for calling, group chats, and end-to-end security.
+        </p>
+
+        <div id="mandatory-step-phone">
+          <div class="form-group">
+            <label class="form-label">Enter Your Mobile Number</label>
+            <div class="phone-input-group">
+              <span style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px 0 0 8px; font-weight: 600; color: var(--text-primary); font-size: 13px;">🇮🇳 +91</span>
+              <input type="tel" id="mandatory-phone-input" class="auth-input" placeholder="98765 43210" style="border-radius: 0 8px 8px 0;">
+            </div>
+            <div id="mandatory-phone-error" style="color: var(--brand-danger); font-size: 12px; margin-top: 4px; display: none;"></div>
+          </div>
+          <button class="auth-submit-btn" id="btn-send-mandatory-otp" onclick="window.AuthManager && window.AuthManager.sendMandatoryPhoneOtp()">Send Verification OTP 🚀</button>
+        </div>
+
+        <div id="mandatory-step-otp" style="display: none;">
+          <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 10px;">
+            Code sent to <b id="mandatory-display-phone"></b>
+          </p>
+          <div class="otp-boxes-grid">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+            <input type="text" maxlength="1" class="mandatory-otp-box" inputmode="numeric">
+          </div>
+          <div class="otp-resend-row" style="margin: 10px 0;">
+            <span>Resend in <span id="mandatory-otp-countdown"></span></span>
+            <button class="resend-link-btn" id="btn-resend-mandatory-otp" onclick="window.AuthManager && window.AuthManager.sendMandatoryPhoneOtp()">Resend OTP</button>
+          </div>
+          <button class="auth-submit-btn" id="btn-verify-mandatory-otp" onclick="window.AuthManager && window.AuthManager.verifyMandatoryPhoneOtp()">Verify & Complete Setup ✨</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STORY VIEWER MODAL -->
+  <div class="story-viewer-modal" id="story-viewer-modal">
+    <div class="story-progress-container" id="story-progress-container"></div>
+    <div class="story-viewer-header">
+      <div class="story-author-info">
+        <img class="story-author-avatar" id="story-viewer-avatar" src="" alt="Author">
+        <div>
+          <div class="story-author-name" id="story-viewer-name">Author</div>
+          <div class="story-timestamp" id="story-viewer-time">Time</div>
+        </div>
+      </div>
+      <button class="story-close-btn" id="btn-close-story-viewer">✕</button>
+    </div>
+    <div class="story-tap-zone story-tap-left" id="story-tap-left"></div>
+    <div class="story-tap-zone story-tap-right" id="story-tap-right"></div>
+    <div class="story-content-body" id="story-content-display"></div>
+    <div class="story-viewer-footer">
+      <input type="text" class="story-reply-input" placeholder="Reply to status...">
+      <button class="voice-play-btn" style="width: 36px; height: 36px; font-size: 14px;">➤</button>
+    </div>
+  </div>
+
+  <!-- CREATE STATUS MODAL -->
+  <div class="modal-overlay" id="create-status-modal">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Create New Status ⭕</h3>
+        <button class="modal-close-btn" id="btn-close-create-status" onclick="document.getElementById('create-status-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Live Media / Color Preview Box -->
+        <div class="status-preview-box" id="status-preview-box" style="background-color: #0284c7; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; margin-bottom: 14px;">
+          <div id="status-preview-media-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div>
+          <div id="status-preview-text-display" style="position: relative; z-index: 2; padding: 12px; color: #ffffff; font-weight: 700; font-size: 16px; text-shadow: 0 1px 3px rgba(0,0,0,0.6);">Type your status below...</div>
+        </div>
+
+        <!-- Attach Photo or Video Button -->
+        <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+          <input type="file" id="status-media-file-input" accept="image/*,video/*" style="display: none;" onchange="window.StoriesManager && window.StoriesManager.handleMediaSelect(event)">
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="document.getElementById('status-media-file-input').click()">
+            <span>📷 / 🎥</span>
+            <span>Attach Photo or Video</span>
+          </button>
+          <button type="button" id="btn-status-clear-media" class="auth-submit-btn" style="width: auto; background: var(--bg-input-field); color: var(--brand-danger); border: 1px solid var(--border-color); font-size: 12px; display: none;" onclick="window.StoriesManager && window.StoriesManager.clearSelectedMedia()">
+            ✕ Clear Media
+          </button>
+        </div>
+
+        <div class="form-group" id="status-color-palette-wrapper">
+          <label class="form-label">Pick Background Color</label>
+          <div class="status-color-palette">
+            <div class="color-dot active" style="background: #0284c7" data-color="#0284c7"></div>
+            <div class="color-dot" style="background: #ff6b00" data-color="#ff6b00"></div>
+            <div class="color-dot" style="background: #00a884" data-color="#00a884"></div>
+            <div class="color-dot" style="background: #8b5cf6" data-color="#8b5cf6"></div>
+            <div class="color-dot" style="background: #ec4899" data-color="#ec4899"></div>
+            <div class="color-dot" style="background: #0f172a" data-color="#0f172a"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Status Caption / Message</label>
+          <textarea id="new-status-text" class="auth-input" rows="2" placeholder="What's on your mind? (Caption / Message)"></textarea>
+        </div>
+
+        <button class="auth-submit-btn" id="btn-publish-status" onclick="window.StoriesManager && window.StoriesManager.publishNewStatus()">
+          Post Status ✨
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INCOMING VIDEO/AUDIO CALL PERMISSION DIALOG -->
+  <div class="incoming-call-dialog" id="incoming-call-prompt-modal">
+    <div class="incoming-call-card">
+      <img class="incoming-call-avatar" id="incoming-call-avatar" src="assets/logo-icon.svg" alt="Caller">
+      <h3 class="incoming-call-title" id="incoming-caller-name">Contact</h3>
+      <p class="incoming-call-desc" id="incoming-call-subtitle">Incoming Video Call from Contact...</p>
+      
+      <div class="incoming-actions-grid">
+        <button class="btn-incoming-accept-video" id="btn-incoming-accept-video">
+          <span>📹</span>
+          <span>Accept with Video (Camera On)</span>
+        </button>
+        <button class="btn-incoming-accept-audio" id="btn-incoming-accept-audio">
+          <span>📞</span>
+          <span>Accept as Audio Only (Camera Off)</span>
+        </button>
+        <button class="btn-incoming-decline" id="btn-incoming-decline">
+          <span>❌ Decline / Reject</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUDIO & VIDEO CALL MODAL OVERLAY -->
+  <div class="call-overlay-modal" id="call-overlay-modal">
+    <div class="call-modal-header">
+      <div class="call-encryption-tag">🔒 End-to-End Encrypted Call</div>
+      <h2 class="call-caller-name" id="call-caller-name">Contact</h2>
+      <div class="call-status-badge" id="call-status-badge">Ringing...</div>
+    </div>
+    <div class="call-center-area">
+      <div class="caller-big-avatar-wrapper" id="call-avatar-container">
+        <img class="caller-big-avatar" id="call-big-avatar" src="assets/logo-icon.svg" alt="Caller">
+        <div class="call-pulse-ring"></div>
+      </div>
+
+      <!-- Video Mode Viewport -->
+      <div id="call-video-container" class="call-video-viewport" style="display: none; position: relative; width: 100%; height: 100%;">
+        <!-- Real WebRTC Remote Audio/Video Elements -->
+        <video class="remote-video-feed" id="remote-video-feed" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; border-radius: 12px;"></video>
+        <audio id="remote-audio-feed" autoplay></audio>
+
+        <div class="remote-caller-box" id="remote-caller-box" style="z-index: 2;">
+          <img id="remote-caller-video-avatar" class="remote-caller-img" src="assets/logo-icon.svg" alt="Remote Caller">
+          <div style="color: #ffffff; font-weight: 700; font-size: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Connecting Real Video Stream...</div>
+        </div>
+
+        <!-- Group Call Multi-User Grid -->
+        <div class="group-call-grid" id="group-call-grid" style="z-index: 3;"></div>
+
+        <!-- Local Self Camera Viewport -->
+        <div class="video-local-pip-wrapper" id="local-video-pip-wrapper" style="z-index: 4;">
+          <video class="video-local-pip" id="local-video-feed" autoplay playsinline muted></video>
+          <div class="camera-off-overlay" id="camera-off-overlay">
+            <span style="font-size: 20px;">📷🚫</span>
+            <span>Camera is Off</span>
+          </div>
+        </div>
+
+        <div class="video-local-fallback" id="local-video-fallback" style="z-index: 4;">
+          <img id="local-fallback-avatar" class="local-fallback-img" src="assets/logo-icon.svg" alt="Self">
+          <span style="color: #fff; font-size: 11px; font-weight: 600;">You</span>
+        </div>
+      </div>
+    </div>
+    <div class="call-modal-controls">
+      <button class="call-ctrl-btn" id="btn-call-mute" title="Mute/Unmute Mic (Outgoing)">🎤</button>
+      <button class="call-ctrl-btn" id="btn-call-speaker-mute" title="Mute/Unmute Speaker (Hear Caller)">🔊</button>
+      <button class="call-ctrl-btn" id="btn-call-camera" title="Toggle Camera On/Off">📹</button>
+      <button class="call-ctrl-btn" id="btn-call-screenshare" title="Share My Screen (Window/Tab/Display)">🖥️</button>
+      <button class="call-ctrl-btn" id="btn-call-flip-camera" title="Flip Camera" style="display: none;">🔄</button>
+      <button class="call-ctrl-btn" id="btn-call-add-participant" title="Add Contact to Call">👥+</button>
+      <button class="call-ctrl-btn" id="btn-call-silent" title="Silent Ringtone">🔕</button>
+      <button class="call-ctrl-btn btn-end-call" id="btn-end-call" title="End Call">📞</button>
+    </div>
+  </div>
+
+  <!-- ARTICLE DETAIL MODAL -->
+  <div class="modal-overlay" id="article-detail-modal">
+    <div class="modal-card" style="max-width: 580px;">
+      <div class="modal-header">
+        <span class="news-card-badge" id="modal-article-badge">NEWS</span>
+        <button class="modal-close-btn" id="btn-close-article-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <img id="modal-article-img" style="width: 100%; height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 14px;" src="" alt="News Image">
+        <div id="modal-article-time" style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;"></div>
+        <h3 id="modal-article-title" style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; line-height: 1.4;"></h3>
+        <p id="modal-article-summary" style="font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px;"></p>
+        <button class="auth-submit-btn" id="modal-article-share-btn">
+          📤 Share to GitPit Chat
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARE NEWS TO CHAT MODAL -->
+  <div class="modal-overlay" id="share-news-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Forward News to Chat</h3>
+        <button class="modal-close-btn" id="btn-close-share-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">Select a contact or group to send this article:</p>
+        <div class="share-contact-list" id="share-contact-list-items"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW CHAT / CREATE GROUP MODAL -->
+  <div class="modal-overlay" id="new-chat-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Group or Start Chat</h3>
+        <button class="modal-close-btn" id="btn-close-new-chat">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Group Name / Subject</label>
+          <input type="text" id="new-group-name" class="auth-input" placeholder="e.g. Friends & Family 🌟">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Select Members to Add</label>
+          <div class="group-members-checklist" id="group-members-checklist">
+            <!-- Populated by app.js -->
+          </div>
+        </div>
+        <button class="auth-submit-btn" id="btn-submit-create-group">
+          Create Group & Start Chatting 🚀
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- USER PROFILE & ACCOUNT DETAILS MODAL -->
+  <div class="modal-overlay" id="user-profile-modal">
+    <div class="modal-card" style="max-width: 500px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3 class="modal-title">My Account & Profile 👤</h3>
+        <button class="modal-close-btn" id="btn-close-profile-modal">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        
+        <div style="text-align: center; margin-bottom: 18px;">
+          <div style="position: relative; display: inline-block;">
+            <img id="profile-modal-avatar" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid var(--brand-green); box-shadow: var(--shadow-md);" src="" alt="Avatar">
+          </div>
+          <input type="file" id="profile-photo-file-input" accept="image/*" style="display: none;" onchange="window.AuthManager && window.AuthManager.handleProfilePhotoUpload(event)">
+          <div style="display: flex; justify-content: center; gap: 8px; margin-top: 8px;">
+            <button type="button" class="btn-schedule-new" style="font-size: 12px; padding: 6px 12px;" onclick="document.getElementById('profile-photo-file-input').click()">
+              📷 Upload Photo
+            </button>
+            <button type="button" class="btn-schedule-new" id="btn-profile-regen-avatar" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 12px; padding: 6px 12px;">
+              🔄 Random Avatar
+            </button>
+          </div>
+        </div>
+
+        <form id="user-profile-edit-form" onsubmit="event.preventDefault(); window.AuthManager && window.AuthManager.saveUserProfile();">
+          
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" id="profile-name-input" class="auth-input" placeholder="e.g. John Doe" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">About / Bio</label>
+            <textarea id="profile-bio-input" class="auth-input" rows="2" placeholder="Tell something about yourself..." style="resize: none;"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Mobile Number</label>
+            <div class="phone-input-group" style="display: flex; gap: 6px;">
+              <select id="profile-country-code-select" class="country-code-select" style="max-width: 120px; font-weight: 600;">
+                <option value="+91" selected>🇮🇳 +91</option>
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+971">🇦🇪 +971</option>
+                <option value="+61">🇦🇺 +61</option>
+                <option value="+81">🇯🇵 +81</option>
+                <option value="+49">🇩🇪 +49</option>
+                <option value="+33">🇫🇷 +33</option>
+                <option value="+65">🇸🇬 +65</option>
+                <option value="+966">🇸🇦 +966</option>
+              </select>
+              <input type="tel" id="profile-phone-input" class="auth-input" placeholder="98765 43210" style="flex: 1;">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="profile-email-input" class="auth-input" placeholder="name@domain.com">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">🎂 Date of Birth (DOB)</label>
+            <input type="date" id="profile-dob-input" class="auth-input">
+          </div>
+
+          <!-- 🔒 Privacy Settings (Hide Sensitive Details from Others) -->
+          <div style="background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle); margin-top: 14px;">
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 13.5px; margin-bottom: 8px;">🔒 Privacy & Visibility Settings</div>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; cursor: pointer;">
+              <span>Hide Mobile Number from others</span>
+              <input type="checkbox" id="privacy-hide-phone" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; cursor: pointer;">
+              <span>Hide Email Address from others</span>
+              <input type="checkbox" id="privacy-hide-email" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; cursor: pointer;">
+              <span>Hide Date of Birth (DOB)</span>
+              <input type="checkbox" id="privacy-hide-dob" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+            <label style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
+              <span>Hide Last Seen / Online Status</span>
+              <input type="checkbox" id="privacy-hide-lastseen" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 18px;">
+            <button type="submit" class="auth-submit-btn" style="flex: 2;" id="btn-save-user-profile">
+              Save Changes ✓
+            </button>
+            <button type="button" class="auth-submit-btn btn-logout-account" style="flex: 1; background: var(--brand-danger);" onclick="window.AuthManager && window.AuthManager.logout()">
+              Log Out
+            </button>
+          </div>
+
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS PRIVACY CONFIGURATION MODAL -->
+  <div class="modal-overlay" id="status-privacy-modal">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button class="btn-modal-back-exit" onclick="document.getElementById('status-privacy-modal').classList.remove('active')">←</button>
+          <h3 class="modal-title" style="margin: 0;">⭕ Status Privacy</h3>
+        </div>
+        <button class="modal-close-btn" id="btn-close-status-privacy" style="font-size: 20px; padding: 6px 12px; background: var(--bg-hover); border-radius: 50%;">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+          Choose who can see your status updates:
+        </p>
+
+        <label class="status-privacy-option-item">
+          <input type="radio" name="status-privacy-type" value="contacts" checked onchange="window.ChatterApp && window.ChatterApp.handleStatusPrivacyTypeChange(this.value)">
+          <div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">👥 My Contacts</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Visible to all contacts saved in your list</div>
+          </div>
+        </label>
+
+        <label class="status-privacy-option-item">
+          <input type="radio" name="status-privacy-type" value="everyone" onchange="window.ChatterApp && window.ChatterApp.handleStatusPrivacyTypeChange(this.value)">
+          <div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">🌐 Everyone (To All)</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Visible to everyone on GitPit</div>
+          </div>
+        </label>
+
+        <label class="status-privacy-option-item">
+          <input type="radio" name="status-privacy-type" value="contacts_except" onchange="window.ChatterApp && window.ChatterApp.handleStatusPrivacyTypeChange(this.value)">
+          <div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">🚫 My Contacts Except... (Not To)</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Hide your status from specific selected contacts</div>
+          </div>
+        </label>
+
+        <label class="status-privacy-option-item">
+          <input type="radio" name="status-privacy-type" value="only_share_with" onchange="window.ChatterApp && window.ChatterApp.handleStatusPrivacyTypeChange(this.value)">
+          <div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">🔒 Only Share With... (To Selected)</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Only share with specific selected contacts</div>
+          </div>
+        </label>
+
+        <!-- Contact Exclusion / Selection Checklist -->
+        <div id="status-privacy-checklist-container" style="display: none; margin-top: 10px;">
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;" id="status-privacy-checklist-title">
+            Select Contacts:
+          </div>
+          <div class="status-contacts-checklist-container" id="status-privacy-contacts-list">
+            <!-- Rendered by app.js -->
+          </div>
+        </div>
+
+        <div style="margin-top: 16px; display: flex; gap: 10px;">
+          <button class="auth-submit-btn" id="btn-save-status-privacy" onclick="window.ChatterApp && window.ChatterApp.saveStatusPrivacy()">
+            Save Status Privacy ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIDEO CALL PRIVACY SELECTED CONTACTS MODAL -->
+  <div class="modal-overlay" id="video-privacy-contacts-modal">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button class="btn-modal-back-exit" onclick="document.getElementById('video-privacy-contacts-modal').classList.remove('active')">←</button>
+          <h3 class="modal-title" style="margin: 0;">📹 Allowed Video Callers</h3>
+        </div>
+        <button class="modal-close-btn" id="btn-close-video-privacy-modal" style="font-size: 20px; padding: 6px 12px; background: var(--bg-hover); border-radius: 50%;">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+          Select contacts who are allowed to initiate video calls with you:
+        </p>
+        <div class="status-contacts-checklist-container" id="video-privacy-contacts-list">
+          <!-- Rendered by app.js -->
+        </div>
+        <div style="margin-top: 16px; display: flex; gap: 10px;">
+          <button class="auth-submit-btn" onclick="window.ChatterApp && window.ChatterApp.saveVideoPrivacyContacts()">
+            Save Allowed Video Callers ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILE RECEIVING PRIVACY SELECTED CONTACTS MODAL -->
+  <div class="modal-overlay" id="file-privacy-contacts-modal">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button class="btn-modal-back-exit" onclick="document.getElementById('file-privacy-contacts-modal').classList.remove('active')">←</button>
+          <h3 class="modal-title" style="margin: 0;">📁 Allowed File Senders</h3>
+        </div>
+        <button class="modal-close-btn" id="btn-close-file-privacy-modal" style="font-size: 20px; padding: 6px 12px; background: var(--bg-hover); border-radius: 50%;">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+          Select contacts who are allowed to send you files, documents and photos:
+        </p>
+        <div class="status-contacts-checklist-container" id="file-privacy-contacts-list">
+          <!-- Rendered by app.js -->
+        </div>
+        <div style="margin-top: 16px; display: flex; gap: 10px;">
+          <button class="auth-submit-btn" onclick="window.ChatterApp && window.ChatterApp.saveFilePrivacyContacts()">
+            Save Allowed File Senders ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTACT PROFILE MODAL & SHARED MEDIA GALLERY -->
+  <div class="modal-overlay" id="contact-profile-modal">
+    <div class="modal-card" style="max-width: 520px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3 class="modal-title">Contact Profile 👤</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('contact-profile-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        
+        <!-- Contact Header Profile -->
+        <div style="text-align: center; margin-bottom: 16px;">
+          <img id="contact-profile-avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid var(--brand-green); box-shadow: var(--shadow-md); margin-bottom: 8px;" src="assets/logo-icon.svg" alt="Contact">
+          <h3 id="contact-profile-name" style="font-size: 19px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px 0;">Contact Name</h3>
+          <p id="contact-profile-status" style="font-size: 13px; color: var(--text-secondary); margin: 0 auto; max-width: 90%;">Hey there! I am using GitPit 🚀</p>
+        </div>
+
+        <!-- Quick Call & Save to Phonebook Action Buttons -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+          <button class="auth-submit-btn" style="background: var(--brand-green); color: #fff; padding: 10px; font-size: 13px; font-weight: 700;" onclick="window.ChatEngine && window.ChatEngine.promptSaveActiveContactToPhonebook()">
+            ➕ Save to Phonebook
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.CallManager && window.CallManager.startCall(document.getElementById('contact-profile-name').textContent, document.getElementById('contact-profile-avatar').src, 'audio', window.ChatEngine.activeChatId)">
+            📞 Audio Call
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-blue); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.CallManager && window.CallManager.startCall(document.getElementById('contact-profile-name').textContent, document.getElementById('contact-profile-avatar').src, 'video', window.ChatEngine.activeChatId)">
+            📹 Video Call
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-danger); border: 1px solid var(--border-color); padding: 10px; font-size: 13px; font-weight: 700;" onclick="document.getElementById('contact-profile-modal').classList.remove('active'); window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
+            🗑️ Delete Chat
+          </button>
+        </div>
+
+        <!-- Contact Info Box -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Contact Info</div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13.5px;">
+            <span style="color: var(--text-secondary);">📱 Mobile:</span>
+            <span id="contact-profile-phone" style="font-weight: 600; color: var(--text-primary);">+91 98765 43210</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 13.5px;">
+            <span style="color: var(--text-secondary);">✉️ Email:</span>
+            <span id="contact-profile-email" style="font-weight: 600; color: var(--text-primary);">user@domain.com</span>
+          </div>
+        </div>
+
+        <!-- 📁 Shared Media, Photos & Documents Gallery -->
+        <div style="margin-top: 10px;">
+          <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+            <span>📁 Shared Media & Files in this Chat</span>
+          </div>
+
+          <!-- Shared Photos Grid -->
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">🖼️ Photos & Images:</div>
+            <div class="shared-media-grid" id="shared-photos-grid">
+              <!-- Rendered by chat.js -->
+            </div>
+          </div>
+
+          <!-- Shared Documents List -->
+          <div>
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">📄 Documents & Files:</div>
+            <div class="shared-docs-container" id="shared-docs-list">
+              <!-- Rendered by chat.js -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- FULL-SCREEN MEDIA LIGHTBOX MODAL -->
+  <div class="media-lightbox-overlay" id="media-lightbox-modal" onclick="window.ChatEngine && window.ChatEngine.closeLightbox()">
+    <div class="lightbox-content-box" onclick="event.stopPropagation()">
+      <button class="lightbox-close-btn" onclick="window.ChatEngine && window.ChatEngine.closeLightbox()">✕</button>
+      <img id="lightbox-preview-img" src="" alt="Full Resolution Photo">
+      <div class="lightbox-toolbar">
+        <span id="lightbox-caption-text" class="lightbox-caption"></span>
+        <button id="lightbox-download-btn" class="lightbox-download-btn">⬇️ Download Photo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM-STYLE JUMP TO DATE MODAL -->
+  <div class="modal-overlay" id="jump-to-date-modal">
+    <div class="modal-card" style="max-width: 380px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">📅 Jump to Date</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('jump-to-date-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          Select Day, Month, and Year to jump to that day's chat messages:
+        </p>
+        <div class="form-group">
+          <input type="date" id="jump-calendar-input" class="auth-input" style="font-size: 15px; padding: 10px; font-weight: 600;">
+        </div>
+        <button class="auth-submit-btn" style="background: var(--brand-blue); margin-top: 10px;" onclick="window.ChatEngine && window.ChatEngine.jumpToSelectedDate()">
+          Go to Date 🚀
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LINKED DEVICES MODAL (QR CODE CONNECT) -->
+  <div class="modal-overlay" id="linked-devices-modal">
+    <div class="modal-card" style="max-width: 480px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">💻 Linked Devices</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('linked-devices-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <div style="text-align: center; margin-bottom: 16px; background: var(--bg-card); padding: 16px; border-radius: 8px;">
+          <div style="font-size: 40px; margin-bottom: 6px;">📲 ⇄ 💻</div>
+          <h4 style="color: var(--text-primary); margin: 0 0 4px 0;">Use GitPit on Web & other Devices</h4>
+          <p style="font-size: 12.5px; color: var(--text-secondary); margin: 0;">Scan QR code or login with your phone number on any device.</p>
+          <button class="auth-submit-btn" style="margin-top: 12px; font-size: 13px; background: var(--brand-green);" onclick="alert('🔗 To link this device: Open live URL on your other phone/PC and login with your mobile number to sync chats in real time!')">
+            + Link a Device
+          </button>
+        </div>
+
+        <div style="font-weight: 700; font-size: 13px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Device Status</div>
+        <div id="linked-devices-list">
+          <!-- Populated by auth.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DIRECT SAVE / EDIT CONTACT MODAL -->
+  <div class="modal-overlay" id="save-contact-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">➕ Save / Add Contact</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('save-contact-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="save-contact-form" onsubmit="event.preventDefault(); window.ChatEngine && window.ChatEngine.submitSaveContactModal();">
+          <div class="form-group">
+            <label class="form-label">Contact Name</label>
+            <input type="text" id="save-contact-name-input" class="auth-input" placeholder="e.g. Rahul Sharma" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone Number</label>
+            <div class="phone-input-group" style="display: flex; gap: 6px;">
+              <select id="save-contact-country-code" class="country-code-select" style="max-width: 110px;">
+                <option value="+91" selected>🇮🇳 +91</option>
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+971">🇦🇪 +971</option>
+                <option value="+61">🇦🇺 +61</option>
+                <option value="+81">🇯🇵 +81</option>
+              </select>
+              <input type="tel" id="save-contact-phone-input" class="auth-input" placeholder="98765 43210" required style="flex: 1;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email (Optional)</label>
+            <input type="email" id="save-contact-email-input" class="auth-input" placeholder="contact@domain.com">
+          </div>
+          <button type="submit" class="auth-submit-btn" style="background: var(--brand-green); margin-top: 10px;">
+            Save Contact ✓
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- START NEW CONVERSATION MODAL -->
+  <div class="modal-overlay" id="new-chat-picker-modal">
+    <div class="modal-card" style="max-width: 460px; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3 class="modal-title">✏️ Start New Chat</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('new-chat-picker-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: left; overflow-y: auto; flex: 1;">
+        <div class="form-group">
+          <input type="text" id="new-chat-search-input" class="auth-input" placeholder="🔍 Search name or type 10-digit number..." oninput="window.ChatEngine && window.ChatEngine.filterNewChatDirectory(this.value)">
+        </div>
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin: 10px 0 6px 0;">All Registered Contacts</div>
+        <div id="new-chat-contacts-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMAIL / MEMO DETAIL READER MODAL -->
+  <div class="modal-overlay" id="memo-detail-modal">
+    <div class="modal-card" style="max-width: 520px; max-height: 90vh; overflow-y: auto; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="memo-modal-subject">Memo Subject</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('memo-detail-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img id="memo-modal-avatar" class="avatar-img" style="width: 42px; height: 42px;" src="assets/logo-icon.svg" alt="Sender">
+            <div>
+              <div id="memo-modal-sender" style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Sender Name</div>
+              <div id="memo-modal-time" style="font-size: 11.5px; color: var(--text-muted);">Timestamp</div>
+            </div>
+          </div>
+          <span id="memo-modal-priority" class="email-priority-pill priority-normal">Normal</span>
+        </div>
+        <div id="memo-modal-body" style="font-size: 14px; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap; margin-bottom: 20px;">
+          Memo Body...
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="auth-submit-btn" style="flex: 1; background: var(--brand-green);" onclick="window.ChatterApp && window.ChatterApp.replyToCurrentMemo()">
+            Reply in Chat 💬
+          </button>
+          <button class="auth-submit-btn" style="flex: 1; background: var(--bg-card); color: var(--brand-danger); border: 1px solid var(--border-color);" onclick="window.ChatterApp && window.ChatterApp.deleteCurrentMemo()">
+            🗑️ Delete Memo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT WALLPAPER PICKER MODAL -->
+  <div class="modal-overlay" id="chat-wallpaper-modal">
+    <div class="modal-card" style="max-width: 460px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">🖼️ Chat Wallpaper & Theme</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('chat-wallpaper-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 12px;">
+          Choose a wallpaper theme or pick a custom photo from your device gallery.
+        </p>
+
+        <!-- Custom Image from Gallery -->
+        <input type="file" id="chat-wallpaper-file-input" accept="image/*" style="display: none;" onchange="window.ChatEngine && window.ChatEngine.handleCustomWallpaperUpload(event)">
+        <button type="button" class="auth-submit-btn" style="background: var(--brand-blue); margin-bottom: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="document.getElementById('chat-wallpaper-file-input').click()">
+          <span>📷 / 🖼️</span>
+          <span>Choose from Gallery / Device Storage</span>
+        </button>
+
+        <div style="font-weight: 700; font-size: 12px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Preset Colors & Patterns</div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px;">
+          <div class="wallpaper-preset-card" style="background: #0b141a; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Dark Slate" onclick="window.ChatEngine.setWallpaperColor('#0b141a')"></div>
+          <div class="wallpaper-preset-card" style="background: #002b20; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Emerald Night" onclick="window.ChatEngine.setWallpaperColor('#002b20')"></div>
+          <div class="wallpaper-preset-card" style="background: #0c1a2e; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Midnight Blue" onclick="window.ChatEngine.setWallpaperColor('#0c1a2e')"></div>
+          <div class="wallpaper-preset-card" style="background: #2a0845; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Deep Purple" onclick="window.ChatEngine.setWallpaperColor('#2a0845')"></div>
+          <div class="wallpaper-preset-card" style="background: #1e1b18; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Warm Charcoal" onclick="window.ChatEngine.setWallpaperColor('#1e1b18')"></div>
+          <div class="wallpaper-preset-card" style="background: #082f49; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Ocean Deep" onclick="window.ChatEngine.setWallpaperColor('#082f49')"></div>
+          <div class="wallpaper-preset-card" style="background: #2c1a0e; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Sunset Amber" onclick="window.ChatEngine.setWallpaperColor('#2c1a0e')"></div>
+          <div class="wallpaper-preset-card" style="background: #111827; height: 60px; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer;" title="Default Dark" onclick="window.ChatEngine.setWallpaperColor('')"></div>
+        </div>
+
+        <button class="auth-submit-btn" style="background: transparent; color: var(--brand-danger); border: 1px solid var(--border-color); font-size: 13px;" onclick="window.ChatEngine && window.ChatEngine.resetChatWallpaper()">
+          Reset to Default Wallpaper
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPOSE EMAIL MEMO MODAL -->
+  <div class="modal-overlay" id="compose-memo-modal">
+    <div class="modal-card" style="max-width: 480px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">✏️ Compose New Memo</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('compose-memo-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="compose-memo-form" onsubmit="event.preventDefault(); window.ChatterApp && window.ChatterApp.submitComposeMemo();">
+          <div class="form-group">
+            <label class="form-label">Recipient Email Address (@)</label>
+            <input type="email" id="compose-memo-recipient" class="auth-input" placeholder="e.g. colleague@gmail.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject</label>
+            <input type="text" id="compose-memo-subject" class="auth-input" placeholder="e.g. Project Sprint Update" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Priority Tag</label>
+            <select id="compose-memo-priority" class="auth-input">
+              <option value="normal" selected>Normal</option>
+              <option value="urgent">🔴 Urgent</option>
+              <option value="high">🟠 High Priority</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label class="form-label" style="margin-bottom: 0;">Message Body</label>
+              <span id="memo-word-counter" style="font-size: 11px; font-weight: 600; color: var(--text-muted);">0 / 500 words</span>
+            </div>
+            <textarea id="compose-memo-body" class="auth-input" rows="5" placeholder="Type formal memo details here..." required style="resize: none;" oninput="window.ChatterApp && window.ChatterApp.updateMemoWordCount(this)"></textarea>
+          </div>
+
+          <!-- Sender Reminder Setting -->
+          <div class="form-group" style="background: rgba(234, 88, 12, 0.08); padding: 10px; border-radius: 8px; border: 1px solid rgba(234, 88, 12, 0.25); margin-bottom: 16px;">
+            <label class="form-label" style="color: var(--brand-orange); font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              ⏰ Sender Memo Reminder Alert (Optional)
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <input type="date" id="compose-memo-reminder-date" class="auth-input" style="font-size: 12.5px;">
+              <input type="time" id="compose-memo-reminder-time" class="auth-input" style="font-size: 12.5px;">
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">GitPit will alert you with a reminder notification at this set time.</div>
+          </div>
+
+          <button type="submit" class="auth-submit-btn" style="background: var(--brand-orange); color: white;">
+            Send Memo 🚀
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCHEDULE MEETING MODAL -->
+  <div class="modal-overlay" id="schedule-meeting-modal">
+    <div class="modal-card" style="max-width: 480px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">📅 Schedule Video Meeting</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('schedule-meeting-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="schedule-meeting-form" onsubmit="event.preventDefault(); window.ChatEngine && window.ChatEngine.submitScheduleMeeting();">
+          <div class="form-group">
+            <label class="form-label">Meeting Topic / Title</label>
+            <input type="text" id="meeting-title-input" class="auth-input" placeholder="e.g. GitPit Strategy Review" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label">Date</label>
+              <input type="date" id="meeting-date-input" class="auth-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Time</label>
+              <input type="time" id="meeting-time-input" class="auth-input" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Estimated Duration</label>
+            <select id="meeting-duration-input" class="auth-input">
+              <option value="30 mins">30 mins</option>
+              <option value="45 mins" selected>45 mins</option>
+              <option value="1 hour">1 hour</option>
+              <option value="2 hours">2 hours</option>
+            </select>
+          </div>
+
+          <!-- Multi-Select Invitees Picker (Max 100) -->
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label class="form-label" style="margin-bottom: 0;">Select Invitees</label>
+              <span id="meeting-invitees-counter" style="font-size: 11.5px; font-weight: 700; color: var(--brand-green);">Selected: 0 / 100 max</span>
+            </div>
+            <input type="text" id="meeting-invitees-search" class="auth-input" placeholder="🔍 Search contacts to invite..." style="margin-bottom: 8px; font-size: 12.5px; padding: 7px 10px;" oninput="window.ChatEngine && window.ChatEngine.filterMeetingInvitees(this.value)">
+            <div id="meeting-invitees-container" style="max-height: 140px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+              <!-- Rendered by chat.js -->
+            </div>
+          </div>
+
+          <button type="submit" class="auth-submit-btn" style="background: var(--brand-green);">
+            Confirm & Schedule Meeting 📅
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- STARRED MESSAGES VIEWER MODAL -->
+  <div class="modal-overlay" id="starred-messages-modal">
+    <div class="modal-card" style="max-width: 500px; max-height: 85vh; display: flex; flex-direction: column; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">⭐ Starred Messages</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('starred-messages-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1;">
+        <div id="starred-messages-list" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Populated by chat.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS SETTINGS MODAL -->
+  <div class="modal-overlay" id="notifications-settings-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">🔔 Notification Settings</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('notifications-settings-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: var(--bg-card); padding: 14px; border-radius: 8px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">Message Sound Alerts</div>
+              <div style="font-size: 11.5px; color: var(--text-muted);">Play audio chime when new messages arrive</div>
+            </div>
+            <input type="checkbox" id="setting-sound-alerts" checked style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">Push Notifications</div>
+              <div style="font-size: 11.5px; color: var(--text-muted);">Receive background push notifications on phone</div>
+            </div>
+            <input type="checkbox" id="setting-push-alerts" checked style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">Incoming Call Ringtone</div>
+              <div style="font-size: 11.5px; color: var(--text-muted);">Ring loudly for incoming audio/video calls</div>
+            </div>
+            <input type="checkbox" id="setting-call-ringtone" checked style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+        </div>
+        <button class="auth-submit-btn" style="margin-top: 14px; background: var(--brand-green);" onclick="window.ChatterApp && window.ChatterApp.saveNotificationSettings()">
+          Save Preferences ✓
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT & GROUP PREFERENCES MODAL -->
+  <div class="modal-overlay" id="chat-preferences-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">⚙️ Chat & Group Preferences</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('chat-preferences-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); text-align: left; padding: 12px;" onclick="window.ChatEngine && window.ChatEngine.filterChatsByType('all'); document.getElementById('chat-preferences-modal').classList.remove('active');">
+            📁 <b>Show All Conversations</b>
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); text-align: left; padding: 12px;" onclick="window.ChatEngine && window.ChatEngine.filterChatsByType('groups'); document.getElementById('chat-preferences-modal').classList.remove('active');">
+            👥 <b>Show Groups Only</b>
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); text-align: left; padding: 12px;" onclick="window.ChatEngine && window.ChatEngine.filterChatsByType('contacts'); document.getElementById('chat-preferences-modal').classList.remove('active');">
+            👤 <b>Show Individual Chats Only</b>
+          </button>
+          <button class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); text-align: left; padding: 12px;" onclick="window.ChatEngine && window.ChatEngine.filterChatsByType('unread'); document.getElementById('chat-preferences-modal').classList.remove('active');">
+            🟢 <b>Show Unread Chats Only</b>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SYNC CONTACTS MODAL -->
+  <div class="modal-overlay" id="contact-sync-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: center;">
+      <div class="modal-header">
+        <h3 class="modal-title">👥 Sync Phone Contacts</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('contact-sync-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 44px; margin-bottom: 10px;">📖</div>
+        <h4 style="color: var(--text-primary); margin-bottom: 6px;">Find Friends on GitPit</h4>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 18px;">
+          Import contacts from your device phonebook to start chatting with your real friends instantly.
+        </p>
+        <button class="auth-submit-btn" style="background: var(--brand-green); margin-bottom: 10px;" onclick="window.AuthManager && window.AuthManager.syncPhoneContacts()">
+          📲 Sync Device Contacts
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRIVACY SETTINGS MODAL -->
+  <div class="modal-overlay" id="privacy-settings-modal">
+    <div class="modal-card" style="max-width: 480px; max-height: 88vh; display: flex; flex-direction: column; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title">🔒 Privacy & Security Settings</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('privacy-settings-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;">
+        
+        <!-- 🛡️ Anti-Fraud Stranger Shield (Special Highlighted Box with 4 Protection Modes) -->
+        <div style="background: rgba(2, 132, 199, 0.08); border: 1.5px solid rgba(2, 132, 199, 0.35); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <div style="font-weight: 800; color: var(--brand-blue); font-size: 14px; display: flex; align-items: center; gap: 6px;">
+              <span>🛡️</span>
+              <span>Anti-Fraud Stranger Shield (4 Protection Modes)</span>
+            </div>
+            <label style="display: flex; align-items: center; cursor: pointer;">
+              <input type="checkbox" id="privacy-stranger-shield-toggle" style="width: 20px; height: 20px; accent-color: var(--brand-blue);" checked onchange="document.getElementById('privacy-stranger-shield-mode-select').disabled = !this.checked;">
+            </label>
+          </div>
+          <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.4;">
+            Choose your fraud prevention level for unknown / unsaved contacts:
+          </div>
+          <div>
+            <select id="privacy-stranger-shield-mode-select" class="auth-input" style="padding: 8px 10px; font-weight: 600; background: var(--bg-card);">
+              <option value="strict" selected>🛡️ Mode 1: Strict Anti-Fraud (Text & 📍 Location Only - Block Stranger Media)</option>
+              <option value="contacts">👥 Mode 2: My Contacts Only (Block All Media from Strangers)</option>
+              <option value="selected">🔒 Mode 3: Selected Trusted Persons Only (Whitelist Only)</option>
+              <option value="off">🌐 Mode 4: Off / Allow Everyone (Permit All Media & Files)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Section: File & Media Receiving Controls -->
+        <div style="font-size: 11px; font-weight: 800; color: var(--brand-green); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">File & Media Receiving (4 Options)</div>
+        <div style="background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-color); padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <label class="form-label" style="margin-bottom: 4px; font-weight: 600;">📁 File & Document Receiving</label>
+            <select id="privacy-file-receiving-select" class="auth-input" style="padding: 7px 10px;">
+              <option value="contacts" selected>👥 My Contacts Only</option>
+              <option value="selected">🔒 Selected Persons Only</option>
+              <option value="everyone">🌐 Everyone (Allow All)</option>
+              <option value="nobody">🚫 Nobody (Block All Attachments)</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="margin-bottom: 4px; font-weight: 600;">⭕ Status Visibility</label>
+            <select id="privacy-status-visibility-select" class="auth-input" style="padding: 7px 10px;">
+              <option value="contacts" selected>👥 My Contacts</option>
+              <option value="except">🚫 My Contacts Except...</option>
+              <option value="selected">⭐ Only Share With Selected...</option>
+              <option value="nobody">🔒 Only Me (Private)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Section: Visibility & Presence -->
+        <div style="font-size: 11px; font-weight: 800; color: var(--brand-green); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Visibility & Presence</div>
+        <div style="background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-color); padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+          
+          <div>
+            <label class="form-label" style="margin-bottom: 4px; font-weight: 600;">Last Seen & Online Status</label>
+            <select id="privacy-last-seen-select" class="auth-input" style="padding: 7px 10px;">
+              <option value="everyone" selected>Everyone</option>
+              <option value="contacts">My Contacts</option>
+              <option value="nobody">Nobody</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="form-label" style="margin-bottom: 4px; font-weight: 600;">Profile Photo</label>
+            <select id="privacy-profile-photo-select" class="auth-input" style="padding: 7px 10px;">
+              <option value="everyone" selected>Everyone</option>
+              <option value="contacts">My Contacts</option>
+              <option value="nobody">Nobody</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="form-label" style="margin-bottom: 4px; font-weight: 600;">About / Bio Status</label>
+            <select id="privacy-about-select" class="auth-input" style="padding: 7px 10px;">
+              <option value="everyone" selected>Everyone</option>
+              <option value="contacts">My Contacts</option>
+              <option value="nobody">Nobody</option>
+            </select>
+          </div>
+
+        </div>
+
+        <!-- Section: Messaging Privacy -->
+        <div style="font-size: 11px; font-weight: 800; color: var(--brand-green); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Messaging & Read Receipts</div>
+        <div style="background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-color); padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+          
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Read Receipts (Blue Ticks)</div>
+              <div style="font-size: 11px; color: var(--text-muted);">If turned off, you won't send or see read receipts</div>
+            </div>
+            <input type="checkbox" id="privacy-read-receipts-toggle" checked style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Hide Phone Number</div>
+              <div style="font-size: 11px; color: var(--text-muted);">Hide phone number from strangers in group chats</div>
+            </div>
+            <input type="checkbox" id="privacy-hide-phone-toggle" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Hide Email Address</div>
+              <div style="font-size: 11px; color: var(--text-muted);">Keep your registered email address confidential</div>
+            </div>
+            <input type="checkbox" id="privacy-hide-email-toggle" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+
+          <div>
+            <label class="form-label" style="margin-bottom: 4px; font-weight: 600;">Default Disappearing Messages Timer</label>
+            <select id="privacy-disappearing-timer" class="auth-input" style="padding: 7px 10px;">
+              <option value="off" selected>Off</option>
+              <option value="24h">24 Hours</option>
+              <option value="7d">7 Days</option>
+              <option value="90d">90 Days</option>
+            </select>
+          </div>
+
+        </div>
+
+        <!-- Section: Security & App Lock -->
+        <div style="font-size: 11px; font-weight: 800; color: var(--brand-green); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Security & Screen Lock</div>
+        <div style="background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-color); padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+          <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Biometric / PIN Screen Lock</div>
+              <div style="font-size: 11px; color: var(--text-muted);">Require unlock verification when resuming GitPit</div>
+            </div>
+            <input type="checkbox" id="privacy-screen-lock-toggle" style="accent-color: var(--brand-green); width: 18px; height: 18px;">
+          </label>
+        </div>
+
+        <button class="auth-submit-btn" style="background: var(--brand-green); font-size: 14px;" onclick="window.AuthManager && window.AuthManager.savePrivacySettings()">
+          Save Privacy Settings ✓
+        </button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- DEDICATED ANTI-FRAUD STRANGER SHIELD MODAL -->
+  <div class="modal-overlay" id="stranger-shield-modal">
+    <div class="modal-card" style="max-width: 480px; max-height: 88vh; display: flex; flex-direction: column; text-align: left;">
+      <div class="modal-header" style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%);">
+        <h3 class="modal-title" style="color: var(--brand-blue); display: flex; align-items: center; gap: 8px;">
+          <span>🛡️</span>
+          <span>Anti-Fraud Stranger Shield</span>
+        </h3>
+        <button class="modal-close-btn" onclick="document.getElementById('stranger-shield-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 18px 20px;">
+        
+        <!-- Hero Status Card -->
+        <div style="background: var(--bg-card); border-radius: 12px; border: 1.5px solid var(--brand-blue); padding: 16px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-weight: 800; font-size: 15px; color: var(--text-primary); margin-bottom: 4px;">Stranger Shield Protection</div>
+            <div id="stranger-shield-status-badge" style="font-size: 12px; font-weight: 700; color: var(--brand-green);">🟢 ACTIVE (Protected)</div>
+          </div>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="modal-stranger-shield-toggle" style="width: 24px; height: 24px; accent-color: var(--brand-blue);" checked onchange="document.getElementById('modal-stranger-shield-mode-select').disabled = !this.checked; document.getElementById('stranger-shield-status-badge').textContent = this.checked ? '🟢 ACTIVE (Protected)' : '🔴 OFF (Unprotected)'; document.getElementById('stranger-shield-status-badge').style.color = this.checked ? 'var(--brand-green)' : 'var(--brand-danger)';">
+          </label>
+        </div>
+
+        <!-- 4 Protection Modes Selector -->
+        <div style="margin-bottom: 18px;">
+          <label class="form-label" style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px; font-size: 13.5px;">Select Protection Mode (4 Options)</label>
+          <select id="modal-stranger-shield-mode-select" class="auth-input" style="padding: 10px 12px; font-weight: 600; background: var(--bg-card); font-size: 13px;">
+            <option value="strict" selected>🛡️ Mode 1: Strict Anti-Fraud (Text & 📍 Location Only - Block Stranger Media)</option>
+            <option value="contacts">👥 Mode 2: My Contacts Only (Block All Media from Strangers)</option>
+            <option value="selected">🔒 Mode 3: Selected Trusted Persons Only (Whitelist Only)</option>
+            <option value="off">🌐 Mode 4: Off / Allow Everyone (Permit All Media & Files)</option>
+          </select>
+        </div>
+
+        <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; background: var(--bg-hover); padding: 12px; border-radius: 8px; margin-bottom: 18px;">
+          💡 <b>Protection Guarantee:</b> In Strict Mode, unknown/unsaved contacts cannot send photos, videos, malicious files, audio notes, or scam payments. Only clean text and verified Google Map location pins are allowed.
+        </div>
+
+        <!-- Whitelisted / Trusted Contacts Header & Active Add Button -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+            <span>⭐</span>
+            <span>Whitelisted / Trusted Numbers</span>
+          </div>
+          <button type="button" class="btn-secondary" style="font-size: 11.5px; padding: 4px 10px; border-radius: 6px; background: rgba(2, 132, 199, 0.1); color: var(--brand-blue); border: 1px solid rgba(2, 132, 199, 0.3); font-weight: 700; cursor: pointer;" onclick="const r = document.getElementById('stranger-shield-add-row'); r.style.display = (r.style.display === 'none' || !r.style.display) ? 'flex' : 'none'; if(r.style.display === 'flex') document.getElementById('input-stranger-shield-new-number').focus();">
+            ➕ Add Number
+          </button>
+        </div>
+
+        <!-- Add Number Input Row -->
+        <div id="stranger-shield-add-row" style="display: none; gap: 6px; margin-bottom: 12px; animation: modalPop 0.15s ease;">
+          <input type="tel" id="input-stranger-shield-new-number" class="auth-input" placeholder="Enter 10-digit mobile number or name..." style="flex: 1; padding: 8px 12px; font-size: 12.5px;" onkeypress="if(event.key==='Enter'){ event.preventDefault(); window.AuthManager && window.AuthManager.addTrustedNumberFromInput(); }">
+          <button type="button" class="auth-submit-btn" style="width: auto; padding: 0 14px; font-size: 12px; background: var(--brand-green); margin-top: 0; white-space: nowrap; font-weight: 700;" onclick="window.AuthManager && window.AuthManager.addTrustedNumberFromInput()">
+            ✓ Whitelist
+          </button>
+        </div>
+
+        <div id="modal-trusted-contacts-list" style="background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color); padding: 10px; max-height: 150px; overflow-y: auto; margin-bottom: 18px; font-size: 12.5px; color: var(--text-muted);">
+          <!-- Populated dynamically -->
+        </div>
+
+        <button class="auth-submit-btn" style="background: var(--brand-blue); font-size: 14px; font-weight: 700;" onclick="window.AuthManager && window.AuthManager.saveStrangerShieldModalSettings()">
+          Save Shield Settings ✓
+        </button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Modules -->
+  <script src="js/mockData.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/voiceRecorder.js"></script>
+  <script src="js/locationService.js"></script>
+  <script src="js/paymentService.js"></script>
+  <script src="js/reminderService.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/stories.js"></script>
+  <script src="js/calls.js"></script>
+  <script src="js/newsService.js"></script>
+  <script src="js/app.js"></script>
+
+  <script>
+    // Register PWA Service Worker for ultra-fast load & offline caching
+    if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          console.log('[PWA] Service Worker registered successfully:', reg.scope);
+        }).catch((err) => {
+          console.log('[PWA] Service Worker registration skipped:', err.message);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

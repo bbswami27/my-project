@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="gp_blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00b4d8" />
+      <stop offset="100%" stop-color="#0077b6" />
+    </linearGradient>
+    <linearGradient id="gp_yellowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd166" />
+      <stop offset="100%" stop-color="#ffb703" />
+    </linearGradient>
+    <linearGradient id="gp_orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff9e00" />
+      <stop offset="100%" stop-color="#fb8500" />
+    </linearGradient>
+    <filter id="gp_dropShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Group: Logo Characters -->
+  <g transform="translate(10, 8)" filter="url(#gp_dropShadow)">
+    <!-- Blue Character Bubble -->
+    <rect x="0" y="4" width="38" height="34" rx="14" fill="url(#gp_blueGrad)" />
+    <polygon points="12,38 18,38 10,47" fill="#0077b6" />
+    <!-- Blue Character Face -->
+    <circle cx="12" cy="19" r="2.8" fill="#ffffff" />
+    <circle cx="12.5" cy="19" r="1.3" fill="#023e8a" />
+    <circle cx="26" cy="19" r="2.8" fill="#ffffff" />
+    <circle cx="26.5" cy="19" r="1.3" fill="#023e8a" />
+    <!-- Happy Smile -->
+    <path d="M 14 25 Q 19 30 24 25" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" />
+    <!-- Blush -->
+    <ellipse cx="9" cy="23" rx="2.5" ry="1.5" fill="#ffb703" opacity="0.8" />
+    <ellipse cx="29" cy="23" rx="2.5" ry="1.5" fill="#ffb703" opacity="0.8" />
+
+    <!-- Yellow Character Bubble (Overlapping) -->
+    <g transform="translate(24, 16)">
+      <rect x="0" y="0" width="36" height="32" rx="13" fill="url(#gp_yellowGrad)" />
+      <polygon points="20,32 26,32 30,40" fill="#ffb703" />
+      <!-- Yellow Character Face -->
+      <circle cx="11" cy="14" r="2.6" fill="#023e8a" />
+      <circle cx="23" cy="14" r="2.6" fill="#023e8a" />
+      <!-- Big Open Smile -->
+      <path d="M 12 19 Q 17 26 22 19 Z" fill="#d90429" />
+      <path d="M 14 21 Q 17 24 20 21" fill="#ffffff" />
+      <!-- Rosy Cheeks -->
+      <ellipse cx="8" cy="18" rx="2.2" ry="1.4" fill="#fb8500" opacity="0.8" />
+      <ellipse cx="26" cy="18" rx="2.2" ry="1.4" fill="#fb8500" opacity="0.8" />
+    </g>
+
+    <!-- Paper Airplane Flying Out -->
+    <g transform="translate(48, -4) rotate(18)">
+      <polygon points="0,14 18,4 12,18 8,14" fill="#ffffff" />
+      <polygon points="8,14 18,4 12,18" fill="#e0e1dd" />
+      <polygon points="8,14 10,17 12,18" fill="#00b4d8" />
+      <!-- Motion Dash Line -->
+      <path d="M -8,22 Q -2,18 4,16" fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-dasharray="2,2" />
+    </g>
+  </g>
+
+  <!-- Typography: GitPit -->
+  <g transform="translate(86, 12)">
+    <!-- "Git" in Gradient Blue -->
+    <text x="0" y="36" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34" font-weight="900" fill="url(#gp_blueGrad)" letter-spacing="-0.5">Git<tspan fill="url(#gp_orangeGrad)">Pit</tspan></text>
+    
+    <!-- Tagline -->
+    <text x="2" y="52" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#94a3b8" letter-spacing="2.2">CHAT • SHARE • CONNECT</text>
+  </g>
+</svg>
