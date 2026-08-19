@@ -1835,9 +1835,14 @@
             <label class="form-label">Email (Optional)</label>
             <input type="email" id="save-contact-email-input" class="auth-input" placeholder="contact@domain.com">
           </div>
-          <button type="submit" class="auth-submit-btn" style="background: var(--brand-green); margin-top: 10px;">
-            Save Contact ✓
-          </button>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button type="submit" class="auth-submit-btn" style="flex: 1; background: var(--brand-green);">
+              Save in GitPit ✓
+            </button>
+            <button type="button" class="auth-submit-btn" style="flex: 1; background: var(--bg-card); color: var(--brand-blue); border: 1.5px solid var(--brand-blue);" onclick="window.AuthManager && window.AuthManager.openNewContactScreen(document.getElementById('save-contact-name-input').value, (document.getElementById('save-contact-country-code').value + document.getElementById('save-contact-phone-input').value))">
+              📱 Phone Address Book
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -1851,10 +1856,22 @@
         <button class="modal-close-btn" onclick="document.getElementById('new-chat-picker-modal').classList.remove('active')">✕</button>
       </div>
       <div class="modal-body" style="text-align: left; overflow-y: auto; flex: 1;">
-        <div class="form-group">
+        
+        <!-- Quick Action Buttons: Open Phone Contacts & Add New Contact -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 12px; font-weight: 700; padding: 8px 6px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="window.AuthManager && window.AuthManager.openNativeContactsApp()">
+            <span>📱</span>
+            <span>Phone Contacts</span>
+          </button>
+          <button type="button" class="auth-submit-btn" style="background: var(--brand-green); color: #ffffff; font-size: 12px; font-weight: 700; padding: 8px 6px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="window.AuthManager && window.AuthManager.openNewContactScreen()">
+            <span>➕</span>
+            <span>Add Contact</span>
+          </button>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 8px;">
           <input type="text" id="new-chat-search-input" class="auth-input" placeholder="🔍 Search name or type 10-digit number..." oninput="window.ChatEngine && window.ChatEngine.filterNewChatDirectory(this.value)">
         </div>
-        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin: 10px 0 6px 0;">All Registered Contacts</div>
         <div id="new-chat-contacts-list" style="display: flex; flex-direction: column; gap: 8px;">
           <!-- Populated dynamically -->
         </div>

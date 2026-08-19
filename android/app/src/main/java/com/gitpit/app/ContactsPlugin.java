@@ -140,4 +140,46 @@ public class ContactsPlugin extends Plugin {
             call.reject("Failed to read contacts: " + e.getMessage());
         }
     }
+
+    @PluginMethod
+    public void openContactsApp(PluginCall call) {
+        try {
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+            intent.setData(ContactsContract.Contacts.CONTENT_URI);
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            try {
+                android.content.Intent fallback = new android.content.Intent(android.content.Intent.ACTION_MAIN);
+                fallback.addCategory(android.content.Intent.CATEGORY_APP_CONTACTS);
+                fallback.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(fallback);
+                call.resolve();
+            } catch (Exception ex) {
+                call.reject("Could not launch phonebook: " + ex.getMessage());
+            }
+        }
+    }
+
+    @PluginMethod
+    public void openNewContactScreen(PluginCall call) {
+        try {
+            String name = call.getString("name", "");
+            String phone = call.getString("phone", "");
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_INSERT);
+            intent.setType(ContactsContract.Contacts.CONTENT_TYPE);
+            if (!name.isEmpty()) {
+                intent.putExtra(ContactsContract.Intents.Insert.NAME, name);
+            }
+            if (!phone.isEmpty()) {
+                intent.putExtra(ContactsContract.Intents.Insert.PHONE, phone);
+            }
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open new contact screen: " + e.getMessage());
+        }
+    }
 }

@@ -1401,6 +1401,26 @@ class AuthManager {
     if (modal) modal.classList.remove('active');
     return this.grantContactsAndSync();
   }
+
+  openNativeContactsApp() {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Contacts) {
+      window.Capacitor.Plugins.Contacts.openContactsApp().catch(() => {
+        window.location.href = 'tel:';
+      });
+    } else {
+      window.location.href = 'tel:';
+    }
+  }
+
+  openNewContactScreen(name = '', phone = '') {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Contacts) {
+      window.Capacitor.Plugins.Contacts.openNewContactScreen({ name, phone }).catch(() => {
+        window.location.href = `tel:${phone || ''}`;
+      });
+    } else {
+      window.location.href = `tel:${phone || ''}`;
+    }
+  }
 }
 
 // Instantiate globally
