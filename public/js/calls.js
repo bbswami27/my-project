@@ -950,10 +950,10 @@ class CallManager {
     }
   }
 
-  formatDuration(sec) {
-    const mins = Math.floor(sec / 60);
-    const secs = sec % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  formatDuration(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   }
 
   saveCalls() {
@@ -978,6 +978,15 @@ class CallManager {
       const isVideo = log.type === 'video';
       const isMissed = log.status === 'missed';
       const isOutgoing = log.direction === 'outgoing';
+      
+      let displayTime = log.time || 'Recently';
+      if (log.timestamp) {
+        const d = new Date(log.timestamp);
+        const today = new Date();
+        const isToday = d.toDateString() === today.toDateString();
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        displayTime = isToday ? `Today, ${timeStr}` : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+      }
 
       return `
         <div class="call-item-card">
@@ -985,11 +994,16 @@ class CallManager {
           <div class="call-item-meta">
             <div class="call-item-name ${isMissed ? 'call-missed' : ''}">${log.name}</div>
             <div class="call-item-time">
-              <span style="font-size: 13px;">${isOutgoing ? '↗' : '↙'}</span>
-              <span>${log.time || 'Recently'} • ${log.duration || ''}</span>
+              <span style="font-size: 13px; font-weight: 700; color: ${isOutgoing ? 'var(--brand-blue)' : (isMissed ? 'var(--brand-danger)' : 'var(--brand-green)')};">
+                ${isOutgoing ? '↗ Outgoing' : (isMissed ? '↙ Missed' : '↙ Incoming')}
+              </span>
+              <span>• ${displayTime} ${log.duration ? `(${log.duration})` : ''}</span>
             </div>
           </div>
-          <div class="call-item-actions">
+          <div class="call-item-actions" style="display: flex; gap: 6px; align-items: center;">
+            <button class="call-action-icon-btn" title="Direct Chat 💬" style="background: rgba(0, 168, 132, 0.12); color: var(--brand-green); font-size: 15px;" onclick="window.CallManager.openChatFromCall('${log.contactId || ''}', '${log.name.replace(/'/g, "\\'")}', '${log.phone || ''}', '${log.avatar || ''}')">
+              💬
+            </button>
             <button class="call-action-icon-btn" title="Call Back" onclick="window.CallManager.startCall('${log.name.replace(/'/g, "\\'")}', '${log.avatar}', '${log.type}', '${log.contactId || ''}')">
               ${isVideo ? '📹' : '📞'}
             </button>
@@ -1000,6 +1014,27 @@ class CallManager {
         </div>
       `;
     }).join('');
+  }
+
+  openChatFromCall(contactId, name, phone, avatar) {
+    if (window.ChatterApp) {
+      window.ChatterApp.switchTab('chats');
+    }
+    if (window.ChatEngine) {
+      const cleanPhone10 = (phone || contactId || '').replace(/\D/g, '').slice(-10);
+      let existingChat = window.ChatEngine.chats.find(c => {
+        if (contactId && c.id === contactId) return true;
+        const cPhone10 = (c.phone || c.id || '').replace(/\D/g, '').slice(-10);
+        if (cleanPhone10 && cPhone10 && cPhone10 === cleanPhone10) return true;
+        return false;
+      });
+
+      if (existingChat) {
+        window.ChatEngine.openChat(existingChat.id);
+      } else {
+        window.ChatEngine.startChatWithUser(contactId || (`user_${cleanPhone10}`), name, phone, avatar);
+      }
+    }
   }
 
   deleteCallLog(callId) {

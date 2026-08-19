@@ -98,16 +98,24 @@ public class ContactsPlugin extends Plugin {
                                 seen.add(key);
 
                                 String finalPhoto = "";
-                                if (photoThumbIdx != -1) {
-                                    String photoThumb = cursor.getString(photoThumbIdx);
-                                    if (photoThumb != null && !photoThumb.trim().isEmpty()) {
-                                        finalPhoto = photoThumb.trim();
-                                    }
-                                }
-                                if (finalPhoto.isEmpty() && photoUriIdx != -1) {
-                                    String photoUri = cursor.getString(photoUriIdx);
-                                    if (photoUri != null && !photoUri.trim().isEmpty()) {
-                                        finalPhoto = photoUri.trim();
+                                if (contactIdIdx != -1) {
+                                    long cid = cursor.getLong(contactIdIdx);
+                                    if (cid > 0) {
+                                        Uri contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, cid);
+                                        try (InputStream is = ContactsContract.Contacts.openContactPhotoInputStream(cr, contactUri, false)) {
+                                            if (is != null) {
+                                                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                                byte[] buf = new byte[2048];
+                                                int r;
+                                                while ((r = is.read(buf)) != -1) {
+                                                    baos.write(buf, 0, r);
+                                                }
+                                                byte[] b = baos.toByteArray();
+                                                if (b.length > 0) {
+                                                    finalPhoto = "data:image/jpeg;base64," + Base64.encodeToString(b, Base64.NO_WRAP);
+                                                }
+                                            }
+                                        } catch (Exception ignored) {}
                                     }
                                 }
 

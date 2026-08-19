@@ -1623,17 +1623,24 @@ class ChatEngine {
     if (!modal) return;
     modal.classList.add('active');
     
-    // Auto-refresh contacts from phonebook in background if available
-    if (window.AuthManager && typeof window.AuthManager.grantContactsAndSync === 'function') {
-      window.AuthManager.grantContactsAndSync(false).then(() => {
-        this.populateNewChatDirectory();
-      }).catch(() => {});
-    }
-
+    // Render cached contacts instantly with 0ms delay
     this.populateNewChatDirectory();
+
+    // Background sync only if needed without blocking UI
+    if (window.AuthManager && typeof window.AuthManager.grantContactsAndSync === 'function') {
+      const lastSync = parseInt(sessionStorage.getItem('last_contacts_sync') || '0', 10);
+      if (Date.now() - lastSync > 300000) { // 5 minutes cache
+        sessionStorage.setItem('last_contacts_sync', Date.now().toString());
+        setTimeout(() => {
+          window.AuthManager.grantContactsAndSync(false).then(() => {
+            this.populateNewChatDirectory();
+          }).catch(() => {});
+        }, 100);
+      }
+    }
   }
 
-  async populateNewChatDirectory(filterText = '') {
+  async populateNewChatDirectory(filterText = '', showAllInvites = false) {
     const container = document.getElementById('new-chat-contacts-list');
     if (!container) return;
 
@@ -1779,7 +1786,7 @@ class ChatEngine {
       html += regList.map(c => `
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-subtle); margin-bottom: 6px; cursor: pointer;" onclick="document.getElementById('new-chat-picker-modal').classList.remove('active'); window.ChatEngine.startChatWithUser('${c.id}', '${c.name.replace(/'/g, "\\'")}', '${c.phone}', '${c.avatar}')">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <img class="avatar-img" style="width: 38px; height: 38px;" src="${c.avatar}" alt="${c.name}">
+            <img class="avatar-img" style="width: 38px; height: 38px; object-fit: cover;" src="${c.avatar}" alt="${c.name}">
             <div>
               <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">${c.name}</div>
               <div style="font-size: 11.5px; color: var(--brand-green);">🟢 ${c.phone ? c.phone : 'GitPit Member'}</div>
@@ -1790,17 +1797,18 @@ class ChatEngine {
       `).join('');
     }
 
-    // Section 2: Invite to GitPit
+    // Section 2: Invite to GitPit (Paginated / Limited to 35 for instantaneous rendering)
     if (nonRegList.length > 0) {
+      const displayInvites = (cleanFilter || showAllInvites) ? nonRegList : nonRegList.slice(0, 35);
       html += `
         <div style="padding: 12px 10px 6px 10px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">
           ✉️ Invite Contacts to GitPit (${nonRegList.length})
         </div>
       `;
-      html += nonRegList.map(c => `
+      html += displayInvites.map(c => `
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-subtle); margin-bottom: 6px;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <img class="avatar-img" style="width: 38px; height: 38px; opacity: 0.85;" src="${c.avatar}" alt="${c.name}">
+            <img class="avatar-img" style="width: 38px; height: 38px; opacity: 0.9; object-fit: cover;" src="${c.avatar}" alt="${c.name}">
             <div>
               <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">${c.name}</div>
               <div style="font-size: 11.5px; color: var(--text-muted);">${c.phone || 'Non-registered'}</div>
@@ -1811,6 +1819,16 @@ class ChatEngine {
           </button>
         </div>
       `).join('');
+
+      if (!cleanFilter && !showAllInvites && nonRegList.length > 35) {
+        html += `
+          <div style="text-align: center; padding: 10px;">
+            <button class="btn-action-secondary" style="font-size: 12px; padding: 8px 16px;" onclick="window.ChatEngine.populateNewChatDirectory('', true)">
+              ➕ Show All ${nonRegList.length} Contacts
+            </button>
+          </div>
+        `;
+      }
     }
 
     container.innerHTML = html;
