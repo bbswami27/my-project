@@ -227,15 +227,20 @@
         <div class="tab-view" id="tab-view-status">
           <div class="stories-container">
             <!-- My Status Card -->
-            <div class="my-status-card" id="my-status-add-card">
-              <div class="status-avatar-wrapper">
-                <img class="status-avatar-img" id="my-status-avatar-img" src="assets/logo-icon.svg" alt="My Status">
-                <div class="add-status-badge">+</div>
+            <div class="my-status-card" id="my-status-add-card" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; cursor: pointer;">
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1;" onclick="window.StoriesManager && window.StoriesManager.handleMyStatusClick()">
+                <div class="status-avatar-wrapper">
+                  <img class="status-avatar-img" id="my-status-avatar-img" src="assets/logo-icon.svg" alt="My Status">
+                  <div class="add-status-badge" onclick="event.stopPropagation(); window.StoriesManager && window.StoriesManager.openCreateStatusModal()">+</div>
+                </div>
+                <div class="status-card-info">
+                  <h4>My Status</h4>
+                  <p id="my-status-subtitle">Tap to add status update</p>
+                </div>
               </div>
-              <div class="status-card-info">
-                <h4>My Status</h4>
-                <p>Tap to add status update</p>
-              </div>
+              <button type="button" class="btn-action-primary" style="font-size: 12px; padding: 6px 12px; background: var(--brand-green); font-weight: 700; border-radius: 8px;" onclick="event.stopPropagation(); window.StoriesManager && window.StoriesManager.openCreateStatusModal()">
+                ➕ Add
+              </button>
             </div>
 
             <div class="status-section-title">Recent updates</div>
@@ -1259,35 +1264,40 @@
     </div>
   </div>
 
-  <!-- CREATE STATUS MODAL -->
+  <!-- CREATE STATUS MODAL (MULTI-MEDIA & CAPTION SUPPORT) -->
   <div class="modal-overlay" id="create-status-modal">
-    <div class="modal-card" style="max-width: 440px;">
+    <div class="modal-card" style="max-width: 480px; max-height: 90vh; overflow-y: auto;">
       <div class="modal-header">
-        <h3 class="modal-title">Create New Status ⭕</h3>
+        <h3 class="modal-title">Create Status Update ⭕</h3>
         <button class="modal-close-btn" id="btn-close-create-status" onclick="document.getElementById('create-status-modal').classList.remove('active')">✕</button>
       </div>
       <div class="modal-body">
         
+        <!-- Multi-Media Selected Queue Strip (Shows up to 10 photos/videos with add more) -->
+        <div id="status-media-queue-strip" style="display: none; gap: 8px; overflow-x: auto; padding: 4px 2px 10px 2px; margin-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+          <!-- Rendered dynamically by stories.js -->
+        </div>
+
         <!-- Wide Live Media / Color Preview Box -->
         <div class="status-preview-box" id="status-preview-box" style="background-color: #0284c7; min-height: 240px; max-height: 340px; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; border-radius: 12px; margin-bottom: 12px; box-shadow: inset 0 0 10px rgba(0,0,0,0.35);">
           <div id="status-preview-media-container" style="display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div>
           <div id="status-preview-text-display" style="position: relative; z-index: 2; padding: 14px; color: #ffffff; font-weight: 700; font-size: 16.5px; text-shadow: 0 1px 4px rgba(0,0,0,0.8); text-align: center;">Type your status below...</div>
         </div>
 
-        <!-- Attach Photo or Video Button -->
+        <!-- Attach Multiple Photos or Videos Button -->
         <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-          <input type="file" id="status-media-file-input" accept="image/*,video/*" style="display: none;" onchange="window.StoriesManager && window.StoriesManager.handleMediaSelect(event)">
+          <input type="file" id="status-media-file-input" accept="image/*,video/*" multiple style="display: none;" onchange="window.StoriesManager && window.StoriesManager.handleMediaSelect(event)">
           <button type="button" class="auth-submit-btn" style="flex: 1; background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="document.getElementById('status-media-file-input').click()">
             <span>📷 / 🎥</span>
-            <span>Attach Photo or Video</span>
+            <span id="btn-status-attach-text">Attach Photos or Videos (Multiple)</span>
           </button>
           <button type="button" id="btn-status-clear-media" class="auth-submit-btn" style="width: auto; background: var(--bg-input-field); color: var(--brand-danger); border: 1px solid var(--border-color); font-size: 12px; display: none;" onclick="window.StoriesManager && window.StoriesManager.clearSelectedMedia()">
-            ✕ Clear
+            ✕ Clear All
           </button>
         </div>
 
         <div class="form-group" id="status-color-palette-wrapper" style="margin-bottom: 8px;">
-          <label class="form-label" style="font-size: 11.5px; margin-bottom: 4px;">Pick Background Color</label>
+          <label class="form-label" style="font-size: 11.5px; margin-bottom: 4px;">Pick Background Color (For Text Status)</label>
           <div class="status-color-palette">
             <div class="color-dot active" style="background: #0284c7" data-color="#0284c7"></div>
             <div class="color-dot" style="background: #ff6b00" data-color="#ff6b00"></div>
@@ -1299,8 +1309,8 @@
         </div>
 
         <div class="form-group" style="margin-bottom: 12px;">
-          <label class="form-label" style="font-size: 11.5px; margin-bottom: 4px;">Status Caption / Message</label>
-          <input type="text" id="new-status-text" class="auth-input" placeholder="Type a caption or status message..." style="padding: 9px 12px; font-size: 13.5px;">
+          <label class="form-label" id="status-caption-label" style="font-size: 11.5px; margin-bottom: 4px;">Caption / Write Matter on Photo</label>
+          <input type="text" id="new-status-text" class="auth-input" placeholder="Write caption or matter on this photo..." style="padding: 9px 12px; font-size: 13.5px;" oninput="window.StoriesManager && window.StoriesManager.handleCaptionInput(this.value)">
         </div>
 
         <button class="auth-submit-btn" id="btn-publish-status" style="background: var(--brand-green); font-weight: 700;" onclick="window.StoriesManager && window.StoriesManager.publishNewStatus()">

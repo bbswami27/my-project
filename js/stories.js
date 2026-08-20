@@ -1,4 +1,4 @@
-// GitPit - Status & Stories Controller
+// GitPit - Advanced Status & Multi-Story Controller
 
 class StoriesManager {
   constructor() {
@@ -7,19 +7,21 @@ class StoriesManager {
     this.currentItemIndex = 0;
     this.storyTimer = null;
     this.storyDuration = 4500; // 4.5s per item
+    this.selectedMediaQueue = []; // Array of { id, type, dataUrl, fileName, caption, text, bgColor }
+    this.activeQueueIndex = 0;
     this.init();
   }
 
   init() {
-    const saved = localStorage.getItem('chatterpatter_stories');
+    const saved = localStorage.getItem('chatterpatter_stories') || localStorage.getItem('gitpit_stories');
     if (saved) {
       try {
         this.stories = JSON.parse(saved);
       } catch (e) {
-        this.stories = [...window.MOCK_DATA.initialStories];
+        this.stories = (window.MOCK_DATA && window.MOCK_DATA.initialStories) ? [...window.MOCK_DATA.initialStories] : [];
       }
     } else {
-      this.stories = [...window.MOCK_DATA.initialStories];
+      this.stories = (window.MOCK_DATA && window.MOCK_DATA.initialStories) ? [...window.MOCK_DATA.initialStories] : [];
     }
 
     this.bindEvents();
@@ -32,33 +34,11 @@ class StoriesManager {
     const tapRight = document.getElementById('story-tap-right');
     const closeBtn = document.getElementById('btn-close-story-viewer');
 
-    if (tapLeft) {
-      tapLeft.addEventListener('click', () => this.prevStoryItem());
-    }
-    if (tapRight) {
-      tapRight.addEventListener('click', () => this.nextStoryItem());
-    }
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => this.closeStoryViewer());
-    }
+    if (tapLeft) tapLeft.addEventListener('click', () => this.prevStoryItem());
+    if (tapRight) tapRight.addEventListener('click', () => this.nextStoryItem());
+    if (closeBtn) closeBtn.addEventListener('click', () => this.closeStoryViewer());
 
-    // Story Create Modal Trigger
-    const addStatusCard = document.getElementById('my-status-add-card');
-    const createModal = document.getElementById('create-status-modal');
-    const closeCreateModal = document.getElementById('btn-close-create-status');
-
-    if (addStatusCard && createModal) {
-      addStatusCard.addEventListener('click', () => {
-        createModal.classList.add('active');
-      });
-    }
-    if (closeCreateModal && createModal) {
-      closeCreateModal.addEventListener('click', () => {
-        createModal.classList.remove('active');
-      });
-    }
-
-    // Status Color Picker
+    // Status Color Picker for Text Status
     const colorDots = document.querySelectorAll('.color-dot');
     colorDots.forEach(dot => {
       dot.addEventListener('click', () => {
@@ -66,32 +46,32 @@ class StoriesManager {
         dot.classList.add('active');
         const color = dot.getAttribute('data-color');
         const preview = document.getElementById('status-preview-box');
-        if (preview) preview.style.backgroundColor = color;
-      });
-    });
-
-    // Live Status Text Preview
-    const statusTextInp = document.getElementById('new-status-text');
-    if (statusTextInp) {
-      statusTextInp.addEventListener('input', (e) => {
-        const previewText = document.getElementById('status-preview-text-display');
-        if (previewText) {
-          previewText.textContent = e.target.value.trim() || 'Type your status below...';
+        if (preview && this.selectedMediaQueue.length === 0) {
+          preview.style.backgroundColor = color;
         }
       });
-    }
+    });
+  }
 
-    // Publish New Status
-    const publishBtn = document.getElementById('btn-publish-status');
-    if (publishBtn) {
-      publishBtn.addEventListener('click', () => this.publishNewStatus());
+  handleMyStatusClick() {
+    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    const currentUserId = currentUser ? currentUser.id : 'me';
+    const myStories = this.stories.filter(s => s.authorId === currentUserId || s.id.startsWith('story_my_'));
+
+    if (myStories.length > 0 && myStories[0].items && myStories[0].items.length > 0) {
+      this.openStory(myStories[0].id);
+    } else {
+      this.openCreateStatusModal();
     }
+  }
+
+  openCreateStatusModal() {
+    const createModal = document.getElementById('create-status-modal');
+    if (createModal) createModal.classList.add('active');
   }
 
   renderStatusTab() {
     const recentList = document.getElementById('status-recent-list');
-    if (!recentList) return;
-
     const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
     const currentUserId = currentUser ? currentUser.id : 'me';
 
@@ -101,17 +81,26 @@ class StoriesManager {
 
     // Update My Status Header Card
     const myStatusSubtitle = document.getElementById('my-status-subtitle');
-    const myStatusAvatar = document.querySelector('#my-status-add-card .status-avatar-img');
+    const myStatusAvatar = document.getElementById('my-status-avatar-img');
     if (currentUser && myStatusAvatar) {
       myStatusAvatar.src = currentUser.avatar || 'assets/logo-icon.svg';
     }
     if (myStatusSubtitle) {
-      if (myStories.length > 0) {
-        myStatusSubtitle.textContent = `${myStories[0].items.length} active update • Tap to view or add`;
+      if (myStories.length > 0 && myStories[0].items && myStories[0].items.length > 0) {
+        const count = myStories[0].items.length;
+        myStatusSubtitle.textContent = `${count} active update${count > 1 ? 's' : ''} • Tap to view`;
+        if (myStatusAvatar) {
+          myStatusAvatar.classList.add('status-ring-unread');
+        }
       } else {
         myStatusSubtitle.textContent = 'Tap to add status update';
+        if (myStatusAvatar) {
+          myStatusAvatar.classList.remove('status-ring-unread');
+        }
       }
     }
+
+    if (!recentList) return;
 
     if (contactStories.length === 0) {
       recentList.innerHTML = `
@@ -137,11 +126,11 @@ class StoriesManager {
       html += unreadStories.map(story => `
         <div class="my-status-card" onclick="window.StoriesManager.openStory('${story.id}')" style="cursor: pointer;">
           <div class="status-avatar-wrapper">
-            <img class="status-avatar-img status-ring-unread" src="${story.authorAvatar}" alt="${story.authorName}">
+            <img class="status-avatar-img status-ring-unread" src="${story.authorAvatar || 'assets/logo-icon.svg'}" alt="${story.authorName}">
           </div>
           <div class="status-card-info">
             <h4>${story.authorName}</h4>
-            <p>${story.time} • ${story.items.length} update${story.items.length > 1 ? 's' : ''}</p>
+            <p>${story.time} • ${story.items ? story.items.length : 1} update${(story.items && story.items.length > 1) ? 's' : ''}</p>
           </div>
         </div>
       `).join('');
@@ -156,11 +145,11 @@ class StoriesManager {
       html += viewedStories.map(story => `
         <div class="my-status-card" onclick="window.StoriesManager.openStory('${story.id}')" style="cursor: pointer; opacity: 0.8;">
           <div class="status-avatar-wrapper">
-            <img class="status-avatar-img status-ring-viewed" src="${story.authorAvatar}" alt="${story.authorName}">
+            <img class="status-avatar-img status-ring-viewed" src="${story.authorAvatar || 'assets/logo-icon.svg'}" alt="${story.authorName}">
           </div>
           <div class="status-card-info">
             <h4>${story.authorName}</h4>
-            <p>${story.time} • ${story.items.length} update${story.items.length > 1 ? 's' : ''}</p>
+            <p>${story.time} • ${story.items ? story.items.length : 1} update${(story.items && story.items.length > 1) ? 's' : ''}</p>
           </div>
         </div>
       `).join('');
@@ -171,7 +160,7 @@ class StoriesManager {
 
   openStory(storyId) {
     const story = this.stories.find(s => s.id === storyId);
-    if (!story) return;
+    if (!story || !story.items || story.items.length === 0) return;
 
     this.currentStory = story;
     this.currentItemIndex = 0;
@@ -185,114 +174,259 @@ class StoriesManager {
     this.renderStoryItem();
   }
 
-  handleMediaSelect(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
+  // ================= MULTI-MEDIA FILE HANDLER =================
+  async handleMediaSelect(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-    // Requirement 4: Max File Size Validation (15 MB)
+    const fileList = Array.from(files);
     const MAX_SIZE_MB = 15;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      alert(`⚠️ File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Status media must be under 15 MB.`);
-      event.target.value = '';
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        alert(`⚠️ "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max limit is 15 MB.`);
+        continue;
+      }
+
+      const isVideo = file.type.startsWith('video');
+      const dataUrl = await this.readFileAsDataURL(file);
+
+      this.selectedMediaQueue.push({
+        id: 'media_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        type: isVideo ? 'video' : 'image',
+        dataUrl: dataUrl,
+        fileName: file.name,
+        caption: '',
+        text: ''
+      });
+    }
+
+    if (this.selectedMediaQueue.length > 0) {
+      this.activeQueueIndex = this.selectedMediaQueue.length - 1;
+      this.renderMediaQueueUI();
+    }
+
+    event.target.value = '';
+  }
+
+  readFileAsDataURL(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  }
+
+  renderMediaQueueUI() {
+    const queueStrip = document.getElementById('status-media-queue-strip');
+    const mediaContainer = document.getElementById('status-preview-media-container');
+    const clearBtn = document.getElementById('btn-status-clear-media');
+    const colorWrapper = document.getElementById('status-color-palette-wrapper');
+    const previewText = document.getElementById('status-preview-text-display');
+    const captionInput = document.getElementById('new-status-text');
+    const captionLabel = document.getElementById('status-caption-label');
+    const publishBtn = document.getElementById('btn-publish-status');
+    const attachText = document.getElementById('btn-status-attach-text');
+
+    if (this.selectedMediaQueue.length === 0) {
+      if (queueStrip) {
+        queueStrip.innerHTML = '';
+        queueStrip.style.display = 'none';
+      }
+      if (mediaContainer) {
+        mediaContainer.innerHTML = '';
+        mediaContainer.style.display = 'none';
+      }
+      if (clearBtn) clearBtn.style.display = 'none';
+      if (colorWrapper) colorWrapper.style.display = 'block';
+      if (captionLabel) captionLabel.textContent = 'Status Caption / Message';
+      if (publishBtn) publishBtn.textContent = 'Post Status ✨';
+      if (attachText) attachText.textContent = 'Attach Photos or Videos (Multiple)';
+      if (previewText) {
+        previewText.textContent = captionInput ? (captionInput.value.trim() || 'Type your status below...') : 'Type your status below...';
+        previewText.style.background = 'transparent';
+        previewText.style.position = 'relative';
+        previewText.style.bottom = 'auto';
+        previewText.style.left = 'auto';
+        previewText.style.right = 'auto';
+      }
       return;
     }
 
-    const isVideo = file.type.startsWith('video');
+    if (this.activeQueueIndex >= this.selectedMediaQueue.length) {
+      this.activeQueueIndex = Math.max(0, this.selectedMediaQueue.length - 1);
+    }
 
-    if (isVideo) {
-      // Requirement 4: Strict 30-Second Duration Validation
-      const tempVideo = document.createElement('video');
-      tempVideo.preload = 'metadata';
-      const objectUrl = URL.createObjectURL(file);
+    const currentItem = this.selectedMediaQueue[this.activeQueueIndex];
 
-      tempVideo.onloadedmetadata = () => {
-        URL.revokeObjectURL(objectUrl);
-        const durationSec = Math.round(tempVideo.duration || 0);
+    // 1. Render Horizontal Queue Thumbnails Strip
+    if (queueStrip) {
+      queueStrip.style.display = 'flex';
+      queueStrip.innerHTML = `
+        ${this.selectedMediaQueue.map((item, idx) => {
+          const isActive = (idx === this.activeQueueIndex);
+          return `
+            <div style="position: relative; flex-shrink: 0; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2.5px solid ${isActive ? 'var(--brand-green)' : 'var(--border-subtle)'}; box-shadow: ${isActive ? '0 0 6px rgba(0, 168, 132, 0.6)' : 'none'};" onclick="window.StoriesManager.selectQueueItem(${idx})">
+              ${item.type === 'video'
+                ? `<video src="${item.dataUrl}" style="width: 100%; height: 100%; object-fit: cover;"></video>`
+                : `<img src="${item.dataUrl}" alt="Thumb" style="width: 100%; height: 100%; object-fit: cover;">`
+              }
+              <span style="position: absolute; bottom: 2px; left: 3px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 4px;">#${idx + 1}</span>
+              <button type="button" style="position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; background: rgba(239, 68, 68, 0.85); color: #fff; border: none; border-radius: 50%; font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer;" onclick="event.stopPropagation(); window.StoriesManager.removeQueueItem(${idx})">✕</button>
+            </div>
+          `;
+        }).join('')}
+        <div style="flex-shrink: 0; width: 64px; height: 64px; border-radius: 8px; border: 2px dashed var(--brand-green); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; background: var(--bg-card); color: var(--brand-green); font-size: 11px; font-weight: 700;" onclick="document.getElementById('status-media-file-input').click()">
+          <span style="font-size: 18px;">➕</span>
+          <span>Add</span>
+        </div>
+      `;
+    }
 
-        if (durationSec > 30) {
-          alert(`⚠️ Video duration is ${durationSec} seconds. Status videos must be 30 seconds or less! Please trim your video.`);
-          event.target.value = '';
-          return;
-        }
+    // 2. Render Main Wide Preview Box
+    if (mediaContainer) {
+      mediaContainer.style.display = 'block';
+      if (currentItem.type === 'video') {
+        mediaContainer.innerHTML = `<video src="${currentItem.dataUrl}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: contain; background: #0b141a; border-radius: 12px;"></video>`;
+      } else {
+        mediaContainer.innerHTML = `<img src="${currentItem.dataUrl}" alt="Preview" style="width: 100%; height: 100%; object-fit: contain; background: #0b141a; border-radius: 12px;">`;
+      }
+    }
 
-        this.processMediaFile(file, true);
-      };
+    // 3. Update Text & Caption
+    if (captionInput) {
+      captionInput.value = currentItem.caption || '';
+    }
+    if (captionLabel) {
+      captionLabel.textContent = `Caption / Matter on Item #${this.activeQueueIndex + 1} of ${this.selectedMediaQueue.length}`;
+    }
+    if (previewText) {
+      previewText.textContent = currentItem.caption || `Write matter on item #${this.activeQueueIndex + 1}...`;
+      previewText.style.background = 'rgba(0, 0, 0, 0.7)';
+      previewText.style.borderRadius = '8px';
+      previewText.style.position = 'absolute';
+      previewText.style.bottom = '12px';
+      previewText.style.left = '12px';
+      previewText.style.right = '12px';
+    }
 
-      tempVideo.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        this.processMediaFile(file, true);
-      };
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+    if (colorWrapper) colorWrapper.style.display = 'none';
+    if (publishBtn) publishBtn.textContent = `Post Status ✨ (${this.selectedMediaQueue.length} ${this.selectedMediaQueue.length > 1 ? 'items' : 'item'})`;
+    if (attachText) attachText.textContent = `➕ Add More Photos / Videos (${this.selectedMediaQueue.length} selected)`;
+  }
 
-      tempVideo.src = objectUrl;
-    } else {
-      this.processMediaFile(file, false);
+  selectQueueItem(index) {
+    if (index >= 0 && index < this.selectedMediaQueue.length) {
+      this.activeQueueIndex = index;
+      this.renderMediaQueueUI();
     }
   }
 
-  processMediaFile(file, isVideo) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      this.selectedMedia = {
-        type: isVideo ? 'video' : 'image',
-        dataUrl: e.target.result,
-        fileName: file.name
-      };
+  removeQueueItem(index) {
+    if (index >= 0 && index < this.selectedMediaQueue.length) {
+      this.selectedMediaQueue.splice(index, 1);
+      if (this.activeQueueIndex >= this.selectedMediaQueue.length) {
+        this.activeQueueIndex = Math.max(0, this.selectedMediaQueue.length - 1);
+      }
+      this.renderMediaQueueUI();
+    }
+  }
 
-      const mediaContainer = document.getElementById('status-preview-media-container');
-      const clearBtn = document.getElementById('btn-status-clear-media');
-      const colorWrapper = document.getElementById('status-color-palette-wrapper');
+  handleCaptionInput(value) {
+    if (this.selectedMediaQueue.length > 0 && this.selectedMediaQueue[this.activeQueueIndex]) {
+      this.selectedMediaQueue[this.activeQueueIndex].caption = value.trim();
+      this.selectedMediaQueue[this.activeQueueIndex].text = value.trim();
       const previewText = document.getElementById('status-preview-text-display');
-
-      if (mediaContainer) {
-        mediaContainer.style.display = 'block';
-        if (isVideo) {
-          mediaContainer.innerHTML = `<video src="${e.target.result}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: contain; background: #0b141a; border-radius: 12px;"></video>`;
-        } else {
-          mediaContainer.innerHTML = `<img src="${e.target.result}" alt="Preview" style="width: 100%; height: 100%; object-fit: contain; background: #0b141a; border-radius: 12px;">`;
-        }
-      }
-
       if (previewText) {
-        previewText.style.background = 'rgba(0, 0, 0, 0.65)';
-        previewText.style.borderRadius = '8px';
-        previewText.style.position = 'absolute';
-        previewText.style.bottom = '12px';
-        previewText.style.left = '12px';
-        previewText.style.right = '12px';
+        previewText.textContent = value.trim() || `Write matter on item #${this.activeQueueIndex + 1}...`;
       }
-
-      if (clearBtn) clearBtn.style.display = 'inline-block';
-      if (colorWrapper) colorWrapper.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
+    } else {
+      const previewText = document.getElementById('status-preview-text-display');
+      if (previewText) {
+        previewText.textContent = value.trim() || 'Type your status below...';
+      }
+    }
   }
 
   clearSelectedMedia() {
-    this.selectedMedia = null;
-    const mediaContainer = document.getElementById('status-preview-media-container');
-    const clearBtn = document.getElementById('btn-status-clear-media');
-    const fileInput = document.getElementById('status-media-file-input');
-    const colorWrapper = document.getElementById('status-color-palette-wrapper');
-    const previewText = document.getElementById('status-preview-text-display');
+    this.selectedMediaQueue = [];
+    this.activeQueueIndex = 0;
+    const input = document.getElementById('new-status-text');
+    if (input) input.value = '';
+    this.renderMediaQueueUI();
+  }
 
-    if (mediaContainer) {
-      mediaContainer.innerHTML = '';
-      mediaContainer.style.display = 'none';
+  async publishNewStatus() {
+    const textInput = document.getElementById('new-status-text');
+    const directText = textInput ? textInput.value.trim() : '';
+
+    if (this.selectedMediaQueue.length === 0 && !directText) {
+      alert('Please enter a caption or attach at least 1 photo/video for your status!');
+      return;
     }
-    if (previewText) {
-      previewText.style.background = 'transparent';
-      previewText.style.position = 'relative';
-      previewText.style.bottom = 'auto';
-      previewText.style.left = 'auto';
-      previewText.style.right = 'auto';
+
+    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
+    const now = new Date();
+    const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let newItems = [];
+
+    if (this.selectedMediaQueue.length > 0) {
+      newItems = this.selectedMediaQueue.map(m => ({
+        type: m.type,
+        mediaUrl: m.dataUrl,
+        caption: m.caption || m.text || '',
+        text: m.caption || m.text || ''
+      }));
+    } else {
+      const activeDot = document.querySelector('.color-dot.active');
+      const bgColor = activeDot ? activeDot.getAttribute('data-color') : '#0284c7';
+      newItems = [{
+        type: 'text',
+        bgColor: bgColor,
+        text: directText,
+        caption: directText
+      }];
     }
-    if (clearBtn) clearBtn.style.display = 'none';
-    if (colorWrapper) colorWrapper.style.display = 'block';
-    if (fileInput) fileInput.value = '';
+
+    const currentUserId = currentUser ? currentUser.id : 'me';
+    let myStory = this.stories.find(s => s.authorId === currentUserId || s.id.startsWith('story_my_'));
+
+    if (myStory) {
+      // Append to existing story queue
+      myStory.items = (myStory.items || []).concat(newItems);
+      myStory.time = `Today, ${timeFormatted}`;
+      myStory.timestamp = Date.now();
+      myStory.viewed = false;
+    } else {
+      myStory = {
+        id: 'story_my_' + Date.now(),
+        authorId: currentUserId,
+        authorName: currentUser ? (currentUser.name || 'My Status') : 'My Status',
+        authorAvatar: currentUser ? (currentUser.avatar || 'assets/logo-icon.svg') : 'assets/logo-icon.svg',
+        time: `Today, ${timeFormatted}`,
+        timestamp: Date.now(),
+        viewed: false,
+        items: newItems
+      };
+      this.stories.unshift(myStory);
+    }
+
+    this.saveStories();
+    this.renderStatusTab();
+    this.clearSelectedMedia();
+
+    const createModal = document.getElementById('create-status-modal');
+    if (createModal) createModal.classList.remove('active');
+
+    alert(`🎉 Status with ${newItems.length} update(s) posted successfully! Tap "My Status" to view. ✨`);
   }
 
   renderStoryItem() {
-    if (!this.currentStory) return;
+    if (!this.currentStory || !this.currentStory.items || this.currentStory.items.length === 0) return;
     const item = this.currentStory.items[this.currentItemIndex];
     if (!item) {
       this.closeStoryViewer();
@@ -300,9 +434,13 @@ class StoriesManager {
     }
 
     // Set Header
-    document.getElementById('story-viewer-avatar').src = this.currentStory.authorAvatar;
-    document.getElementById('story-viewer-name').textContent = this.currentStory.authorName;
-    document.getElementById('story-viewer-time').textContent = this.currentStory.time;
+    const avatarElem = document.getElementById('story-viewer-avatar');
+    const nameElem = document.getElementById('story-viewer-name');
+    const timeElem = document.getElementById('story-viewer-time');
+
+    if (avatarElem) avatarElem.src = this.currentStory.authorAvatar || 'assets/logo-icon.svg';
+    if (nameElem) nameElem.textContent = this.currentStory.authorName || 'Status';
+    if (timeElem) timeElem.textContent = `${this.currentStory.time} (${this.currentItemIndex + 1}/${this.currentStory.items.length})`;
 
     // Render Progress Bars
     const progressContainer = document.getElementById('story-progress-container');
@@ -321,20 +459,27 @@ class StoriesManager {
     // Render Content Body
     const contentBody = document.getElementById('story-content-display');
     if (contentBody) {
+      const displayMatter = item.caption || item.text || '';
+      const matterHtml = displayMatter
+        ? `<div class="story-caption-bar" style="position: absolute; bottom: 75px; left: 16px; right: 16px; text-align: center; color: #ffffff; background: rgba(0, 0, 0, 0.75); padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: 15.5px; backdrop-filter: blur(8px); word-break: break-word; z-index: 10; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">${displayMatter}</div>`
+        : '';
+
+      const mediaUrl = item.mediaUrl || item.dataUrl || item.url || item.image || '';
+
       if (item.type === 'image') {
         contentBody.innerHTML = `
-          <img class="story-img-display" src="${item.mediaUrl}" alt="Story">
-          ${item.caption || item.text ? `<div style="position:absolute; bottom: 80px; left: 20px; right: 20px; text-align: center; color: white; background: rgba(0,0,0,0.65); padding: 10px 16px; border-radius: 20px; font-weight: 600; font-size: 15px; backdrop-filter: blur(4px);">${item.caption || item.text}</div>` : ''}
+          <img class="story-img-display" src="${mediaUrl}" alt="Status Photo" style="max-height: 85vh; max-width: 100vw; object-fit: contain; border-radius: 8px;">
+          ${matterHtml}
         `;
       } else if (item.type === 'video') {
         contentBody.innerHTML = `
-          <video class="story-img-display" src="${item.mediaUrl}" autoplay playsinline controls style="max-height: 80vh; max-width: 100%; border-radius: 12px;"></video>
-          ${item.caption || item.text ? `<div style="position:absolute; bottom: 80px; left: 20px; right: 20px; text-align: center; color: white; background: rgba(0,0,0,0.65); padding: 10px 16px; border-radius: 20px; font-weight: 600; font-size: 15px; backdrop-filter: blur(4px);">${item.caption || item.text}</div>` : ''}
+          <video class="story-img-display" src="${mediaUrl}" autoplay playsinline controls style="max-height: 85vh; max-width: 100vw; border-radius: 8px;"></video>
+          ${matterHtml}
         `;
       } else {
         contentBody.innerHTML = `
-          <div class="story-text-display" style="background-color: ${item.bgColor || '#0284c7'};">
-            ${item.text}
+          <div class="story-text-display" style="background-color: ${item.bgColor || '#0284c7'}; color: #ffffff; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 24px; font-weight: 700; padding: 30px; text-align: center;">
+            ${item.text || item.caption || ''}
           </div>
         `;
       }
@@ -373,7 +518,7 @@ class StoriesManager {
       this.currentItemIndex++;
       this.renderStoryItem();
     } else {
-      // Find next story
+      // Find next story in the list
       const currIdx = this.stories.findIndex(s => s.id === this.currentStory.id);
       if (currIdx >= 0 && currIdx < this.stories.length - 1) {
         this.openStory(this.stories[currIdx + 1].id);
@@ -405,71 +550,13 @@ class StoriesManager {
     if (viewer) viewer.classList.remove('active');
   }
 
-  async publishNewStatus() {
-    const textInput = document.getElementById('new-status-text');
-    const text = textInput ? textInput.value.trim() : '';
-
-    if (!text && !this.selectedMedia) {
-      alert('Please enter a caption or attach a photo/video for your status!');
-      return;
-    }
-
-    const activeDot = document.querySelector('.color-dot.active');
-    const bgColor = activeDot ? activeDot.getAttribute('data-color') : '#0284c7';
-    const currentUser = window.AuthManager ? window.AuthManager.currentUser : null;
-    const now = new Date();
-    const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    let storyItem = {};
-    if (this.selectedMedia) {
-      storyItem = {
-        type: this.selectedMedia.type,
-        mediaUrl: this.selectedMedia.dataUrl,
-        text: text,
-        caption: text
-      };
-    } else {
-      storyItem = {
-        type: 'text',
-        bgColor: bgColor,
-        text: text
-      };
-    }
-
-    const myStory = {
-      id: 'story_my_' + Date.now(),
-      authorId: currentUser ? currentUser.id : 'me',
-      authorName: currentUser ? (currentUser.name || 'My Status') : 'My Status',
-      authorAvatar: currentUser ? (currentUser.avatar || 'assets/logo-icon.svg') : 'assets/logo-icon.svg',
-      time: `Today, ${timeFormatted}`,
-      timestamp: Date.now(),
-      viewed: false,
-      items: [storyItem]
-    };
-
-    this.stories.unshift(myStory);
-    this.saveStories();
-    this.renderStatusTab();
-
-    if (textInput) textInput.value = '';
-    const previewText = document.getElementById('status-preview-text-display');
-    if (previewText) {
-      previewText.textContent = 'Type your status below...';
-      previewText.style.background = 'transparent';
-    }
-    this.clearSelectedMedia();
-
-    const createModal = document.getElementById('create-status-modal');
-    if (createModal) createModal.classList.remove('active');
-
-    alert('🎉 Your Status update has been posted successfully! ✨');
-  }
-
   saveStories() {
     localStorage.setItem('chatterpatter_stories', JSON.stringify(this.stories));
+    localStorage.setItem('gitpit_stories', JSON.stringify(this.stories));
   }
 }
 
+// Global initialization
 window.addEventListener('DOMContentLoaded', () => {
   window.StoriesManager = new StoriesManager();
 });
