@@ -1197,8 +1197,22 @@ class ChatEngine {
       }
 
       let bodyHtml = '';
+      const isMedia = ['image', 'video', 'document', 'voice'].includes(msg.type);
+      const isStrangerMediaBlocked = !isOutgoing && isMedia && this.isStrangerShieldActive() && this.isUnknownContact(activeChat);
+
       if (msg.isDeleted) {
         bodyHtml = `<div class="msg-deleted-text">🚫 This message was deleted</div>`;
+      } else if (isStrangerMediaBlocked) {
+        bodyHtml = `
+          <div class="stranger-shield-media-block" style="padding: 12px; background: rgba(239, 68, 68, 0.08); border: 1.5px dashed var(--brand-danger); border-radius: 8px; text-align: center; max-width: 280px;">
+            <div style="font-size: 24px; margin-bottom: 4px;">🛡️🔒</div>
+            <div style="font-size: 12.5px; font-weight: 700; color: var(--brand-danger); margin-bottom: 4px;">Stranger Shield Protected</div>
+            <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 8px;">Attachment from unsaved contact is locked.</div>
+            <button type="button" class="auth-submit-btn" style="font-size: 11.5px; padding: 4px 10px; background: var(--brand-green); border: none; border-radius: 6px; color: #fff; font-weight: 700;" onclick="window.ChatEngine.trustActiveContact()">
+              ✓ Trust Contact to View
+            </button>
+          </div>
+        `;
       } else if (msg.type === 'voice') {
         bodyHtml = `
           <div class="voice-note-card">
@@ -2877,39 +2891,33 @@ class ChatEngine {
 
   isStrangerShieldActive() {
     const priv = (window.AuthManager && window.AuthManager.currentUser && window.AuthManager.currentUser.privacy) || JSON.parse(localStorage.getItem('gitpit_privacy') || '{}');
-    const mode = localStorage.getItem('gitpit_stranger_shield_mode') || priv.strangerShieldMode || 'off';
+    const mode = localStorage.getItem('gitpit_stranger_shield_mode') || priv.strangerShieldMode;
     if (mode === 'off') return false;
     const localSetting = localStorage.getItem('gitpit_restrict_unknown_media');
     if (localSetting === 'false') return false;
-    return priv.strangerShield !== false;
+    return true; // Active by default for complete safety
   }
 
   isContactTrusted(chatId) {
+    if (!chatId) return false;
     const trusted = JSON.parse(localStorage.getItem('gitpit_trusted_contacts') || '[]');
-    return trusted.includes(chatId);
+    const cleanDigits = chatId.replace(/\D/g, '').slice(-10);
+    return trusted.includes(chatId) || (cleanDigits && trusted.includes(cleanDigits)) || (cleanDigits && trusted.includes(`user_${cleanDigits}`));
   }
 
   isUnknownContact(chat) {
     if (!chat || chat.isGroup || chat.isAi || chat.id === 'chat_ai') return false;
     if (this.isContactTrusted(chat.id)) return false;
+
     const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
     const cleanDigits = (chat.phone || chat.id || '').replace(/\D/g, '').slice(-10);
-    if (phonebook[chat.id] || (cleanDigits && phonebook[cleanDigits])) return false;
-    
-    // Check registered users
-    const isReg = (this.registeredUsers || []).some(u => {
-      const uPhone10 = (u.phone || u.id || '').replace(/\D/g, '').slice(-10);
-      return u.id === chat.id || (cleanDigits && uPhone10 && uPhone10 === cleanDigits);
-    });
-    if (isReg) return false;
 
-    // Check mock data
-    const isMock = (window.MOCK_DATA && window.MOCK_DATA.demoUsers) ? window.MOCK_DATA.demoUsers.some(u => u.id === chat.id || (u.phone && cleanDigits && u.phone.includes(cleanDigits))) : false;
-    if (isMock) return false;
+    // If contact is saved in device native phonebook, it is a known contact
+    if (phonebook[chat.id] || (cleanDigits && phonebook[cleanDigits])) {
+      return false;
+    }
 
-    // If chat already has exchanged messages, it is trusted
-    if (Array.isArray(chat.messages) && chat.messages.length > 0) return false;
-
+    // Otherwise, it is an UNSAVED NUMBER / STRANGER -> Guard with Stranger Shield
     return true;
   }
 
@@ -2927,13 +2935,16 @@ class ChatEngine {
   trustContact(chatId) {
     const chat = this.chats.find(c => c.id === chatId);
     const trusted = JSON.parse(localStorage.getItem('gitpit_trusted_contacts') || '[]');
-    if (!trusted.includes(chatId)) {
-      trusted.push(chatId);
-      localStorage.setItem('gitpit_trusted_contacts', JSON.stringify(trusted));
-    }
+    const cleanDigits = (chat ? (chat.phone || chat.id) : chatId).replace(/\D/g, '').slice(-10);
+
+    if (!trusted.includes(chatId)) trusted.push(chatId);
+    if (cleanDigits && !trusted.includes(cleanDigits)) trusted.push(cleanDigits);
+    if (cleanDigits && !trusted.includes(`user_${cleanDigits}`)) trusted.push(`user_${cleanDigits}`);
+
+    localStorage.setItem('gitpit_trusted_contacts', JSON.stringify(trusted));
     this.updateStrangerShieldUI();
     this.renderMessages();
-    alert(`🛡️ ${chat ? (chat.savedName || chat.name) : 'Contact'} is now marked as a Trusted Contact. File attachments, photos & media transfers are enabled!`);
+    alert(`🛡️ ${chat ? (chat.savedName || chat.name || chat.phone) : 'Contact'} is now marked as a Trusted Contact. Media and attachments are unlocked!`);
   }
 
   trustActiveContact() {
