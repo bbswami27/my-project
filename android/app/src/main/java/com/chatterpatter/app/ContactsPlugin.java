@@ -1,4 +1,4 @@
-package com.gitpit.app;
+package com.chatterpatter.app;
 
 import android.Manifest;
 import android.content.ContentResolver;

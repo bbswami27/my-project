@@ -1,4 +1,4 @@
-package com.gitpit.app;
+package com.chatterpatter.app;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
