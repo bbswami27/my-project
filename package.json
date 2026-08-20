@@ -4,7 +4,8 @@
   "description": "GitPit - Social Chatting App with WhatsApp-style interface, smart AI assistant, video calls & screen sharing",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "postinstall": "node runtime-message-fix.js --patch-only",
+    "start": "node runtime-message-fix.js"
   },
   "engines": {
     "node": ">=22.0.0"
