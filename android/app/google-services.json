@@ -1,0 +1,48 @@
+﻿{
+  "project_info": {
+    "project_number": "495681250850",
+    "project_id": "chatterpatter-75167",
+    "storage_bucket": "chatterpatter-75167.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:495681250850:android:c9bda3eda33eb1532a0c7b",
+        "android_client_info": {
+          "package_name": "com.gitpit.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDANkMBN_9sVYntPfZpb2Azh0DvQ194LxQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:495681250850:android:c9bda3eda33eb1532a0c7b",
+        "android_client_info": {
+          "package_name": "com.chatterpatter.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDANkMBN_9sVYntPfZpb2Azh0DvQ194LxQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
