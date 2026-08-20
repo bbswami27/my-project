@@ -1867,15 +1867,19 @@
       </div>
       <div class="modal-body" style="text-align: left; overflow-y: auto; flex: 1;">
         
-        <!-- Quick Action Buttons: Open Phone Contacts & Add New Contact -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
-          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 12px; font-weight: 700; padding: 8px 6px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="window.AuthManager && window.AuthManager.openNativeContactsApp()">
+        <!-- Quick Action Buttons: Open Phone Contacts, Add New Contact, & New Group -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 12px;">
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 11.5px; font-weight: 700; padding: 7px 4px; display: flex; align-items: center; justify-content: center; gap: 4px;" onclick="window.AuthManager && window.AuthManager.openNativeContactsApp()">
             <span>📱</span>
-            <span>Phone Contacts</span>
+            <span>Phonebook</span>
           </button>
-          <button type="button" class="auth-submit-btn" style="background: var(--brand-green); color: #ffffff; font-size: 12px; font-weight: 700; padding: 8px 6px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="window.AuthManager && window.AuthManager.openNewContactScreen()">
+          <button type="button" class="auth-submit-btn" style="background: var(--brand-green); color: #ffffff; font-size: 11.5px; font-weight: 700; padding: 7px 4px; display: flex; align-items: center; justify-content: center; gap: 4px;" onclick="window.AuthManager && window.AuthManager.openNewContactScreen()">
             <span>➕</span>
             <span>Add Contact</span>
+          </button>
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--brand-blue); border: 1.5px solid var(--brand-blue); font-size: 11.5px; font-weight: 700; padding: 7px 4px; display: flex; align-items: center; justify-content: center; gap: 4px;" onclick="document.getElementById('new-chat-picker-modal').classList.remove('active'); window.ChatterApp && window.ChatterApp.openNewGroupModal()">
+            <span>👥</span>
+            <span>New Group</span>
           </button>
         </div>
 
