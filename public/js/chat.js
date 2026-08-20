@@ -2995,6 +2995,157 @@ class ChatEngine {
     }
   }
 
+  promptExportActiveChat() {
+    if (!this.activeChatId) {
+      alert('Please select or open a chat conversation first to export.');
+      return;
+    }
+    const chat = this.chats.find(c => c.id === this.activeChatId);
+    if (!chat) return;
+
+    const modal = document.getElementById('export-chat-modal');
+    if (!modal) return;
+
+    const nameEl = document.getElementById('export-chat-recipient-name');
+    const countEl = document.getElementById('export-chat-count-info');
+    const displayName = chat.savedName || chat.name || chat.phone || 'Conversation';
+    const msgCount = (chat.messages && chat.messages.length) ? chat.messages.length : 0;
+
+    if (nameEl) nameEl.textContent = `Chat with ${displayName}`;
+    if (countEl) countEl.textContent = `📊 ${msgCount} messages recorded`;
+
+    modal.classList.add('active');
+  }
+
+  generateChatTranscript(chat) {
+    if (!chat) return '';
+    const displayName = chat.savedName || chat.name || chat.phone || 'Chat';
+    const lines = [];
+    lines.push(`=======================================================`);
+    lines.push(` GitPit Conversation Export: ${displayName}`);
+    lines.push(` Export Date: ${new Date().toLocaleString()}`);
+    lines.push(` Total Messages: ${(chat.messages && chat.messages.length) || 0}`);
+    lines.push(`=======================================================\n`);
+
+    if (!chat.messages || chat.messages.length === 0) {
+      lines.push(`(No messages recorded in this conversation)`);
+      return lines.join('\n');
+    }
+
+    chat.messages.forEach(msg => {
+      const time = msg.timestamp || msg.time || '';
+      const dateStr = msg.createdAt ? new Date(msg.createdAt).toLocaleString() : time;
+      const sender = msg.sender === 'user' ? 'Me' : (msg.senderName || displayName);
+
+      let content = msg.text || '';
+      if (msg.type && msg.type !== 'text') {
+        if (msg.type === 'image' || msg.type === 'photo') {
+          content = `[Photo Attachment${msg.caption ? ': ' + msg.caption : ''}] ` + (msg.url || msg.image || '');
+        } else if (msg.type === 'video') {
+          content = `[Video Attachment${msg.caption ? ': ' + msg.caption : ''}] ` + (msg.url || msg.videoUrl || '');
+        } else if (msg.type === 'voice' || msg.type === 'audio') {
+          content = `[Voice Message ${msg.duration || ''}] ` + (msg.audioUrl || '');
+        } else if (msg.type === 'document' || msg.type === 'file') {
+          content = `[Document: ${msg.fileName || 'Attachment'}] ` + (msg.fileUrl || '');
+        } else if (msg.type === 'call') {
+          content = `[Call Log: ${msg.callType || 'Call'} - ${msg.duration || 'Ended'}]`;
+        } else if (msg.type === 'location') {
+          content = `[Location Shared: ${msg.locationName || 'GPS Coordinates'}]`;
+        }
+      }
+
+      lines.push(`[${dateStr}] ${sender}: ${content}`);
+    });
+
+    lines.push(`\n================ End of Conversation ================`);
+    return lines.join('\n');
+  }
+
+  exportChatAsText() {
+    const chat = this.chats.find(c => c.id === this.activeChatId);
+    if (!chat) return;
+
+    const transcript = this.generateChatTranscript(chat);
+    const displayName = (chat.savedName || chat.name || chat.phone || 'chat').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `GitPit_Chat_${displayName}_${Date.now()}.txt`;
+
+    const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
+
+    const modal = document.getElementById('export-chat-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  exportChatAsJSON() {
+    const chat = this.chats.find(c => c.id === this.activeChatId);
+    if (!chat) return;
+
+    const exportData = {
+      app: 'GitPit',
+      version: '1.0.1',
+      exportedAt: new Date().toISOString(),
+      chatId: chat.id,
+      chatName: chat.savedName || chat.name || chat.phone,
+      phone: chat.phone,
+      isGroup: !!chat.isGroup,
+      messages: chat.messages || []
+    };
+
+    const displayName = (chat.savedName || chat.name || chat.phone || 'chat').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `GitPit_Backup_${displayName}_${Date.now()}.json`;
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
+
+    const modal = document.getElementById('export-chat-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  async shareChatViaSystem() {
+    const chat = this.chats.find(c => c.id === this.activeChatId);
+    if (!chat) return;
+
+    const transcript = this.generateChatTranscript(chat);
+    const displayName = chat.savedName || chat.name || chat.phone || 'Conversation';
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `GitPit Chat Export - ${displayName}`,
+          text: transcript
+        });
+        const modal = document.getElementById('export-chat-modal');
+        if (modal) modal.classList.remove('active');
+      } catch (err) {
+        // Fallback to text file download if user cancelled or not supported
+        if (err.name !== 'AbortError') {
+          this.exportChatAsText();
+        }
+      }
+    } else {
+      // Fallback if Web Share API not available
+      this.exportChatAsText();
+    }
+  }
+
   shareNewsToChat(article, chatId) {
     if (!article) return;
     const targetChat = this.chats.find(c => c.id === chatId);

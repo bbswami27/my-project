@@ -422,6 +422,10 @@
                   <span class="dropdown-item-icon">📅</span>
                   <span>Jump to Date</span>
                 </button>
+                <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.promptExportActiveChat()">
+                  <span class="dropdown-item-icon">📥</span>
+                  <span>Export Chat</span>
+                </button>
                 <button class="dropdown-item" onclick="document.getElementById('chat-header-dropdown-menu').classList.remove('active'); window.ChatEngine && window.ChatEngine.deleteChat(window.ChatEngine.activeChatId)">
                   <span class="dropdown-item-icon">🗑️</span>
                   <span style="color: var(--brand-danger);">Delete Chat</span>
@@ -1889,6 +1893,71 @@
         <div id="new-chat-contacts-list" style="display: flex; flex-direction: column; gap: 8px;">
           <!-- Populated dynamically -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT CHAT MODAL -->
+  <div class="modal-overlay" id="export-chat-modal">
+    <div class="modal-card" style="max-width: 440px; text-align: left;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>📥</span>
+          <span>Export Conversation</span>
+        </h3>
+        <button class="modal-close-btn" onclick="document.getElementById('export-chat-modal').classList.remove('active')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 14px;">
+          <div id="export-chat-recipient-name" style="font-size: 15px; font-weight: 700; color: var(--text-primary);">Chat with User</div>
+          <div id="export-chat-count-info" style="font-size: 12px; color: var(--text-muted);">0 total messages</div>
+        </div>
+
+        <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+          Select how you want to export and share this chat history:
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+          <!-- 1. Text Transcript (.txt) -->
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1.5px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; text-align: left;" onclick="window.ChatEngine && window.ChatEngine.exportChatAsText()">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">📄</span>
+              <div>
+                <div style="font-weight: 700; font-size: 13.5px;">Export as Text File (.txt)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Readable document with date, time, and sender names</div>
+              </div>
+            </div>
+            <span style="font-size: 14px; color: var(--brand-green);">⬇️</span>
+          </button>
+
+          <!-- 2. Share via WhatsApp / Email / Drive -->
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1.5px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; text-align: left;" onclick="window.ChatEngine && window.ChatEngine.shareChatViaSystem()">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">📱</span>
+              <div>
+                <div style="font-weight: 700; font-size: 13.5px;">Share to Apps (WhatsApp / Gmail / Drive)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Send transcript directly via native Android share menu</div>
+              </div>
+            </div>
+            <span style="font-size: 14px; color: var(--brand-blue);">↗️</span>
+          </button>
+
+          <!-- 3. Full Data Backup (.json) -->
+          <button type="button" class="auth-submit-btn" style="background: var(--bg-card); color: var(--text-primary); border: 1.5px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; text-align: left;" onclick="window.ChatEngine && window.ChatEngine.exportChatAsJSON()">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">💾</span>
+              <div>
+                <div style="font-weight: 700; font-size: 13.5px;">Full Data Backup (.json)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Complete structured JSON dataset for backup & recovery</div>
+              </div>
+            </div>
+            <span style="font-size: 14px; color: #f59e0b;">⬇️</span>
+          </button>
+        </div>
+
+        <button type="button" class="auth-submit-btn" style="background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border-color); width: 100%;" onclick="document.getElementById('export-chat-modal').classList.remove('active')">
+          Cancel
+        </button>
       </div>
     </div>
   </div>
