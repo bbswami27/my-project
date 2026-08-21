@@ -4,7 +4,7 @@
   const STYLE_ID='gitpit-universal-back-style';
   const BTN_CLASS='gitpit-universal-back-btn';
   const modalSelectors=['.modal.active','.modal-overlay.active','[role="dialog"].active','.sheet.active','.popup.active','.drawer.active'];
-  const panelSelectors=['.settings-panel.active','.dropdown-panel.active','.tab-view.active','.chat-active-view'];
+  let scheduled=false;
 
   function ensureStyle(){
     if(document.getElementById(STYLE_ID)) return;
@@ -56,6 +56,9 @@
   }
 
   function goBack(){
+    // Never treat the mandatory auth overlay as a dismissible screen.
+    const auth=document.getElementById('auth-overlay-modal');
+    if(auth && getComputedStyle(auth).display!=='none' && auth.classList.contains('active')) return;
     if(closeThreeDotsSubpanel()) return;
     if(closeTopOverlay()) return;
     if(leaveActiveChat()) return;
@@ -65,43 +68,35 @@
   }
 
   function addBackToHost(host){
-    if(!host || host.querySelector(`.${BTN_CLASS}`)) return;
+    if(!host || host.closest('#auth-overlay-modal') || host.querySelector(`.${BTN_CLASS}`)) return;
     const btn=document.createElement('button'); btn.type='button'; btn.className=BTN_CLASS; btn.setAttribute('aria-label','Back'); btn.title='Back'; btn.textContent='‹'; btn.onclick=(e)=>{e.preventDefault();e.stopPropagation();goBack();};
     host.classList.add('gitpit-back-host'); host.insertBefore(btn,host.firstChild);
   }
 
   function decorate(){
     ensureStyle();
-    const headers=[
-      ...document.querySelectorAll('.modal-header,.settings-header,.panel-header,.chat-header,.story-viewer-header,.screen-header,.page-header,.tab-header')
-    ];
-    headers.forEach(h=>{ if(h.offsetParent!==null || h.closest('.active')) addBackToHost(h); });
-
-    // Fallback: active modal without a recognizable header gets a floating button at its first content block.
+    const headers=[...document.querySelectorAll('.modal-header,.settings-header,.panel-header,.chat-header,.story-viewer-header,.screen-header,.page-header,.tab-header')];
+    headers.forEach(h=>{ if(!h.closest('#auth-overlay-modal') && (h.offsetParent!==null || h.closest('.active'))) addBackToHost(h); });
     document.querySelectorAll(modalSelectors.join(',')).forEach(modal=>{
-      if(modal.querySelector(`.${BTN_CLASS}`)) return;
+      if(modal.closest('#auth-overlay-modal') || modal.querySelector(`.${BTN_CLASS}`)) return;
       const host=modal.querySelector('.modal-content,.modal-card,.settings-content,.popup-content,.sheet-content') || modal.firstElementChild;
-      if(host){
-        const row=host.querySelector('.modal-header,.settings-header,.panel-header') || host;
-        addBackToHost(row);
-      }
+      if(host){ const row=host.querySelector('.modal-header,.settings-header,.panel-header') || host; addBackToHost(row); }
     });
   }
 
-  // Android/Capacitor hardware back: consume before app exits.
+  function scheduleDecorate(){ if(scheduled) return; scheduled=true; requestAnimationFrame(()=>{scheduled=false;decorate();}); }
+
   function bindNativeBack(){
     try{
       const App=window.Capacitor?.Plugins?.App;
-      if(App && !window.__gitpitNativeBackV12){
-        window.__gitpitNativeBackV12=true;
-        App.addListener('backButton',()=>goBack());
-      }
+      if(App && !window.__gitpitNativeBackV12){ window.__gitpitNativeBackV12=true; App.addListener('backButton',()=>goBack()); }
     }catch(_){ }
   }
 
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ e.preventDefault(); goBack(); }});
-  const mo=new MutationObserver(()=>decorate()); mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
+  // Observe only added/removed DOM nodes. Attribute observation caused unnecessary feedback loops on mobile.
+  const mo=new MutationObserver(scheduleDecorate); mo.observe(document.documentElement,{childList:true,subtree:true});
   document.addEventListener('DOMContentLoaded',()=>{decorate();bindNativeBack();});
   setTimeout(()=>{decorate();bindNativeBack();},500);
-  window.GitPitBackNavigation={goBack,decorate};
+  window.GitPitBackNavigation={goBack,decorate:scheduleDecorate};
 })();
