@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const repairNames = [
-  'identity-routing-v2.js','ui-stability-v4.js','contact-refresh-privacy-v4.js','contact-directory-v5.js',
+  'identity-routing-v2.js','ui-stability-v4.js','contact-refresh-privacy-v4.js','contact-directory-v5.js','contact-native-v16.js',
   'message-delivery-v4.js','call-reliability-v5.js','status-reliability-v6.js','email-compose-v7.js',
   'meeting-invites-v8.js','screen-share-recipient-v9.js','star-chat-v10.js','chat-group-preference-v11.js',
   'universal-back-v12.js','anti-fraud-menu-v13.js','responsive-ui-v14.js','post-auth-repairs-v15.js'
@@ -13,28 +13,22 @@ const repairNames = [
 function prepareHtml(filePath) {
   if (!fs.existsSync(filePath)) return;
   let html = fs.readFileSync(filePath, 'utf8');
-
-  // Keep all repair modules out of initial HTML. The bootstrap remains a safe no-op
-  // in v1.0.7 so the original application handles all navigation and taps.
   for (const name of repairNames) {
     if (name === 'post-auth-repairs-v15.js') continue;
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     html = html.replace(new RegExp(`\\s*<script src="js/${escaped}"><\\/script>\\s*`, 'g'), '\n');
   }
   html = html.replace(/\s*<script src="js\/message-routing-v3\.js"><\/script>\s*/g, '\n');
-
   const bootstrap='<script src="js/post-auth-repairs-v15.js"></script>';
   if (!html.includes('post-auth-repairs-v15.js')) html = html.replace('</body>', `  ${bootstrap}\n</body>`);
-
   fs.writeFileSync(filePath, html, 'utf8');
-  console.log(`[PREPARE V19] stable baseline prepared in ${filePath}`);
+  console.log(`[PREPARE V21] v1.0.9 native contacts stage prepared in ${filePath}`);
 }
 
 function bumpCache(filePath) {
   if (!fs.existsSync(filePath)) return;
   let sw = fs.readFileSync(filePath, 'utf8');
-  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.21';");
-
+  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.23';");
   for (const name of repairNames) {
     if (name === 'post-auth-repairs-v15.js') continue;
     const asset = `./js/${name}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -60,4 +54,4 @@ prepareHtml(path.join(__dirname, 'public', 'index.html'));
 prepareHtml(path.join(__dirname, 'index.html'));
 bumpCache(path.join(__dirname, 'public', 'sw.js'));
 bumpCache(path.join(__dirname, 'sw.js'));
-console.log('[PREPARE V19] GitPit v1.0.7 stable baseline complete');
+console.log('[PREPARE V21] GitPit v1.0.9 native contacts stage complete');
