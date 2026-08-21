@@ -49,6 +49,20 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Validate v1.1.1 JavaScript before build
+        run: |
+          node --check server.js
+          node --check prepare-client-v2.js
+          node --check public/js/post-auth-repairs-v15.js
+          node --check public/js/v111-ui-data-fixes.js
+          node --check public/js/v111-realtime-contact-fixes.js
+          node --check public/js/contact-native-v16.js
+          node --check public/js/message-delivery-v4.js
+          node --check public/js/status-reliability-v6.js
+          node --check public/js/screen-share-recipient-v9.js
+          node --check public/js/meeting-invites-v8.js
+          echo "GitPit v1.1.1 syntax validation passed"
+
       - name: Prepare Consolidated v1.1.1 Client
         run: npm run prepare-client
 
@@ -98,6 +112,7 @@ jobs:
             - Status refresh/realtime merge shows own and other registered users' status
             - Screen sharing starts after video call acceptance instead of before peer connection is ready
             - Duplicate Anti Fraud Stranger Shield removed from Privacy & Security
+            - JavaScript syntax validation runs before every signed APK build
           files: GitPit-v1.1.1.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
