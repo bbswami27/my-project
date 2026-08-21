@@ -67,13 +67,13 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.0.2.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.0.3.apk
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: GitPit-Android-v1.0.2
-          path: GitPit-v1.0.2.apk
+          name: GitPit-Android-v1.0.3
+          path: GitPit-v1.0.3.apk
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
@@ -82,12 +82,12 @@ jobs:
           name: "GitPit Android App APK (Latest)"
           body: |
             ### GitPit Android APK
-            Signed trial APK with contact identity and routing repair.
+            Signed GitPit Android build with latest messaging, UI stability and contact identity repairs.
 
             - App Name: GitPit
             - Package: com.chatterpatter.app
-            - Build label: 1.0.2
+            - Build label: 1.0.3
             - Native contacts are read-only; GitPit does not overwrite phonebook numbers.
-          files: GitPit-v1.0.2.apk
+          files: GitPit-v1.0.3.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
