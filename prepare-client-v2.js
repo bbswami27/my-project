@@ -12,7 +12,8 @@ function injectScripts(filePath) {
     '<script src="js/contact-refresh-privacy-v4.js"></script>',
     '<script src="js/contact-directory-v5.js"></script>',
     '<script src="js/message-delivery-v4.js"></script>',
-    '<script src="js/call-reliability-v5.js"></script>'
+    '<script src="js/call-reliability-v5.js"></script>',
+    '<script src="js/status-reliability-v6.js"></script>'
   ];
   html = html.replace(/\s*<script src="js\/message-routing-v3\.js"><\/script>\s*/g, '\n');
   for (const tag of tags) {
@@ -20,15 +21,15 @@ function injectScripts(filePath) {
     if (!html.includes(src)) html = html.replace('</body>', `  ${tag}\n</body>`);
   }
   fs.writeFileSync(filePath, html, 'utf8');
-  console.log(`[PREPARE V8] injected v1.0.4 repair scripts into ${filePath}`);
+  console.log(`[PREPARE V9] injected v1.0.4 repair scripts into ${filePath}`);
 }
 
 function bumpCache(filePath) {
   if (!fs.existsSync(filePath)) return;
   let sw = fs.readFileSync(filePath, 'utf8');
-  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.9';");
+  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.10';");
   sw = sw.replace(/\s*'\.\/js\/message-routing-v3\.js',?/g, '');
-  for (const asset of ['./js/identity-routing-v2.js', './js/ui-stability-v4.js', './js/contact-refresh-privacy-v4.js', './js/contact-directory-v5.js', './js/message-delivery-v4.js', './js/call-reliability-v5.js']) {
+  for (const asset of ['./js/identity-routing-v2.js', './js/ui-stability-v4.js', './js/contact-refresh-privacy-v4.js', './js/contact-directory-v5.js', './js/message-delivery-v4.js', './js/call-reliability-v5.js', './js/status-reliability-v6.js']) {
     if (!sw.includes(`'${asset}'`)) sw = sw.replace("'./js/locationService.js',", "'./js/locationService.js',\n  '" + asset + "',");
   }
   fs.writeFileSync(filePath, sw, 'utf8');
@@ -43,9 +44,9 @@ function mirrorPublicScript(name) {
   }
 }
 
-for (const name of ['identity-routing-v2.js','ui-stability-v4.js','contact-refresh-privacy-v4.js','contact-directory-v5.js','message-delivery-v4.js','call-reliability-v5.js']) mirrorPublicScript(name);
+for (const name of ['identity-routing-v2.js','ui-stability-v4.js','contact-refresh-privacy-v4.js','contact-directory-v5.js','message-delivery-v4.js','call-reliability-v5.js','status-reliability-v6.js']) mirrorPublicScript(name);
 injectScripts(path.join(__dirname, 'public', 'index.html'));
 injectScripts(path.join(__dirname, 'index.html'));
 bumpCache(path.join(__dirname, 'public', 'sw.js'));
 bumpCache(path.join(__dirname, 'sw.js'));
-console.log('[PREPARE V8] GitPit v1.0.4 client preparation complete');
+console.log('[PREPARE V9] GitPit v1.0.4 client preparation complete');
