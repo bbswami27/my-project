@@ -49,7 +49,7 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Prepare Consolidated v1.1.0 Client
+      - name: Prepare Consolidated v1.1.1 Client
         run: npm run prepare-client
 
       - name: Sync Capacitor Android Project
@@ -67,13 +67,13 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.1.0.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.1.1.apk
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: GitPit-Android-v1.1.0
-          path: GitPit-v1.1.0.apk
+          name: GitPit-Android-v1.1.1
+          path: GitPit-v1.1.1.apk
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
@@ -81,26 +81,23 @@ jobs:
           tag_name: latest
           name: "GitPit Android App APK (Latest)"
           body: |
-            ### GitPit Android APK v1.1.0
-            Consolidated production repair release.
+            ### GitPit Android APK v1.1.1
+            Consolidated repair release for the 12 device-reported defects.
 
             - App Name: GitPit
             - Package: com.chatterpatter.app
-            - Build label: 1.1.0
-            - Version code: 10
-            - Native phonebook sync and registered-user matching
-            - New Chat phonebook directory
-            - Reliable text/link/emoji/media message routing
-            - Incoming/outgoing calls and call-history synchronization
-            - Durable/realtime Status updates
-            - Meeting invitation delivery
-            - Screen-share recipient selection
-            - GitPit Email/Memo compose
-            - Whole-chat Star/Unstar and Chat/Group preference
-            - Universal Back navigation
-            - Anti Fraud & Stranger Field first in the 3-dot menu
-            - Responsive mobile/landscape UI
-            - Observer-heavy legacy UI repair modules are not loaded, preventing the previous Android WebView freeze.
-          files: GitPit-v1.1.0.apk
+            - Build label: 1.1.1
+            - Version code: 11
+            - Back navigation stays inside GitPit and adds Back controls to active screens/modals
+            - Meeting and Group selectors show registered GitPit users only
+            - Scheduled meeting detail shows invited names
+            - Sent Email/Memo reopens with full detail
+            - New Chat has Registered and Phonebook views and preserves native phonebook order
+            - New Contact action enabled when native Contacts plugin supports it
+            - Receiver-side text/link/emoji/media handling strengthened with explicit socket join and incoming merge
+            - Status refresh/realtime merge shows own and other registered users' status
+            - Screen sharing starts after video call acceptance instead of before peer connection is ready
+            - Duplicate Anti Fraud Stranger Shield removed from Privacy & Security
+          files: GitPit-v1.1.1.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
