@@ -10,7 +10,19 @@ const db = require('./database');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function hydrateDurableSessions() {
-  const maxWaitMs = 12000;
+  const hasDurableDbConfig = !!(
+    process.env.DATABASE_URL ||
+    process.env.PGURI ||
+    process.env.POSTGRESQL_URL
+  );
+
+  // Local / JSON-only development must start immediately.
+  if (!hasDurableDbConfig) {
+    console.log('[SESSION] No PostgreSQL URL configured; using local session cache.');
+    return;
+  }
+
+  const maxWaitMs = 8000;
   const started = Date.now();
 
   while (Date.now() - started < maxWaitMs) {
@@ -45,7 +57,7 @@ async function hydrateDurableSessions() {
         console.warn('[SESSION] Durable session hydration retry:', err.message);
       }
     }
-    await sleep(300);
+    await sleep(250);
   }
 
   console.warn('[SESSION] PostgreSQL session hydration timed out; starting with local session cache.');
