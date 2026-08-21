@@ -1,5 +1,5 @@
 // GitPit - Service Worker for PWA Offline Caching & Fast Loading
-const CACHE_NAME = 'gitpit-web-v1.0.1';
+const CACHE_NAME = 'gitpit-web-v1.0.2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -55,7 +55,6 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
 
-  // Do not cache API endpoints or websocket calls
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) {
     return;
   }
@@ -73,7 +72,7 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
         }
         return networkResponse;
       }).catch(() => caches.match('./index.html'));
