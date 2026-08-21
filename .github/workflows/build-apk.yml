@@ -47,7 +47,10 @@ jobs:
         run: echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gitpit-upload-key.jks"
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
+
+      - name: Prepare Identity Repair Client
+        run: npm run prepare-client
 
       - name: Sync Capacitor Android Project
         run: npx cap sync android
@@ -64,13 +67,13 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.0.1.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.0.2.apk
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: GitPit-Android-v1.0.1
-          path: GitPit-v1.0.1.apk
+          name: GitPit-Android-v1.0.2
+          path: GitPit-v1.0.2.apk
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
@@ -79,11 +82,12 @@ jobs:
           name: "GitPit Android App APK (Latest)"
           body: |
             ### GitPit Android APK
-            Signed trial APK for the 10-user GitPit test.
+            Signed trial APK with contact identity and routing repair.
 
             - App Name: GitPit
-            - Package: com.gitpit.app
-            - Version: 1.0.1 (2)
-          files: GitPit-v1.0.1.apk
+            - Package: com.chatterpatter.app
+            - Build label: 1.0.2
+            - Native contacts are read-only; GitPit does not overwrite phonebook numbers.
+          files: GitPit-v1.0.2.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
