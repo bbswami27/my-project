@@ -8,29 +8,28 @@ function injectScripts(filePath) {
   let html = fs.readFileSync(filePath, 'utf8');
   const tags = [
     '<script src="js/identity-routing-v2.js"></script>',
-    '<script src="js/message-routing-v3.js"></script>',
     '<script src="js/ui-stability-v4.js"></script>',
     '<script src="js/contact-refresh-privacy-v4.js"></script>',
-    '<script src="js/contact-directory-v5.js"></script>'
+    '<script src="js/contact-directory-v5.js"></script>',
+    '<script src="js/message-delivery-v4.js"></script>'
   ];
+  // Retire the old message-routing-v3 interceptor; V4 owns the single REST delivery path.
+  html = html.replace(/\s*<script src="js\/message-routing-v3\.js"><\/script>\s*/g, '\n');
   for (const tag of tags) {
     const src = tag.match(/src="([^"]+)"/)[1];
-    if (!html.includes(src)) {
-      html = html.replace('</body>', `  ${tag}\n</body>`);
-    }
+    if (!html.includes(src)) html = html.replace('</body>', `  ${tag}\n</body>`);
   }
   fs.writeFileSync(filePath, html, 'utf8');
-  console.log(`[PREPARE V6] injected reliability scripts into ${filePath}`);
+  console.log(`[PREPARE V7] injected v1.0.4 repair scripts into ${filePath}`);
 }
 
 function bumpCache(filePath) {
   if (!fs.existsSync(filePath)) return;
   let sw = fs.readFileSync(filePath, 'utf8');
-  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.7';");
-  for (const asset of ['./js/identity-routing-v2.js', './js/message-routing-v3.js', './js/ui-stability-v4.js', './js/contact-refresh-privacy-v4.js', './js/contact-directory-v5.js']) {
-    if (!sw.includes(`'${asset}'`)) {
-      sw = sw.replace("'./js/locationService.js',", "'./js/locationService.js',\n  '" + asset + "',");
-    }
+  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.8';");
+  sw = sw.replace(/\s*'\.\/js\/message-routing-v3\.js',?/g, '');
+  for (const asset of ['./js/identity-routing-v2.js', './js/ui-stability-v4.js', './js/contact-refresh-privacy-v4.js', './js/contact-directory-v5.js', './js/message-delivery-v4.js']) {
+    if (!sw.includes(`'${asset}'`)) sw = sw.replace("'./js/locationService.js',", "'./js/locationService.js',\n  '" + asset + "',");
   }
   fs.writeFileSync(filePath, sw, 'utf8');
 }
@@ -44,15 +43,9 @@ function mirrorPublicScript(name) {
   }
 }
 
-mirrorPublicScript('identity-routing-v2.js');
-mirrorPublicScript('message-routing-v3.js');
-mirrorPublicScript('ui-stability-v4.js');
-mirrorPublicScript('contact-refresh-privacy-v4.js');
-mirrorPublicScript('contact-directory-v5.js');
-
+for (const name of ['identity-routing-v2.js','ui-stability-v4.js','contact-refresh-privacy-v4.js','contact-directory-v5.js','message-delivery-v4.js']) mirrorPublicScript(name);
 injectScripts(path.join(__dirname, 'public', 'index.html'));
 injectScripts(path.join(__dirname, 'index.html'));
 bumpCache(path.join(__dirname, 'public', 'sw.js'));
 bumpCache(path.join(__dirname, 'sw.js'));
-
-console.log('[PREPARE V6] GitPit client preparation complete');
+console.log('[PREPARE V7] GitPit v1.0.4 client preparation complete');
