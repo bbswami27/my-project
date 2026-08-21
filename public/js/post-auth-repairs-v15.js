@@ -1,7 +1,6 @@
 'use strict';
 
-// GitPit v1.1.0 production loader: load only reviewed modules after successful login.
-// Old observer-heavy UI repair files are deliberately NOT loaded.
+// GitPit v1.1.1 production loader: reviewed modules only, after successful login.
 (function installPostAuthRepairsV15(){
   const MODULES=[
     'contact-native-v16.js',
@@ -10,7 +9,8 @@
     'status-reliability-v6.js',
     'meeting-invites-v8.js',
     'screen-share-recipient-v9.js',
-    'safe-ui-final-v20.js'
+    'safe-ui-final-v20.js',
+    'v111-ui-data-fixes.js'
   ];
   let loading=false,loaded=false;
 
@@ -29,15 +29,15 @@
       if(document.querySelector(`script[data-gitpit-repair="${name}"]`))continue;
       await new Promise(resolve=>{
         const s=document.createElement('script');
-        s.src=`js/${name}?v=110`;
+        s.src=`js/${name}?v=111`;
         s.dataset.gitpitRepair=name;
         s.onload=()=>setTimeout(resolve,120);
-        s.onerror=()=>{console.error('[GITPIT V1.1.0] module load failed',name);resolve();};
+        s.onerror=()=>{console.error('[GITPIT V1.1.1] module load failed',name);resolve();};
         document.body.appendChild(s);
       });
     }
     loaded=true;loading=false;
-    console.log('[GITPIT V1.1.0] reviewed repairs loaded');
+    console.log('[GITPIT V1.1.1] reviewed repairs loaded');
     return true;
   }
 
