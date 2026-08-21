@@ -47,21 +47,21 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Validate JavaScript before build
+      - name: Validate v1.1.2 JavaScript before build
         run: |
           node --check server.js
           node --check server-bootstrap.js
           node --check prepare-client-v2.js
           node --check public/js/post-auth-repairs-v15.js
-          node --check public/js/v111-realtime-contact-fixes.js
           node --check public/js/v112-final-repair.js
-          node --check public/js/contact-native-v16.js
           node --check public/js/message-delivery-v4.js
-          node --check public/js/status-reliability-v6.js
+          node --check public/js/call-reliability-v5.js
           node --check public/js/screen-share-recipient-v9.js
-          echo "GitPit syntax validation passed"
+          grep -q 'versionCode 12' android/app/build.gradle
+          grep -q 'versionName "1.1.2"' android/app/build.gradle
+          echo "GitPit v1.1.2 validation passed"
 
-      - name: Prepare Consolidated Client
+      - name: Prepare Consolidated v1.1.2 Client
         run: npm run prepare-client
 
       - name: Sync Capacitor Android Project
@@ -79,19 +79,20 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.1.1.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.1.2.apk
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: GitPit-Android-v1.1.1
-          path: GitPit-v1.1.1.apk
+          name: GitPit-Android-v1.1.2
+          path: GitPit-v1.1.2.apk
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: "GitPit Android App APK (Latest)"
-          files: GitPit-v1.1.1.apk
+          body: "GitPit v1.1.2, versionCode 12, clean non-conflicting repair runtime."
+          files: GitPit-v1.1.2.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
