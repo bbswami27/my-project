@@ -2,6 +2,7 @@
 
 (function installResponsiveUiV14(){
   const STYLE_ID='gitpit-responsive-v14-style';
+  let scheduled=false;
 
   function ensureViewport(){
     let meta=document.querySelector('meta[name="viewport"]');
@@ -27,6 +28,9 @@
       .chat-input-area,.message-input-container{padding-bottom:max(8px,var(--gitpit-safe-bottom));}
       .sidebar-header,.chat-header{padding-top:max(8px,var(--gitpit-safe-top));}
       .bottom-nav,.mobile-bottom-nav{padding-bottom:max(6px,var(--gitpit-safe-bottom));}
+      #auth-overlay-modal.auth-overlay{z-index:50000!important;pointer-events:auto!important;touch-action:manipulation!important;}
+      #auth-overlay-modal.auth-overlay *{pointer-events:auto;}
+      #auth-overlay-modal .auth-card{position:relative;z-index:50001;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
       @media (max-width: 900px){
         .app-main{display:block!important;height:calc(var(--gitpit-vh)*100)!important;}
         .sidebar{width:100%!important;max-width:none!important;min-width:0!important;height:100%!important;}
@@ -50,20 +54,11 @@
         .chat-header-actions button,.three-dots-btn{min-width:38px!important;min-height:38px!important;}
         .message-bubble{max-width:86vw!important;}
         .modal,.modal-content,.settings-modal-content,.profile-modal-content,.new-chat-content,.compose-memo-content,.schedule-meeting-content{width:96vw!important;max-width:96vw!important;margin:2vh auto!important;border-radius:12px!important;}
+        #auth-overlay-modal.auth-overlay{padding:10px!important;align-items:flex-start!important;overflow-y:auto!important;}
+        #auth-overlay-modal .auth-card{margin:auto!important;width:min(100%,460px)!important;padding:22px 16px!important;}
       }
-      @media (max-width: 360px){
-        body{font-size:13px;}
-        .brand-logo-img{max-width:120px!important;}
-        .chat-filter-chip{padding:5px 8px!important;font-size:11px!important;}
-        .message-bubble{max-width:90vw!important;}
-      }
-      @media (orientation: landscape) and (max-height: 600px){
-        .news-flash-ticker{min-height:34px!important;}
-        .sidebar-header{padding-top:4px!important;padding-bottom:4px!important;}
-        .brand-logo-img{height:36px!important;}
-        .chat-header{min-height:50px!important;}
-        .modal,.modal-content,.settings-modal-content,.profile-modal-content,.new-chat-content,.compose-memo-content,.schedule-meeting-content{max-height:92vh!important;}
-      }
+      @media (max-width: 360px){body{font-size:13px}.brand-logo-img{max-width:120px!important}.chat-filter-chip{padding:5px 8px!important;font-size:11px!important}.message-bubble{max-width:90vw!important}}
+      @media (orientation: landscape) and (max-height: 600px){.news-flash-ticker{min-height:34px!important}.sidebar-header{padding-top:4px!important;padding-bottom:4px!important}.brand-logo-img{height:36px!important}.chat-header{min-height:50px!important}.modal,.modal-content,.settings-modal-content,.profile-modal-content,.new-chat-content,.compose-memo-content,.schedule-meeting-content{max-height:92vh!important}#auth-overlay-modal.auth-overlay{align-items:flex-start!important;overflow-y:auto!important}}
     `;
     document.head.appendChild(style);
   }
@@ -71,27 +66,31 @@
   function setViewportVars(){
     const h=(window.visualViewport && window.visualViewport.height) || window.innerHeight;
     document.documentElement.style.setProperty('--gitpit-vh', `${h*0.01}px`);
-    document.documentElement.dataset.orientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
-    document.documentElement.dataset.screenWidth = String(window.innerWidth);
+    const orientation=window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
+    if(document.documentElement.dataset.orientation!==orientation) document.documentElement.dataset.orientation=orientation;
+    const width=String(window.innerWidth);
+    if(document.documentElement.dataset.screenWidth!==width) document.documentElement.dataset.screenWidth=width;
   }
 
   function normalizePanels(){
     document.querySelectorAll('.modal.active,.settings-modal.active,.profile-modal.active,.new-chat-modal.active').forEach(el=>{
-      el.style.maxWidth='100vw';
-      el.style.maxHeight='calc(var(--gitpit-vh) * 100)';
+      if(el.style.maxWidth!=='100vw') el.style.maxWidth='100vw';
+      if(el.style.maxHeight!=='calc(var(--gitpit-vh) * 100)') el.style.maxHeight='calc(var(--gitpit-vh) * 100)';
     });
-    const activeChat = window.ChatEngine && window.ChatEngine.activeChatId;
     const panel=document.querySelector('.chat-panel');
-    if(panel) panel.classList.toggle('mobile-active', !!activeChat);
+    const active=!!(window.ChatEngine && window.ChatEngine.activeChatId);
+    if(panel && panel.classList.contains('mobile-active')!==active) panel.classList.toggle('mobile-active',active);
   }
 
   function apply(){ ensureViewport(); ensureStyles(); setViewportVars(); normalizePanels(); }
+  function schedule(){ if(scheduled) return; scheduled=true; requestAnimationFrame(()=>{scheduled=false;apply();}); }
   apply();
-  window.addEventListener('resize',apply,{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(apply,120),{passive:true});
-  if(window.visualViewport){ window.visualViewport.addEventListener('resize',apply,{passive:true}); }
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) apply(); });
-  const mo=new MutationObserver(()=>normalizePanels());
-  mo.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});
-  window.GitPitResponsiveUI={apply};
+  window.addEventListener('resize',schedule,{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(schedule,120),{passive:true});
+  if(window.visualViewport) window.visualViewport.addEventListener('resize',schedule,{passive:true});
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) schedule(); });
+  // IMPORTANT: observe DOM additions only. Watching class/style attributes caused recursive mutation loops and blocked login taps.
+  const mo=new MutationObserver(schedule);
+  mo.observe(document.documentElement,{subtree:true,childList:true});
+  window.GitPitResponsiveUI={apply:schedule};
 })();
