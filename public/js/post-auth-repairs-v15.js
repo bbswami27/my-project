@@ -1,37 +1,49 @@
 'use strict';
 
-// GitPit v1.0.9 contact-stage: load only the new native contacts repair after login.
+// GitPit v1.1.0 production loader: load only reviewed modules after successful login.
+// Old observer-heavy UI repair files are deliberately NOT loaded.
 (function installPostAuthRepairsV15(){
-  const MODULES=['contact-native-v16.js'];
-  let loading=false, loaded=false;
+  const MODULES=[
+    'contact-native-v16.js',
+    'message-delivery-v4.js',
+    'call-reliability-v5.js',
+    'status-reliability-v6.js',
+    'meeting-invites-v8.js',
+    'screen-share-recipient-v9.js',
+    'safe-ui-final-v20.js'
+  ];
+  let loading=false,loaded=false;
 
-  function isAuthenticated(){
+  function authenticated(){
     const am=window.AuthManager;
     const overlay=document.getElementById('auth-overlay-modal');
-    const overlayHidden=!overlay || overlay.style.display==='none' || !overlay.classList.contains('active');
-    const token=localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token');
-    return !!(am && am.currentUser && token && overlayHidden);
+    const hidden=!overlay||overlay.style.display==='none'||!overlay.classList.contains('active');
+    const token=localStorage.getItem('gitpit_auth_token')||localStorage.getItem('chatterpatter_token');
+    return !!(am?.currentUser&&token&&hidden);
   }
 
-  async function loadModules(){
-    if(loaded||loading||!isAuthenticated()) return false;
+  async function load(){
+    if(loaded||loading||!authenticated())return false;
     loading=true;
     for(const name of MODULES){
+      if(document.querySelector(`script[data-gitpit-repair="${name}"]`))continue;
       await new Promise(resolve=>{
         const s=document.createElement('script');
-        s.src=`js/${name}`; s.dataset.gitpitRepair=name;
-        s.onload=resolve; s.onerror=()=>{console.error('[CONTACT STAGE] failed',name);resolve();};
+        s.src=`js/${name}?v=110`;
+        s.dataset.gitpitRepair=name;
+        s.onload=()=>setTimeout(resolve,120);
+        s.onerror=()=>{console.error('[GITPIT V1.1.0] module load failed',name);resolve();};
         document.body.appendChild(s);
       });
     }
-    loaded=true; loading=false;
-    console.log('[CONTACT STAGE] native contacts v16 loaded');
+    loaded=true;loading=false;
+    console.log('[GITPIT V1.1.0] reviewed repairs loaded');
     return true;
   }
 
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(loadModules,500));
-  window.addEventListener('gitpit-authenticated',loadModules);
-  const timer=setInterval(()=>{ if(loaded){clearInterval(timer);return;} loadModules(); },1000);
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(load,600));
+  window.addEventListener('gitpit-authenticated',()=>setTimeout(load,250));
+  const timer=setInterval(()=>{if(loaded){clearInterval(timer);return;}load();},1200);
   setTimeout(()=>{if(!loaded)clearInterval(timer);},120000);
-  window.GitPitLoadPostAuthRepairs=loadModules;
+  window.GitPitLoadPostAuthRepairs=load;
 })();
