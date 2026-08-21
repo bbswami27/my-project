@@ -1,17 +1,16 @@
 'use strict';
 
-// GitPit v1.1.1 production loader: reviewed modules only, after successful login.
+// GitPit v1.1.2 production loader: reviewed modules only, after successful login.
 (function installPostAuthRepairsV15(){
   const MODULES=[
     'contact-native-v16.js',
     'message-delivery-v4.js',
     'call-reliability-v5.js',
     'status-reliability-v6.js',
-    'meeting-invites-v8.js',
     'screen-share-recipient-v9.js',
     'safe-ui-final-v20.js',
-    'v111-ui-data-fixes.js',
-    'v111-realtime-contact-fixes.js'
+    'v111-realtime-contact-fixes.js',
+    'v112-final-repair.js'
   ];
   let loading=false,loaded=false;
 
@@ -30,15 +29,15 @@
       if(document.querySelector(`script[data-gitpit-repair="${name}"]`))continue;
       await new Promise(resolve=>{
         const s=document.createElement('script');
-        s.src=`js/${name}?v=111b`;
+        s.src=`js/${name}?v=112a`;
         s.dataset.gitpitRepair=name;
         s.onload=()=>setTimeout(resolve,120);
-        s.onerror=()=>{console.error('[GITPIT V1.1.1] module load failed',name);resolve();};
+        s.onerror=()=>{console.error('[GITPIT V1.1.2] module load failed',name);resolve();};
         document.body.appendChild(s);
       });
     }
     loaded=true;loading=false;
-    console.log('[GITPIT V1.1.1] reviewed repairs loaded');
+    console.log('[GITPIT V1.1.2] consolidated repairs loaded');
     return true;
   }
 
