@@ -49,7 +49,7 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Prepare Complete v1.0.5 Client
+      - name: Prepare Login-Safe v1.0.6 Client
         run: npm run prepare-client
 
       - name: Sync Capacitor Android Project
@@ -67,13 +67,13 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.0.5.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.0.6.apk
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: GitPit-Android-v1.0.5
-          path: GitPit-v1.0.5.apk
+          name: GitPit-Android-v1.0.6
+          path: GitPit-v1.0.6.apk
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
@@ -81,15 +81,15 @@ jobs:
           tag_name: latest
           name: "GitPit Android App APK (Latest)"
           body: |
-            ### GitPit Android APK v1.0.5
-            Login-interaction hotfix on top of the complete 14-point repair release.
+            ### GitPit Android APK v1.0.6
+            Login-safe hotfix. Repair modules now load only after successful authentication so they cannot block login/OTP controls.
 
             - App Name: GitPit
             - Package: com.chatterpatter.app
-            - Build label: 1.0.5
-            - Version code: 5
-            - Fixes mobile UI observer loops that could block login taps.
-            - Keeps all v1.0.4 contacts, messaging, calls, status, meeting, screen-sharing, preferences, back navigation, security menu and responsive UI repairs.
-          files: GitPit-v1.0.5.apk
+            - Build label: 1.0.6
+            - Version code: 6
+            - Login and OTP screen isolated from repair observers/UI decorators.
+            - Loads contacts, messaging, calls, status, meeting, screen-sharing, preferences, back navigation, security menu and responsive repairs after authentication.
+          files: GitPit-v1.0.6.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
