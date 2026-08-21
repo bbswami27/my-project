@@ -14,7 +14,8 @@ function prepareHtml(filePath) {
   if (!fs.existsSync(filePath)) return;
   let html = fs.readFileSync(filePath, 'utf8');
 
-  // Remove all direct repair module tags so none can interfere with login/OTP UI.
+  // Keep all repair modules out of initial HTML. The bootstrap remains a safe no-op
+  // in v1.0.7 so the original application handles all navigation and taps.
   for (const name of repairNames) {
     if (name === 'post-auth-repairs-v15.js') continue;
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -26,15 +27,14 @@ function prepareHtml(filePath) {
   if (!html.includes('post-auth-repairs-v15.js')) html = html.replace('</body>', `  ${bootstrap}\n</body>`);
 
   fs.writeFileSync(filePath, html, 'utf8');
-  console.log(`[PREPARE V18] login isolated; post-auth repair bootstrap injected into ${filePath}`);
+  console.log(`[PREPARE V19] stable baseline prepared in ${filePath}`);
 }
 
 function bumpCache(filePath) {
   if (!fs.existsSync(filePath)) return;
   let sw = fs.readFileSync(filePath, 'utf8');
-  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.20';");
+  sw = sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/, "const CACHE_NAME = 'gitpit-web-v1.0.21';");
 
-  // Do not pre-cache direct repair modules on login; only bootstrap is needed initially.
   for (const name of repairNames) {
     if (name === 'post-auth-repairs-v15.js') continue;
     const asset = `./js/${name}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -60,4 +60,4 @@ prepareHtml(path.join(__dirname, 'public', 'index.html'));
 prepareHtml(path.join(__dirname, 'index.html'));
 bumpCache(path.join(__dirname, 'public', 'sw.js'));
 bumpCache(path.join(__dirname, 'sw.js'));
-console.log('[PREPARE V18] GitPit v1.0.6 login-safe client preparation complete');
+console.log('[PREPARE V19] GitPit v1.0.7 stable baseline complete');
