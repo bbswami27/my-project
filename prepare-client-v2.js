@@ -24,6 +24,13 @@ function bumpCache(filePath) {
   fs.writeFileSync(filePath, sw, 'utf8');
 }
 
+const publicIdentity = path.join(__dirname, 'public', 'js', 'identity-routing-v2.js');
+const rootIdentity = path.join(__dirname, 'js', 'identity-routing-v2.js');
+if (fs.existsSync(publicIdentity)) {
+  fs.mkdirSync(path.dirname(rootIdentity), { recursive: true });
+  fs.copyFileSync(publicIdentity, rootIdentity);
+}
+
 injectScript(path.join(__dirname, 'public', 'index.html'));
 injectScript(path.join(__dirname, 'index.html'));
 bumpCache(path.join(__dirname, 'public', 'sw.js'));
