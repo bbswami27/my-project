@@ -4,7 +4,7 @@
   "description": "GitPit - Social Chatting App with WhatsApp-style interface, smart AI assistant, video calls & screen sharing",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server-bootstrap.js"
   },
   "engines": {
     "node": ">=22.0.0"
