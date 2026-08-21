@@ -4,7 +4,8 @@
   "description": "GitPit - Social Chatting App with WhatsApp-style interface, smart AI assistant, video calls & screen sharing",
   "main": "server.js",
   "scripts": {
-    "start": "node server-bootstrap.js"
+    "prepare-client": "node prepare-client-v2.js",
+    "start": "node prepare-client-v2.js && node server-bootstrap.js"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@capacitor/android": "^8.5.0",
     "@capacitor/cli": "^8.5.0",
-    "@capacitor/core": "^8.5.0"
+    "@capacitor/core": "^8.5.0",
+    "@capacitor-community/contacts": "^8.0.0"
   }
 }
