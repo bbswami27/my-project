@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: gitpit-core-v2-test
+    runtime: node
+    plan: free
+    region: singapore
+    branch: gitpit-core-v2
+    buildCommand: npm install
+    startCommand: npm run start:core-v2
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SMS_PROVIDER
+        value: fast2sms
+      - key: DATABASE_URL
+        sync: false
+      - key: FAST2SMS_API_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_REGION
+        value: auto
