@@ -8,6 +8,7 @@ const UserStore = require('./auth/user-store');
 const OtpStore = require('./auth/otp-store');
 const createAuthMiddleware = require('./auth/middleware');
 const createAuthRoutes = require('./auth/routes');
+const createContactRoutes = require('./contacts/routes');
 const smsService = require('../services/smsService');
 
 async function createCoreV2Server() {
@@ -42,6 +43,7 @@ async function createCoreV2Server() {
   };
 
   app.use('/api/v2/auth', createAuthRoutes({ userStore, sessionStore, otpStore, sendOtp, requireAuth }));
+  app.use('/api/v2/contacts', createContactRoutes({ pool, requireAuth }));
 
   // Explicitly do not expose email/password, guest, social or invite-code login in Core v2.
   app.use((req,res,next) => {
