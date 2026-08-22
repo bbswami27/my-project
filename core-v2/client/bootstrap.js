@@ -14,7 +14,9 @@
     const chatUI=new window.CoreV2ChatUI(chatService);
     const callService=new window.CoreV2CallService(chatService);callService.bindSocket(chatService.socket);
     const callUI=new window.CoreV2CallUI(callService);
-    window.GitPitCoreCallChatIntegration?.install?.({chatUI,callService,callUI});
+
+    window.gp2ChatService=chatService;window.gp2ChatUI=chatUI;window.gp2CallService=callService;window.gp2CallUI=callUI;
+    window.GitPitCoreCallChatIntegration?.install?.();
 
     const statusService=new window.CoreV2StatusService({apiBase,getToken:()=>auth.token(),mediaService});
     const statusUI=new window.CoreV2StatusUI({statusService,mediaService,currentUserId:user.id});
