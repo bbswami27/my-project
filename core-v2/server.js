@@ -2,6 +2,8 @@
 
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const SessionStore = require('./auth/session-store');
 const UserStore = require('./auth/user-store');
@@ -9,6 +11,9 @@ const OtpStore = require('./auth/otp-store');
 const createAuthMiddleware = require('./auth/middleware');
 const createAuthRoutes = require('./auth/routes');
 const createContactRoutes = require('./contacts/routes');
+const MessageStore = require('./messages/store');
+const createMessageRoutes = require('./messages/routes');
+const installRealtime = require('./messages/realtime');
 const smsService = require('../services/smsService');
 
 async function createCoreV2Server() {
@@ -23,43 +28,45 @@ async function createCoreV2Server() {
   const userStore = new UserStore(pool);
   const sessionStore = new SessionStore(pool);
   const otpStore = new OtpStore(pool);
+  const messageStore = new MessageStore(pool);
   await userStore.ensureSchema();
   await sessionStore.ensureSchema();
   await otpStore.ensureSchema();
+  await messageStore.ensureSchema();
 
   const requireAuth = createAuthMiddleware({ sessionStore, userStore });
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
 
-  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL' }));
+  const httpServer = http.createServer(app);
+  const io = new Server(httpServer, { cors:{ origin:'*', methods:['GET','POST'] }, transports:['websocket','polling'] });
+  const realtime = installRealtime(io,{sessionStore,userStore,messageStore});
+
+  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO' }));
 
   const sendOtp = async (phone, otp) => {
     const result = await smsService.sendOtp(phone, otp);
-    if (!result?.success) {
-      throw new Error(result?.error || result?.reason || 'SMS delivery failed');
-    }
+    if (!result?.success) throw new Error(result?.error || result?.reason || 'SMS delivery failed');
     return result;
   };
 
   app.use('/api/v2/auth', createAuthRoutes({ userStore, sessionStore, otpStore, sendOtp, requireAuth }));
   app.use('/api/v2/contacts', createContactRoutes({ pool, requireAuth }));
+  app.use('/api/v2/messages', createMessageRoutes({ messageStore, userStore, requireAuth, emitToUser:realtime.emitToUser }));
 
-  // Explicitly do not expose email/password, guest, social or invite-code login in Core v2.
   app.use((req,res,next) => {
-    if (/^\/api\/v2\/auth\/(email|google|guest|invite|password)/i.test(req.path)) {
-      return res.status(404).json({ error:'GitPit Core v2 supports Mobile Number + OTP login only.' });
-    }
+    if (/^\/api\/v2\/auth\/(email|google|guest|invite|password)/i.test(req.path)) return res.status(404).json({ error:'GitPit Core v2 supports Mobile Number + OTP login only.' });
     next();
   });
 
-  return { app, pool, userStore, sessionStore, otpStore };
+  return { app, httpServer, io, pool, userStore, sessionStore, otpStore, messageStore };
 }
 
 if (require.main === module) {
-  createCoreV2Server().then(({ app }) => {
+  createCoreV2Server().then(({ httpServer }) => {
     const port = Number(process.env.PORT || 3002);
-    app.listen(port, () => console.log(`[CORE V2] GitPit listening on ${port}`));
+    httpServer.listen(port, () => console.log(`[CORE V2] GitPit listening on ${port}`));
   }).catch(err => {
     console.error('[CORE V2] Startup failed', err);
     process.exit(1);
