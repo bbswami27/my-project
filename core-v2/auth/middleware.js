@@ -16,15 +16,12 @@ function createAuthMiddleware({ sessionStore, userStore }) {
       if (!token) return res.status(401).json({ success: false, error: 'Authentication required.' });
 
       const session = await sessionStore.validate(token);
-      if (!session) {
-        return res.status(401).json({ success: false, error: 'Session expired or invalid. Please log in again.' });
-      }
+      if (!session) return res.status(401).json({ success: false, error: 'Session expired or invalid. Please log in again.' });
 
       const user = await userStore.getById(session.userId);
-      if (!user) {
-        return res.status(401).json({ success: false, error: 'Account not found.' });
-      }
+      if (!user) return res.status(401).json({ success: false, error: 'Account not found.' });
 
+      req.auth = { token, session, user };
       req.authToken = token;
       req.session = session;
       req.currentUser = user;
