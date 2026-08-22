@@ -14,6 +14,8 @@ const createContactRoutes = require('./contacts/routes');
 const MessageStore = require('./messages/store');
 const createMessageRoutes = require('./messages/routes');
 const installRealtime = require('./messages/realtime');
+const CoreMediaStorage = require('./media/storage');
+const createMediaRoutes = require('./media/routes');
 const smsService = require('../services/smsService');
 
 async function createCoreV2Server() {
@@ -29,6 +31,7 @@ async function createCoreV2Server() {
   const sessionStore = new SessionStore(pool);
   const otpStore = new OtpStore(pool);
   const messageStore = new MessageStore(pool);
+  const mediaStorage = new CoreMediaStorage();
   await userStore.ensureSchema();
   await sessionStore.ensureSchema();
   await otpStore.ensureSchema();
@@ -43,7 +46,7 @@ async function createCoreV2Server() {
   const io = new Server(httpServer, { cors:{ origin:'*', methods:['GET','POST'] }, transports:['websocket','polling'] });
   const realtime = installRealtime(io,{sessionStore,userStore,messageStore});
 
-  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO' }));
+  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO', media:'R2/S3 signed URLs' }));
 
   const sendOtp = async (phone, otp) => {
     const result = await smsService.sendOtp(phone, otp);
@@ -53,6 +56,7 @@ async function createCoreV2Server() {
 
   app.use('/api/v2/auth', createAuthRoutes({ userStore, sessionStore, otpStore, sendOtp, requireAuth }));
   app.use('/api/v2/contacts', createContactRoutes({ pool, requireAuth }));
+  app.use('/api/v2/media', createMediaRoutes({ requireAuth, storage:mediaStorage }));
   app.use('/api/v2/messages', createMessageRoutes({ messageStore, userStore, requireAuth, emitToUser:realtime.emitToUser }));
 
   app.use((req,res,next) => {
@@ -60,7 +64,7 @@ async function createCoreV2Server() {
     next();
   });
 
-  return { app, httpServer, io, pool, userStore, sessionStore, otpStore, messageStore };
+  return { app, httpServer, io, pool, userStore, sessionStore, otpStore, messageStore, mediaStorage };
 }
 
 if (require.main === module) {
