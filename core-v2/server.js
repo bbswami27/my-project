@@ -14,6 +14,7 @@ const createContactRoutes = require('./contacts/routes');
 const MessageStore = require('./messages/store');
 const createMessageRoutes = require('./messages/routes');
 const installRealtime = require('./messages/realtime');
+const installCallRealtime = require('./calls/realtime');
 const CoreMediaStorage = require('./media/storage');
 const createMediaRoutes = require('./media/routes');
 const smsService = require('../services/smsService');
@@ -45,8 +46,9 @@ async function createCoreV2Server() {
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, { cors:{ origin:'*', methods:['GET','POST'] }, transports:['websocket','polling'] });
   const realtime = installRealtime(io,{sessionStore,userStore,messageStore});
+  const calls = installCallRealtime(io,{userStore});
 
-  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO', media:'R2/S3 signed URLs' }));
+  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO', media:'R2/S3 signed URLs', calls:'WebRTC authenticated signalling' }));
 
   const sendOtp = async (phone, otp) => {
     const result = await smsService.sendOtp(phone, otp);
@@ -64,7 +66,7 @@ async function createCoreV2Server() {
     next();
   });
 
-  return { app, httpServer, io, pool, userStore, sessionStore, otpStore, messageStore, mediaStorage };
+  return { app, httpServer, io, pool, userStore, sessionStore, otpStore, messageStore, mediaStorage, calls };
 }
 
 if (require.main === module) {
