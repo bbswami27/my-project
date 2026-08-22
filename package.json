@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "prepare-client": "node prepare-client-v2.js",
-    "start": "node prepare-client-v2.js && node server-bootstrap.js"
+    "start": "node prepare-client-v2.js && node server-bootstrap.js",
+    "start:core-v2": "node core-v2/server.js"
   },
   "engines": {
     "node": ">=22.0.0"
