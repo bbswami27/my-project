@@ -5,6 +5,7 @@
     const chatService=window.gp2ChatService||window.coreV2ChatService||window.chatService;
     if(!chatService||!window.CoreV2CallService||!window.CoreV2CallUI)return false;
     if(!window.gp2CallService){window.gp2CallService=new window.CoreV2CallService(chatService);window.gp2CallService.bindSocket(chatService.socket);window.gp2CallUI=new window.CoreV2CallUI(window.gp2CallService);}
+    if(window.__gp2CallChatObserver)return true;
     const observer=new MutationObserver(()=>{
       const screen=document.getElementById('gp2-chat-screen');if(!screen||screen.dataset.callsReady==='1')return;
       const header=screen.querySelector('header');if(!header)return;
@@ -16,5 +17,6 @@
     });
     observer.observe(document.body,{childList:true,subtree:true});window.__gp2CallChatObserver=observer;return true;
   }
+  window.GitPitCoreCallChatIntegration={install};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(install,0));else setTimeout(install,0);
 })();
