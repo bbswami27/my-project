@@ -3,6 +3,7 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const SessionStore = require('./auth/session-store');
@@ -44,12 +45,17 @@ async function createCoreV2Server() {
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
 
+  const clientDir = path.join(__dirname,'client');
+  app.use('/core-v2', express.static(clientDir, { index:false, maxAge:'5m' }));
+  app.get('/core-v2', (req,res) => res.sendFile(path.join(clientDir,'index.html')));
+  app.get('/core-v2/', (req,res) => res.sendFile(path.join(clientDir,'index.html')));
+
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, { cors:{ origin:'*', methods:['GET','POST'] }, transports:['websocket','polling'] });
   const realtime = installRealtime(io,{sessionStore,userStore,messageStore});
   const calls = installCallRealtime(io,{userStore});
 
-  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO', media:'R2/S3 signed URLs', calls:'WebRTC authenticated signalling', status:'24-hour durable status' }));
+  app.get('/health', (req,res) => res.json({ ok:true, app:'GitPit Core v2', auth:'mobile-otp-only', database:'PostgreSQL', realtime:'Socket.IO', media:'R2/S3 signed URLs', calls:'WebRTC authenticated signalling', status:'24-hour durable status', client:'/core-v2/' }));
 
   const sendOtp = async (phone, otp) => {
     const result = await smsService.sendOtp(phone, otp);
