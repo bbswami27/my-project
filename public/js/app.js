@@ -13,11 +13,8 @@ class ChatterApp {
 
   init() {
     // Load Settings
-    const savedTheme = localStorage.getItem('chatterpatter_theme');
-    if (savedTheme === 'light') {
-      this.isDarkTheme = false;
-      document.body.classList.add('light-theme');
-    }
+    const savedTheme = localStorage.getItem('chatterpatter_theme') || 'dark';
+    this.applyAppTheme(savedTheme);
 
     const savedFlash = localStorage.getItem('chatterpatter_news_flash');
     if (savedFlash === 'false') {
@@ -588,6 +585,14 @@ class ChatterApp {
   }
 
   switchTab(tabName) {
+    // Bottom navigation must always return to the left/home panel on phones.
+    // Without this reset the selected tab changes behind the still-open chat,
+    // which makes the upper filters look unresponsive.
+    const sidebar = document.getElementById('sidebar-container');
+    const chatMain = document.getElementById('chat-main-area');
+    if (sidebar) sidebar.classList.remove('mobile-hidden');
+    if (chatMain) chatMain.classList.remove('mobile-active');
+
     this.currentTab = tabName;
     sessionStorage.setItem('gitpit_active_tab', tabName);
 
@@ -621,6 +626,13 @@ class ChatterApp {
     }
     if (tabName === 'news' && window.NewsService) {
       window.NewsService.fetchArticles(window.NewsService.activeCategory || 'All');
+    }
+    if (tabName === 'status' && window.StoriesManager) {
+      window.StoriesManager.renderStatusTab();
+    }
+    if (tabName === 'calls' && window.CallManager) {
+      window.CallManager.renderCallsTab?.();
+      window.CallManager.renderCallLogs?.();
     }
     if (tabName === 'settings') {
       this.renderSettingsTab();
@@ -1037,13 +1049,22 @@ class ChatterApp {
   }
 
   toggleTheme() {
-    this.isDarkTheme = !this.isDarkTheme;
-    document.body.classList.toggle('light-theme', !this.isDarkTheme);
+    this.applyAppTheme(this.isDarkTheme ? 'light' : 'dark');
+  }
+
+  applyAppTheme(themeName = 'dark') {
+    const allowed = ['dark','light','midnight','ocean','emerald','violet','rose','sunset','graphite','amoled'];
+    const theme = allowed.includes(themeName) ? themeName : 'dark';
+    this.isDarkTheme = theme !== 'light';
+    document.body.classList.toggle('light-theme', theme === 'light');
+    document.body.setAttribute('data-app-theme', theme);
     const themeBtn = document.getElementById('btn-toggle-theme');
     if (themeBtn) {
       themeBtn.textContent = this.isDarkTheme ? '☀️' : '🌙';
     }
-    localStorage.setItem('chatterpatter_theme', this.isDarkTheme ? 'dark' : 'light');
+    const picker = document.getElementById('app-theme-picker');
+    if (picker && picker.value !== theme) picker.value = theme;
+    localStorage.setItem('chatterpatter_theme', theme);
   }
 
   toggleNewsFlash(isOn) {

@@ -28,33 +28,18 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Universal Static File Serving (Root + Public + JS + CSS)
-app.use(express.static(__dirname));
+// Serve only the prepared client. Never expose backend source/configuration.
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
-app.use('/js', express.static(__dirname));
-app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
-app.use('/css', express.static(__dirname));
 app.use('/media', express.static(path.join(__dirname, 'data', 'media')));
 
 // Database Engine (PostgreSQL / JSON Fallback)
 const db = require('./database');
 
-// Clean & Reset to exactly 4 Demo Users
-app.post('/api/admin/clean-users', async (req, res) => {
-  try {
-    const users = await db.cleanupAndResetFourDemoUsers();
-    res.json({
-      success: true,
-      message: 'Database purged of extra records and seeded with exactly 4 verified demo users.',
-      count: users.length,
-      users: users.map(u => ({ id: u.id, name: u.name, phone: u.phone, username: u.username }))
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+// Destructive demo reset is intentionally disabled in production.
+app.post('/api/admin/clean-users', (_req, res) => {
+  res.status(410).json({ success: false, error: 'Demo-user reset is disabled.' });
 });
 
 app.get('/api/admin/users-status', (req, res) => {

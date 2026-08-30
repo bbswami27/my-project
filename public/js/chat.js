@@ -17,10 +17,10 @@ class ChatEngine {
       try {
         this.chats = JSON.parse(savedChats);
       } catch (e) {
-        this.chats = [...window.MOCK_DATA.initialChats];
+        this.chats = [];
       }
     } else {
-      this.chats = [...window.MOCK_DATA.initialChats];
+      this.chats = [];
     }
 
     // Clean any old dummy test users (Alex, Priya, Rahul, Sarah) from saved chats
@@ -80,31 +80,9 @@ class ChatEngine {
       }
     }
 
-    // Load any previously cached synced contacts immediately into chats on init
-    // Strict Official Demo Whitelist (AI + Aarav + Priya + Rohan + Ananya)
-    const allowedOfficialIds = new Set(['chat_ai', 'user_9811122334', 'user_9822233445', 'user_9833344556', 'user_9844455667']);
-
-    this.chats = (this.chats || []).filter(c => {
-      if (allowedOfficialIds.has(c.id)) return true;
-      const cName = (c.name || '').toLowerCase();
-      if (cName.includes('aarav') || cName.includes('priya') || cName.includes('rohan') || cName.includes('ananya') || c.isAi) {
-        return true;
-      }
-      return false;
-    });
-
-    // Clear old localStorage clutter from previous test sessions
-    localStorage.removeItem('gitpit_synced_contacts');
-    localStorage.removeItem('gitpit_phonebook');
-
-    // Ensure all 4 official demo users from initialChats are present
-    if (window.MOCK_DATA && Array.isArray(window.MOCK_DATA.initialChats)) {
-      window.MOCK_DATA.initialChats.forEach(initC => {
-        if (!this.chats.some(c => c.id === initC.id)) {
-          this.chats.push(JSON.parse(JSON.stringify(initC)));
-        }
-      });
-    }
+    // Never seed demo people or erase the phonebook in production. Device
+    // contacts are synced separately and only registered GitPit members become
+    // chat targets.
     this.saveChats();
 
     this.bindEvents();
@@ -117,7 +95,7 @@ class ChatEngine {
     localStorage.removeItem('gitpit_chats');
     localStorage.removeItem('gitpit_synced_contacts');
     localStorage.removeItem('gitpit_phonebook');
-    this.chats = (window.MOCK_DATA && window.MOCK_DATA.initialChats) ? JSON.parse(JSON.stringify(window.MOCK_DATA.initialChats)) : [];
+    this.chats = this.chats.filter(c => c.id === 'chat_ai' || c.isAi);
     this.saveChats();
     this.renderChatList();
     alert('✓ Chat list cleaned and reset successfully!');
@@ -208,44 +186,17 @@ class ChatEngine {
         });
       }
 
-      if (!Array.isArray(users) || users.length === 0) {
-        users = (window.MOCK_DATA && window.MOCK_DATA.demoUsers) ? [...window.MOCK_DATA.demoUsers] : [];
-      } else if (window.MOCK_DATA && window.MOCK_DATA.demoUsers) {
-        window.MOCK_DATA.demoUsers.forEach(du => {
-          if (!users.some(u => u.id === du.id || (u.phone && du.phone && u.phone.replace(/\D/g, '').includes(du.phone.replace(/\D/g, '').slice(-10))))) {
-            users.push(du);
-          }
-        });
-      }
+      if (!Array.isArray(users)) users = [];
       if (Array.isArray(users)) {
-        // Enforce 4 demo users whitelist
-        const obsoleteIds = ['user_9855566778', 'user_9866677889', 'user_9877788990', 'user_9888899001', 'user_9899900112', 'user_9800011223'];
-        const obsoleteNames = ['vikram', 'neha', 'aditya', 'sneha', 'karan', 'meera', 'user 9952'];
-
-        users = users.filter(u => {
-          const uName = (u.name || '').toLowerCase();
-          if (obsoleteIds.includes(u.id) || obsoleteNames.some(on => uName.includes(on))) {
-            return false;
-          }
-          return true;
-        });
-
         this.registeredUsers = users;
         users.forEach(u => {
           if (currentUserId && u.id === currentUserId) return;
           const cleanPhone = (u.phone || '').replace(/\D/g, '').slice(-10);
           if (cleanMyPhone && cleanPhone && cleanPhone === cleanMyPhone) return;
 
-          // Check if already in local phonebook or create entry
+          // Use the device's saved name when present. Never turn every server
+          // account into a phonebook contact automatically.
           let savedBookEntry = phonebook[u.id] || (cleanPhone ? phonebook[cleanPhone] : null);
-          if (!savedBookEntry && u.name) {
-            // Auto-recognize into phonebook
-            phonebook[u.id] = { savedName: u.name, phone: u.phone || '', contactId: u.id };
-            if (cleanPhone) {
-              phonebook[cleanPhone] = { savedName: u.name, phone: u.phone || '', contactId: u.id };
-            }
-            savedBookEntry = phonebook[u.id];
-          }
 
           const existing = this.chats.find(c => c.id === u.id || (cleanPhone && c.phone && c.phone.replace(/\D/g, '').includes(cleanPhone)));
           if (existing) {
@@ -258,8 +209,6 @@ class ChatEngine {
           }
         });
 
-        // Persist auto-synced phonebook
-        localStorage.setItem('gitpit_phonebook', JSON.stringify(phonebook));
       }
 
       this.saveChats();
@@ -328,6 +277,21 @@ class ChatEngine {
     const voiceBtn = document.getElementById('btn-voice-record-trigger');
     if (voiceBtn) {
       voiceBtn.addEventListener('click', () => this.toggleVoiceRecording());
+    }
+
+    // Bind attachment controls in JavaScript instead of relying on inline
+    // handlers, which are unreliable in some Android WebView configurations.
+    const attachBtn = document.getElementById('btn-chat-attach');
+    if (attachBtn) {
+      attachBtn.addEventListener('click', (e) => this.toggleAttachMenu(e));
+    }
+    const attachPhotoBtn = document.getElementById('opt-attach-photo');
+    if (attachPhotoBtn) {
+      attachPhotoBtn.addEventListener('click', () => this.openPhotoAttachmentPicker());
+    }
+    const attachDocBtn = document.getElementById('opt-attach-doc');
+    if (attachDocBtn) {
+      attachDocBtn.addEventListener('click', () => this.openDocAttachmentPicker());
     }
 
     // Cancel Voice Recording

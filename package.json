@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "prepare-client": "node prepare-client-v2.js",
+    "test:ui": "node test_ui_regressions.js",
     "start": "node prepare-client-v2.js && node server-bootstrap.js"
   },
   "engines": {

@@ -38,6 +38,17 @@ class StoriesManager {
     if (tapRight) tapRight.addEventListener('click', () => this.nextStoryItem());
     if (closeBtn) closeBtn.addEventListener('click', () => this.closeStoryViewer());
 
+    const mediaButton = document.getElementById('btn-status-attach-media');
+    const mediaInput = document.getElementById('status-media-file-input');
+    const clearMediaButton = document.getElementById('btn-status-clear-media');
+    const captionInput = document.getElementById('new-status-text');
+    const publishButton = document.getElementById('btn-publish-status');
+    if (mediaButton && mediaInput) mediaButton.addEventListener('click', () => mediaInput.click());
+    if (mediaInput) mediaInput.addEventListener('change', (event) => this.handleMediaSelect(event));
+    if (clearMediaButton) clearMediaButton.addEventListener('click', () => this.clearSelectedMedia());
+    if (captionInput) captionInput.addEventListener('input', () => this.handleCaptionInput(captionInput.value));
+    if (publishButton) publishButton.addEventListener('click', () => this.publishNewStatus());
+
     // Status Color Picker for Text Status
     const colorDots = document.querySelectorAll('.color-dot');
     colorDots.forEach(dot => {
@@ -211,10 +222,10 @@ class StoriesManager {
   }
 
   readFileAsDataURL(file) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => resolve('');
+      reader.onerror = () => reject(new Error(`Could not read ${file.name || 'selected file'}`));
       reader.readAsDataURL(file);
     });
   }

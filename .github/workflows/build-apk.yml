@@ -47,7 +47,7 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Validate v1.1.2 JavaScript before build
+      - name: Validate v1.1.3 JavaScript before build
         run: |
           node --check server.js
           node --check server-bootstrap.js
@@ -56,12 +56,14 @@ jobs:
           node --check public/js/v112-final-repair.js
           node --check public/js/message-delivery-v4.js
           node --check public/js/call-reliability-v5.js
+          node --check public/js/status-reliability-v6.js
           node --check public/js/screen-share-recipient-v9.js
-          grep -q 'versionCode 12' android/app/build.gradle
-          grep -q 'versionName "1.1.2"' android/app/build.gradle
-          echo "GitPit v1.1.2 validation passed"
+          npm run test:ui
+          grep -q 'versionCode 13' android/app/build.gradle
+          grep -q 'versionName "1.1.3"' android/app/build.gradle
+          echo "GitPit v1.1.3 validation passed"
 
-      - name: Prepare Consolidated v1.1.2 Client
+      - name: Prepare Consolidated v1.1.3 Client
         run: npm run prepare-client
 
       - name: Sync Capacitor Android Project
@@ -79,20 +81,20 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.1.2.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk GitPit-v1.1.3.apk
 
       - name: Upload APK to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: GitPit-Android-v1.1.2
-          path: GitPit-v1.1.2.apk
+          name: GitPit-Android-v1.1.3
+          path: GitPit-v1.1.3.apk
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: "GitPit Android App APK (Latest)"
-          body: "GitPit v1.1.2, versionCode 12, clean non-conflicting repair runtime."
-          files: GitPit-v1.1.2.apk
+          body: "GitPit v1.1.3, versionCode 13, contact persistence, navigation, status and attachment reliability fixes."
+          files: GitPit-v1.1.3.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

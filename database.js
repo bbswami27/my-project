@@ -81,7 +81,6 @@ const DEFAULT_DUMMY_USERS = [
 class Database {
   constructor() {
     this.data = this.loadJson();
-    this.seedDummyUsers();
     this.pgPool = null;
     this.isPostgres = false;
     this.initPostgres();
@@ -469,19 +468,8 @@ class Database {
   }
 
   async seedPgFromLocalJson(client) {
-    try {
-      for (const u of DEFAULT_DUMMY_USERS) {
-        const normalizedPhone = this.normalizePhone(u.phone);
-        await client.query(
-          `INSERT INTO cp_users (id, name, username, phone, phone_verified, phone_verified_at, email, avatar, bio, status, privacy)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (id) DO NOTHING`,
-          [u.id, u.name, u.username, normalizedPhone, true, new Date().toISOString(), u.email || '', u.avatar || '', u.bio || '', u.status || '', JSON.stringify({})]
-        ).catch(() => {});
-      }
-    } catch (e) {
-      console.warn('[DATABASE SEED WARNING]', e.message);
-    }
+    // Production databases are never populated with demo users.
+    return client;
   }
 
   // ================= LOCAL JSON ENGINE (DEV / FALLBACK) =================

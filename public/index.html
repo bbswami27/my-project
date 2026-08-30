@@ -73,7 +73,7 @@
             <button class="three-dots-btn" id="btn-main-three-dots" title="More Options">⋮</button>
 
             <!-- 3-Dots Vertical Dropdown Menu (Drill-Down Navigation System) -->
-            <div class="three-dots-dropdown" id="main-three-dots-dropdown">
+            <div class="three-dots-dropdown ungrouped-menu" id="main-three-dots-dropdown">
               
               <!-- Root View -->
               <div class="dropdown-panel active" id="menu-panel-root">
@@ -484,7 +484,7 @@
             <!-- Left Actions: Emojis, Attachments, and Dedicated Active Voice Recording Tab -->
             <div class="chat-bar-actions-left">
               <button class="input-action-btn" id="btn-toggle-emoji" title="Emojis & GIFs" onclick="window.ChatEngine && window.ChatEngine.toggleEmojiPicker(event)">😊</button>
-              <button class="input-action-btn" id="btn-chat-attach" title="Attachment Options" onclick="window.ChatEngine && window.ChatEngine.toggleAttachMenu(event)">📎</button>
+              <button class="input-action-btn" id="btn-chat-attach" type="button" title="Attachment Options">📎</button>
               <button class="input-action-btn voice-tab-btn" id="btn-direct-record-voice" title="Record Voice Note" onclick="window.ChatEngine && window.ChatEngine.toggleVoiceRecording()">🎙️</button>
             </div>
             
@@ -493,11 +493,11 @@
 
             <!-- Attachment Menu Dropdown -->
             <div class="attachment-menu-popup" id="chat-attach-popup">
-              <button class="attachment-option-btn" id="opt-attach-doc" onclick="window.ChatEngine && window.ChatEngine.openDocAttachmentPicker()">
+              <button class="attachment-option-btn" id="opt-attach-doc" type="button">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);">📄</div>
                 <span>Document / File</span>
               </button>
-              <button class="attachment-option-btn" id="opt-attach-photo" onclick="window.ChatEngine && window.ChatEngine.openPhotoAttachmentPicker()">
+              <button class="attachment-option-btn" id="opt-attach-photo" type="button">
                 <div class="attachment-icon-circle" style="background: linear-gradient(135deg, #ec4899 0%, #be185d 100%);">📷</div>
                 <span>Photos & Media</span>
               </button>
@@ -1013,11 +1013,11 @@
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
           <div>
             <div style="font-weight: 600; color: var(--text-primary); font-size: 15px;">App Theme</div>
-            <div style="font-size: 12.5px; color: var(--text-secondary);">Switch between WhatsApp Dark and Clean Light</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary);">Choose from 10 modern themes</div>
           </div>
-          <button class="auth-submit-btn" style="width: auto; padding: 6px 14px; font-size: 13px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color);" onclick="window.ChatterApp.toggleTheme()">
-            Switch Theme 🌓
-          </button>
+          <select id="app-theme-picker" class="auth-input" style="width:auto;min-width:145px;padding:7px 9px" onchange="window.ChatterApp && window.ChatterApp.applyAppTheme(this.value)">
+            <option value="dark">Dark</option><option value="light">Light</option><option value="midnight">Midnight</option><option value="ocean">Ocean</option><option value="emerald">Emerald</option><option value="violet">Violet</option><option value="rose">Rose</option><option value="sunset">Sunset</option><option value="graphite">Graphite</option><option value="amoled">AMOLED</option>
+          </select>
         </div>
 
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border-subtle);">
@@ -1290,12 +1290,12 @@
 
         <!-- Attach Multiple Photos or Videos Button -->
         <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-          <input type="file" id="status-media-file-input" accept="image/*,video/*" multiple style="display: none;" onchange="window.StoriesManager && window.StoriesManager.handleMediaSelect(event)">
-          <button type="button" class="auth-submit-btn" style="flex: 1; background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="document.getElementById('status-media-file-input').click()">
+          <input type="file" id="status-media-file-input" accept="image/*,video/*" multiple style="display: none;">
+          <button type="button" id="btn-status-attach-media" class="auth-submit-btn" style="flex: 1; background: var(--bg-card); color: var(--brand-green); border: 1.5px solid var(--brand-green); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;">
             <span>📷 / 🎥</span>
             <span id="btn-status-attach-text">Attach Photos or Videos (Multiple)</span>
           </button>
-          <button type="button" id="btn-status-clear-media" class="auth-submit-btn" style="width: auto; background: var(--bg-input-field); color: var(--brand-danger); border: 1px solid var(--border-color); font-size: 12px; display: none;" onclick="window.StoriesManager && window.StoriesManager.clearSelectedMedia()">
+          <button type="button" id="btn-status-clear-media" class="auth-submit-btn" style="width: auto; background: var(--bg-input-field); color: var(--brand-danger); border: 1px solid var(--border-color); font-size: 12px; display: none;">
             ✕ Clear All
           </button>
         </div>
@@ -1314,10 +1314,10 @@
 
         <div class="form-group" style="margin-bottom: 12px;">
           <label class="form-label" id="status-caption-label" style="font-size: 11.5px; margin-bottom: 4px;">Caption / Write Matter on Photo</label>
-          <input type="text" id="new-status-text" class="auth-input" placeholder="Write caption or matter on this photo..." style="padding: 9px 12px; font-size: 13.5px;" oninput="window.StoriesManager && window.StoriesManager.handleCaptionInput(this.value)">
+          <input type="text" id="new-status-text" class="auth-input" placeholder="Write caption or matter on this photo..." style="padding: 9px 12px; font-size: 13.5px;">
         </div>
 
-        <button class="auth-submit-btn" id="btn-publish-status" style="background: var(--brand-green); font-weight: 700;" onclick="window.StoriesManager && window.StoriesManager.publishNewStatus()">
+        <button type="button" class="auth-submit-btn" id="btn-publish-status" style="background: var(--brand-green); font-weight: 700;">
           Post Status ✨
         </button>
       </div>
@@ -2482,5 +2482,6 @@
       });
     }
   </script>
+  <script src="js/post-auth-repairs-v15.js?v=113"></script>
 </body>
 </html>

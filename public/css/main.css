@@ -377,11 +377,32 @@ body {
   min-width: 210px;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   z-index: 9999;
   display: none;
   flex-direction: column;
   padding: 6px 0;
   animation: dropdownFadeIn 0.18s ease-out;
+}
+
+body[data-app-theme="midnight"] { --bg-app:#070b1a;--bg-sidebar:#10172b;--bg-header:#17213b;--bg-chat:#080e22;--bg-input:#17213b;--bg-input-field:#202c4a;--bg-modal:#151e35;--bg-card:#121a30;--bg-bubble-in:#1a2540;--bg-bubble-out:#2149a6;--brand-green:#60a5fa;--border-color:#233052; }
+body[data-app-theme="ocean"] { --bg-app:#061a22;--bg-sidebar:#092631;--bg-header:#0d3542;--bg-chat:#061d27;--bg-input:#0d3542;--bg-input-field:#164956;--bg-modal:#0c303b;--bg-card:#0b2a35;--bg-bubble-in:#113d49;--bg-bubble-out:#087d8c;--brand-green:#22d3ee;--border-color:#164653; }
+body[data-app-theme="emerald"] { --bg-app:#061b14;--bg-sidebar:#0b271d;--bg-header:#10382a;--bg-chat:#071f17;--bg-input:#10382a;--bg-input-field:#174b39;--bg-modal:#0e3226;--bg-card:#0c2b21;--bg-bubble-in:#144233;--bg-bubble-out:#08745a;--brand-green:#34d399;--border-color:#174735; }
+body[data-app-theme="violet"] { --bg-app:#160b24;--bg-sidebar:#211132;--bg-header:#321b49;--bg-chat:#180d28;--bg-input:#321b49;--bg-input-field:#452560;--bg-modal:#2a173e;--bg-card:#251437;--bg-bubble-in:#3a2052;--bg-bubble-out:#713bb1;--brand-green:#c084fc;--border-color:#43255d; }
+body[data-app-theme="rose"] { --bg-app:#210c16;--bg-sidebar:#30111f;--bg-header:#461a2d;--bg-chat:#240e19;--bg-input:#461a2d;--bg-input-field:#5c243a;--bg-modal:#3a1726;--bg-card:#341421;--bg-bubble-in:#4e2031;--bg-bubble-out:#a32f60;--brand-green:#fb7185;--border-color:#592238; }
+body[data-app-theme="sunset"] { --bg-app:#22130b;--bg-sidebar:#301b10;--bg-header:#472819;--bg-chat:#25150c;--bg-input:#472819;--bg-input-field:#603823;--bg-modal:#3b2215;--bg-card:#341d12;--bg-bubble-in:#502f1e;--bg-bubble-out:#a54d18;--brand-green:#fb923c;--border-color:#59331f; }
+body[data-app-theme="graphite"] { --bg-app:#151515;--bg-sidebar:#1d1d1f;--bg-header:#29292c;--bg-chat:#18181a;--bg-input:#29292c;--bg-input-field:#36363a;--bg-modal:#252528;--bg-card:#212124;--bg-bubble-in:#303034;--bg-bubble-out:#45576b;--brand-green:#a3b7cc;--border-color:#39393d; }
+body[data-app-theme="amoled"] { --bg-app:#000;--bg-sidebar:#050505;--bg-header:#0b0b0b;--bg-chat:#000;--bg-input:#0b0b0b;--bg-input-field:#151515;--bg-modal:#090909;--bg-card:#070707;--bg-bubble-in:#151515;--bg-bubble-out:#005c4b;--border-color:#202020; }
+
+/* One continuous, independently scrollable menu (no drill-down groups). */
+.three-dots-dropdown.ungrouped-menu .dropdown-panel {
+  display: block;
+}
+.three-dots-dropdown.ungrouped-menu .dropdown-drilldown-item,
+.three-dots-dropdown.ungrouped-menu .dropdown-panel-header {
+  display: none;
 }
 
 .three-dots-dropdown.active {

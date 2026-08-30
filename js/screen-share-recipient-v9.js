@@ -1,0 +1,20 @@
+'use strict';
+
+// GitPit v1.1.2: recipient-selected screen share, only after accepted video peer is ready.
+(function installScreenShareRecipientV9(){
+  const norm=v=>String(v||'').replace(/\D/g,'').slice(-10);
+  function contacts(){
+    const me=window.AuthManager?.currentUser,pb=window.AuthManager?.getPhonebook?.()||{},users=window.ChatEngine?.registeredUsers||[],out=[];
+    users.forEach(u=>{if(!u?.id||String(u.id)===String(me?.id))return;const p=norm(u.phone),saved=pb[u.id]||(p?pb[p]:null);out.push({id:u.id,name:saved?.savedName||saved?.name||u.name||u.phone||'GitPit Contact',phone:u.phone||'',avatar:saved?.photoUri||saved?.avatar||u.avatar||'assets/logo-icon.svg'});});return out;
+  }
+  function ensureModal(){let m=document.getElementById('screen-share-recipient-modal');if(m)return m;m=document.createElement('div');m.id='screen-share-recipient-modal';m.className='modal-overlay';m.innerHTML=`<div class="modal-card" style="max-width:420px;width:92%;max-height:82vh;display:flex;flex-direction:column"><div style="display:flex;align-items:center;gap:8px"><button id="screen-share-recipient-back" type="button">‹</button><div style="flex:1"><h3 style="margin:0">🖥️ Share Screen With</h3><small>Select a registered GitPit contact.</small></div><button id="screen-share-recipient-close" type="button">✕</button></div><input id="screen-share-recipient-search" class="form-input" type="search" placeholder="Search contact..." style="margin:10px 0"><div id="screen-share-recipient-list" style="overflow:auto;display:grid;gap:6px"></div></div>`;document.body.appendChild(m);const close=()=>m.classList.remove('active');m.querySelector('#screen-share-recipient-close').onclick=close;m.querySelector('#screen-share-recipient-back').onclick=close;m.querySelector('#screen-share-recipient-search').oninput=e=>render(e.target.value);return m;}
+  function render(q=''){const list=document.getElementById('screen-share-recipient-list');if(!list)return;const f=String(q).toLowerCase(),cs=contacts().filter(c=>!f||c.name.toLowerCase().includes(f)||c.phone.includes(f));list.innerHTML=cs.length?cs.map(c=>`<button type="button" class="screen-share-contact" data-id="${c.id}" style="padding:10px;text-align:left"><b>${c.name}</b><br><small>${c.phone}</small></button>`).join(''):'<div style="padding:20px;text-align:center">No registered GitPit contacts found.</div>';list.querySelectorAll('.screen-share-contact').forEach(b=>b.onclick=()=>{const c=cs.find(x=>String(x.id)===String(b.dataset.id));if(c)start(c);});}
+  function peerReady(cm){const pc=cm?.peerConnection||cm?.pc||cm?.activePeerConnection;return !!(cm?.activeCall&&(cm.activeCall.status==='accepted'||cm.activeCall.accepted||cm.callAccepted||pc?.connectionState==='connected'||pc?.iceConnectionState==='connected'));}
+  function beginShare(cm){if(!cm||cm.isScreenSharing||typeof cm.toggleScreenShare!=='function')return false;try{const r=cm.toggleScreenShare();if(r?.catch)r.catch(e=>console.error('[SCREEN SHARE V112]',e));return true;}catch(e){console.error('[SCREEN SHARE V112]',e);return false;}}
+  function start(c){document.getElementById('screen-share-recipient-modal')?.classList.remove('active');const cm=window.CallManager;if(!cm?.startCall){alert('Calling service is not ready yet.');return;}window.__gitpitScreenShareRecipient=c;window.__gitpitPendingScreenShare=true;cm.startCall(c.name,c.avatar,'video',c.id);
+    let n=0;const t=setInterval(()=>{n++;const x=window.CallManager;if(peerReady(x)&&beginShare(x)){window.__gitpitPendingScreenShare=false;clearInterval(t);}else if(n>120){clearInterval(t);window.__gitpitPendingScreenShare=false;alert('Screen sharing could not start because the video call was not connected.');}},500);
+  }
+  function open(){const m=ensureModal();m.querySelector('#screen-share-recipient-search').value='';render();m.classList.add('active');}
+  function patch(){if(!window.ChatterApp)return false;window.ChatterApp.startScreenSharing=open;window.ChatterApp.__screenShareRecipientV112=true;return true;}
+  let n=0,t=setInterval(()=>{n++;if(patch()||n>80)clearInterval(t);},250);
+})();

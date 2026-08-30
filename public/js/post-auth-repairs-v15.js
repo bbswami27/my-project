@@ -1,10 +1,11 @@
 'use strict';
 
-// GitPit v1.1.2 production loader: ONLY non-conflicting modules after login.
+// GitPit v1.1.3 production loader: only non-conflicting modules after login.
 (function installPostAuthRepairsV15(){
   const MODULES=[
     'message-delivery-v4.js',
     'call-reliability-v5.js',
+    'status-reliability-v6.js',
     'screen-share-recipient-v9.js',
     'v112-final-repair.js'
   ];
@@ -25,16 +26,16 @@
       if(document.querySelector(`script[data-gitpit-repair="${name}"]`))continue;
       await new Promise(resolve=>{
         const s=document.createElement('script');
-        s.src=`js/${name}?v=112c`;
+        s.src=`js/${name}?v=113`;
         s.dataset.gitpitRepair=name;
         s.onload=()=>setTimeout(resolve,120);
-        s.onerror=()=>{console.error('[GITPIT V1.1.2] module load failed',name);resolve();};
+        s.onerror=()=>{console.error('[GITPIT V1.1.3] module load failed',name);resolve();};
         document.body.appendChild(s);
       });
     }
     loaded=true;loading=false;
-    document.documentElement.dataset.gitpitBuild='1.1.2-c';
-    console.log('[GITPIT V1.1.2-c] clean repairs loaded');
+    document.documentElement.dataset.gitpitBuild='1.1.3';
+    console.log('[GITPIT V1.1.3] clean repairs loaded');
     return true;
   }
 
