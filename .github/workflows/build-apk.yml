@@ -66,7 +66,7 @@ jobs:
           node --check public/js/screen-share-recipient-v9.js
           npm run test:ui
           grep -q 'versionCode 17' android/app/build.gradle
-          grep -q 'versionName "1.1.5"' android/app/build.gradle
+          grep -q 'versionName "1.1.7"' android/app/build.gradle
           echo "GitPit v1.1.7 validation passed"
 
       - name: Prepare Consolidated v1.1.7 Client
