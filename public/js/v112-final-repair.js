@@ -66,7 +66,7 @@
       const d=await r.json();
       const arr=Array.isArray(d)?d:(d.users||[]);
       const mine=me()?.id;
-      const out=arr.filter(u=>u&&u.id&&u.id!==mine&&u.phone).map(u=>({...u,isRegistered:true,is_registered:true}));
+      const out=arr.filter(u=>u&&u.id&&u.id!==mine&&(u.phoneVerified||u.emailVerified)).map(u=>({...u,isRegistered:true,is_registered:true}));
       localStorage.setItem('gitpit_all_registered_users',JSON.stringify(out));
       return out;
     }catch(e){
@@ -95,7 +95,7 @@
 
   async function syncDirectory(){
     const [registered,phonebook]=await Promise.all([getRegisteredUsers(),readPhonebookOrdered()]);
-    const byPhone=new Map(registered.map(u=>[d10(u.phone),u]));
+    const byPhone=new Map(registered.filter(u=>d10(u.phone)).map(u=>[d10(u.phone),u]));
     const ordered=phonebook.map(x=>{const u=byPhone.get(d10(x.phone));return u?{...u,...x,name:x.savedName||u.name,isRegistered:true,registeredUserId:u.id}:{...x,isRegistered:false};});
     localStorage.setItem('gitpit_device_contacts_ordered',JSON.stringify(ordered));
     localStorage.setItem('gitpit_registered_directory',JSON.stringify(registered));
@@ -106,8 +106,8 @@
   function ensureChat(u){
     const ce=window.ChatEngine;if(!ce||!u)return null;
     ce.chats=ce.chats||[];
-    let chat=ce.chats.find(c=>c.id===u.id||d10(c.phone)===d10(u.phone));
-    if(!chat){chat={id:u.id,name:u.savedName||u.name||u.phone,phone:u.phone,avatar:u.avatar||'assets/logo-icon.svg',bio:u.bio||'GitPit Member',online:!!u.online,isRegistered:true,is_registered:true,isGroup:false,isAi:false,unreadCount:0,messages:[]};ce.chats.unshift(chat);ce.saveChats?.();}
+    let chat=ce.chats.find(c=>c.id===u.id||(d10(u.phone)&&d10(c.phone)===d10(u.phone)));
+    if(!chat){chat={id:u.id,name:u.savedName||u.name||u.phone,phone:u.phone||'',email:u.email||'',avatar:u.avatar||'assets/logo-icon.svg',bio:u.bio||'GitPit Member',online:!!u.online,isRegistered:true,is_registered:true,isGroup:false,isAi:false,unreadCount:0,messages:[]};ce.chats.unshift(chat);ce.saveChats?.();}
     return chat;
   }
 
@@ -115,15 +115,15 @@
     const {registered,ordered}=await syncDirectory();
     document.querySelectorAll('.gitpit-v112-newchat').forEach(n=>n.remove());
     const wrap=document.createElement('div');wrap.className='gitpit-v112-newchat';wrap.style.cssText='position:fixed;inset:0;z-index:70000;background:var(--bg-app,#fff);color:var(--text-primary,#111);display:flex;flex-direction:column';
-    wrap.innerHTML=`<div style="display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid #ccc"><button data-back>‹</button><b style="flex:1">Start New Chat</b><button data-new>+ Add Contact</button></div><div style="display:flex;gap:8px;padding:10px"><button data-tab="registered">GitPit Registered</button><button data-tab="phonebook">Phonebook</button></div><input data-search placeholder="Search name or number" style="margin:0 10px 10px;padding:10px"><div data-list style="overflow:auto;flex:1"></div>`;
+    wrap.innerHTML=`<div style="display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid #ccc"><button data-back>‹</button><b style="flex:1">Start New Chat</b><button data-new>+ Add Contact</button></div><div style="display:flex;gap:8px;padding:10px"><button data-tab="registered">GitPit Registered</button><button data-tab="phonebook">Phonebook</button></div><input data-search placeholder="Search name, number or email" style="margin:0 10px 10px;padding:10px"><div data-list style="overflow:auto;flex:1"></div>`;
     document.body.appendChild(wrap);
     let tab='registered';
     const render=()=>{
       const q=(wrap.querySelector('[data-search]').value||'').toLowerCase();
-      const rows=(tab==='registered'?registered:ordered).filter(x=>!q||String(x.savedName||x.name||'').toLowerCase().includes(q)||String(x.phone||'').includes(q));
+      const rows=(tab==='registered'?registered:ordered).filter(x=>!q||String(x.savedName||x.name||'').toLowerCase().includes(q)||String(x.phone||'').includes(q)||String(x.email||'').toLowerCase().includes(q));
       const list=wrap.querySelector('[data-list]');list.innerHTML='';
-      rows.forEach(x=>{const b=document.createElement('button');b.type='button';b.style.cssText='width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;border-bottom:1px solid #ddd;background:transparent;color:inherit;text-align:left';b.innerHTML=`<span style="flex:1"><b>${esc(x.savedName||x.name||x.phone)}</b><small style="display:block">${esc(x.phone||'')} ${x.isRegistered?'• Registered':'• Not on GitPit'}</small></span>${x.isRegistered?'Chat':''}`;b.onclick=()=>{if(!x.isRegistered){alert('This contact is not registered on GitPit.');return;}const u=registered.find(r=>r.id===x.id||d10(r.phone)===d10(x.phone))||x;const c=ensureChat(u);wrap.remove();c&&window.ChatEngine?.openChat?.(c.id);};list.appendChild(b);});
-      if(!rows.length)list.innerHTML='<div style="padding:24px;text-align:center">No contacts found. Check Contacts permission.</div>';
+      rows.forEach(x=>{const b=document.createElement('button');b.type='button';b.style.cssText='width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;border-bottom:1px solid #ddd;background:transparent;color:inherit;text-align:left';b.innerHTML=`<span style="flex:1"><b>${esc(x.savedName||x.name||x.phone)}</b><small style="display:block">${esc(x.phone||x.email||'Email-verified account')} ${x.isRegistered?'• Registered':'• Not on GitPit'}</small></span>${x.isRegistered?'Chat':''}`;b.onclick=()=>{if(!x.isRegistered){alert('This contact is not registered on GitPit.');return;}const u=registered.find(r=>r.id===x.id||(d10(x.phone)&&d10(r.phone)===d10(x.phone)))||x;const c=ensureChat(u);wrap.remove();c&&window.ChatEngine?.openChat?.(c.id);};list.appendChild(b);});
+      if(!rows.length)list.innerHTML='<div style="padding:24px;text-align:center">No contacts found. Refresh and verify both GitPit accounts.</div>';
     };
     wrap.querySelector('[data-back]').onclick=()=>wrap.remove();
     wrap.querySelector('[data-search]').oninput=render;
