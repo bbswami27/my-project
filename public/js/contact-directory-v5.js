@@ -136,8 +136,8 @@
         if (Array.isArray(users)) {
           users.forEach((user) => {
             const d = digits10(user?.phone);
-            if (!user || !d) return;
-            if (!matched.some((m) => m.id === user.id || digits10(m.phone) === d)) matched.push(user);
+            if (!user?.id || !(user.phoneVerified || user.emailVerified)) return;
+            if (!matched.some((m) => m.id === user.id)) matched.push(user);
           });
         }
       }
@@ -157,20 +157,24 @@
     // Device contacts first so device-saved names always win.
     Object.values(deviceDirectory).forEach((entry) => {
       const d = digits10(entry.phone);
-      if (d && d !== myPhone) appDirectory.set(d, { ...entry });
+      if (d && d !== myPhone) appDirectory.set(`phone:${d}`, { ...entry });
     });
 
     (registeredUsers || []).forEach((user) => {
       if (!user || user.id === myId) return;
       const d = digits10(user.phone);
-      if (!d || d === myPhone) return;
-      const saved = appDirectory.get(d);
+      if (d && d === myPhone) return;
+      if (!d && !user.emailVerified) return;
+      const key = user.id ? `user:${user.id}` : `phone:${d}`;
+      const saved = d ? appDirectory.get(`phone:${d}`) : null;
       const merged = {
         id: user.id || saved?.id || `user_${d}`,
         registeredUserId: user.id || '',
         name: saved?.savedName || saved?.name || user.name || `+91 ${d}`,
         savedName: saved?.savedName || saved?.name || user.name || `+91 ${d}`,
         phone: normalizePhone(user.phone || saved?.phone),
+        email: user.email || '',
+        emailVerified: !!user.emailVerified,
         originalPhone: saved?.originalPhone || saved?.phone || normalizePhone(user.phone),
         avatar: saved?.avatar || user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name || d)}`,
         bio: user.bio || 'GitPit Member',
@@ -180,7 +184,8 @@
         isRegistered: true,
         is_registered: true
       };
-      appDirectory.set(d, merged);
+      if (d) appDirectory.delete(`phone:${d}`);
+      appDirectory.set(key, merged);
     });
 
     const list = Array.from(appDirectory.values()).sort((a, b) => {
@@ -191,8 +196,7 @@
     const phonebook = {};
     list.forEach((entry) => {
       const d = digits10(entry.phone || entry.originalPhone);
-      if (!d) return;
-      phonebook[d] = { ...entry };
+      if (d) phonebook[d] = { ...entry };
       if (entry.registeredUserId) phonebook[entry.registeredUserId] = { ...entry };
     });
 
@@ -217,6 +221,7 @@
         id,
         name: entry.savedName || entry.name || entry.phone,
         phone: entry.phone || entry.originalPhone || '',
+        email: entry.email || '',
         avatar: entry.avatar || 'assets/logo-icon.svg',
         bio: entry.bio || (entry.isRegistered ? 'GitPit Member' : 'Phone Contact'),
         online: !!entry.online,
@@ -282,11 +287,13 @@
     const byPhone = new Map();
     device.forEach((entry) => {
       const d = digits10(entry.phone || entry.originalPhone);
-      if (d) byPhone.set(d, { ...entry });
+      if (d) byPhone.set(`phone:${d}`, { ...entry });
     });
     registered.forEach((entry) => {
       const d = digits10(entry.phone || entry.originalPhone);
-      if (d) byPhone.set(d, { ...byPhone.get(d), ...entry, isRegistered: true });
+      if (d) byPhone.delete(`phone:${d}`);
+      const key = entry.registeredUserId || entry.id;
+      if (key) byPhone.set(`user:${key}`, { ...entry, isRegistered: true });
     });
     const directory = Array.from(byPhone.values()).sort((a, b) => {
       if (!!a.isRegistered !== !!b.isRegistered) return a.isRegistered ? -1 : 1;
@@ -295,7 +302,7 @@
 
     container.innerHTML = '';
     if (!directory.length) {
-      container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted,#8696a0)">No contacts found. Tap Refresh Contacts after allowing phonebook access.</div>';
+      container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted,#8696a0)">No registered contacts found. Tap Refresh Contacts.</div>';
     } else {
       directory.forEach((entry) => {
         const row = document.createElement('button');
@@ -303,7 +310,7 @@
         row.className = 'gitpit-directory-contact-row';
         row.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:11px 12px;border:0;border-bottom:1px solid rgba(127,127,127,.16);background:transparent;color:inherit;text-align:left;cursor:pointer;';
         const label = entry.isRegistered ? 'GitPit • Registered' : 'Phone contact • Invite';
-        row.innerHTML = `<img src="${entry.avatar || 'assets/logo-icon.svg'}" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover"><span style="min-width:0;flex:1"><strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(entry.savedName || entry.name || entry.phone || 'Contact')}</strong><small style="display:block;opacity:.72;margin-top:2px">${escapeHtml(entry.phone || '')} • ${label}</small></span>${entry.isRegistered ? '<span title="Registered" style="font-size:18px">✓</span>' : '<span style="font-size:12px;opacity:.75">INVITE</span>'}`;
+        row.innerHTML = `<img src="${entry.avatar || 'assets/logo-icon.svg'}" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover"><span style="min-width:0;flex:1"><strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(entry.savedName || entry.name || entry.phone || 'Contact')}</strong><small style="display:block;opacity:.72;margin-top:2px">${escapeHtml(entry.phone || entry.email || '')} • ${label}</small></span>${entry.isRegistered ? '<span title="Registered" style="font-size:18px">✓</span>' : '<span style="font-size:12px;opacity:.75">INVITE</span>'}`;
         row.addEventListener('click', () => startChat(entry));
         container.appendChild(row);
       });
@@ -366,6 +373,8 @@
         id: entry.registeredUserId || entry.id,
         name: entry.savedName || entry.name,
         phone: entry.phone,
+        email: entry.email || '',
+        emailVerified: !!entry.emailVerified,
         avatar: entry.avatar,
         bio: entry.bio,
         online: !!entry.online,
@@ -411,6 +420,8 @@
           id: entry.registeredUserId || entry.id,
           name: entry.savedName || entry.name,
           phone: entry.phone,
+          email: entry.email || '',
+          emailVerified: !!entry.emailVerified,
           avatar: entry.avatar,
           bio: entry.bio,
           online: !!entry.online,
