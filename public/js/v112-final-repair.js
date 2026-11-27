@@ -134,7 +134,7 @@
       const user=(d10(x.phone)&&byPhone.get(d10(x.phone)))||
         (x.emails||[]).map(e=>byEmail.get(e)).find(Boolean);
       const canonical=user?byId.get(user.id)||user:null;
-      return canonical?{...x,...canonical,phone:canonical.phoneVerified?canonical.phone:'',email:x.email||'',savedName:x.savedName,name:x.savedName||canonical.name,isRegistered:true,registeredUserId:canonical.id}
+      return canonical?{...x,...canonical,phone:canonical.phoneVerified?canonical.phone:'',displayPhone:x.phone||'',email:x.email||'',savedName:x.savedName,name:x.savedName||canonical.name,isRegistered:true,registeredUserId:canonical.id}
         :{...x,isRegistered:false};
     });
     localStorage.setItem('gitpit_device_contacts_ordered',JSON.stringify(ordered));
@@ -148,7 +148,7 @@
     const ce=window.ChatEngine;if(!ce||!u)return null;
     ce.chats=ce.chats||[];
     let chat=ce.chats.find(c=>c.id===u.id||(d10(u.phone)&&d10(c.phone)===d10(u.phone)));
-    if(!chat){chat={id:u.id,name:u.savedName||u.name||u.phone,phone:u.phone||'',email:u.email||'',avatar:u.avatar||'assets/logo-icon.svg',bio:u.bio||'GitPit Member',online:!!u.online,isRegistered:true,is_registered:true,isGroup:false,isAi:false,unreadCount:0,messages:[]};ce.chats.unshift(chat);ce.saveChats?.();}
+    if(!chat){chat={id:u.id,name:u.savedName||u.name||u.phone,phone:u.phone||'',displayPhone:u.displayPhone||'',email:u.email||'',avatar:u.avatar||'assets/logo-icon.svg',bio:u.bio||'GitPit Member',online:!!u.online,isRegistered:true,is_registered:true,isGroup:false,isAi:false,unreadCount:0,messages:[]};ce.chats.unshift(chat);ce.saveChats?.();}
     return chat;
   }
 
@@ -162,9 +162,9 @@
     let tab='registered';
     const render=()=>{
       const q=(wrap.querySelector('[data-search]').value||'').toLowerCase();
-      const rows=(tab==='registered'?registered:ordered).filter(x=>!q||String(x.savedName||x.name||'').toLowerCase().includes(q)||String(x.phone||'').includes(q)||String(x.email||'').toLowerCase().includes(q));
+      const rows=(tab==='registered'?registered:ordered).filter(x=>!q||String(x.savedName||x.name||'').toLowerCase().includes(q)||String(x.phone||x.displayPhone||'').includes(q)||String(x.email||'').toLowerCase().includes(q));
       const list=wrap.querySelector('[data-list]');list.innerHTML='';
-      rows.forEach(x=>{const b=document.createElement('button');b.type='button';b.style.cssText='width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;border-bottom:1px solid #ddd;background:transparent;color:inherit;text-align:left';b.innerHTML=`<span style="flex:1"><b>${esc(x.savedName||x.name||x.phone)}</b><small style="display:block">${esc(x.phone||x.email||'Email-verified account')} ${x.isRegistered?'• Registered':'• Not on GitPit'}</small></span>${x.isRegistered?'Chat':''}`;b.onclick=()=>{if(!x.isRegistered){alert('This contact is not registered on GitPit.');return;}const u=registered.find(r=>r.id===(x.registeredUserId||x.id))||x;const c=ensureChat(u);wrap.remove();c&&window.ChatEngine?.openChat?.(c.id);};list.appendChild(b);});
+      rows.forEach(x=>{const b=document.createElement('button');b.type='button';b.style.cssText='width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;border-bottom:1px solid #ddd;background:transparent;color:inherit;text-align:left';b.innerHTML=`<span style="flex:1"><b>${esc(x.savedName||x.name||x.phone)}</b><small style="display:block">${esc(x.displayPhone||x.phone||x.email||'Email-verified account')} ${x.isRegistered?'• Registered':'• Not on GitPit'}</small></span>${x.isRegistered?'Chat':''}`;b.onclick=()=>{if(!x.isRegistered){alert('This contact is not registered on GitPit.');return;}const u=registered.find(r=>r.id===(x.registeredUserId||x.id))||x;const c=ensureChat(u);wrap.remove();c&&window.ChatEngine?.openChat?.(c.id);};list.appendChild(b);});
       if(!rows.length)list.innerHTML='<div style="padding:24px;text-align:center">No contacts found. Refresh and verify both GitPit accounts.</div>';
     };
     wrap.querySelector('[data-back]').onclick=()=>wrap.remove();
