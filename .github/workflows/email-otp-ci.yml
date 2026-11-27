@@ -22,6 +22,7 @@ jobs:
           node --check database.js
           node --check server-bootstrap.js
           node --check services/emailOtp.js
+          node -e "new Function(require('fs').readFileSync('google-apps-script/GitPitEmailOtp.gs','utf8'))"
           node --check public/js/auth.js
           node --check js/auth.js
           node --check prepare-client-v2.js
@@ -39,5 +40,6 @@ jobs:
           }
           if (!server.includes('emailVerified') || !ui.includes('email-code-input')) throw new Error('Email login UI or session support missing');
           if (!ui.includes('auth-panel-email')) throw new Error('Email panel missing');
+          if (!email.includes('GMAIL_SCRIPT_URL') || !email.includes('GMAIL_SCRIPT_SECRET') || !email.includes('gmail_script')) throw new Error('Missing HTTPS Gmail relay integration');
           console.log('Email OTP integration checks passed.');
           NODE
