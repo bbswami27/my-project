@@ -77,7 +77,20 @@
   async function readPhonebookOrdered(){
     const p=window.Capacitor?.Plugins?.Contacts;
     if(!p)return [];
-    try{await p.requestPermissions?.();}catch(_){}
+    // Background refresh must never raise a permission dialog.
+    // The Android Contacts plugin returns both phone and email-only records.
+    try {
+      const permissions = await p.checkPermissions?.();
+      const status = permissions?.contacts || permissions?.readContacts;
+      if(status && status!=='granted' && status!=='limited') {
+        if(!interactive) return [];
+        const approved = await p.requestPermissions?.();
+        const granted = approved?.contacts || approved?.readContacts;
+        if(granted && granted!=='granted' && granted!=='limited') return [];
+      } else if(!status && !interactive) {
+        return [];
+      }
+    } catch(_) { if(!interactive) return []; }
     try{
       let r;try{r=await p.getContacts({projection:{name:true,phones:true,emails:true}});}catch(_){r=await p.getContacts();}
       const list=Array.isArray(r?.contacts)?r.contacts:[];
@@ -101,7 +114,7 @@
   }
 
   async function syncDirectory(){
-    const [registered,phonebook]=await Promise.all([getRegisteredUsers(),readPhonebookOrdered()]);
+    const [registered,phonebook]=await Promise.all([getRegisteredUsers(),readPhonebookOrdered(false)]);
     let matched=[];
     if(phonebook.length){
       try{
@@ -140,6 +153,7 @@
   }
 
   async function openNewChat(){
+    // Explicit New Chat is a user-initiated contact-read action.
     const {registered,ordered}=await syncDirectory();
     document.querySelectorAll('.gitpit-v112-newchat').forEach(n=>n.remove());
     const wrap=document.createElement('div');wrap.className='gitpit-v112-newchat';wrap.style.cssText='position:fixed;inset:0;z-index:70000;background:var(--bg-app,#fff);color:var(--text-primary,#111);display:flex;flex-direction:column';
