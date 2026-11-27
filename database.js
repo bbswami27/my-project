@@ -857,7 +857,7 @@ class Database {
 
   getAllUsers(requestingUserId = null) {
     return (this.data.users || [])
-      .filter(u => u && u.phoneVerified && u.phone)
+      .filter(u => u && (u.phoneVerified || u.emailVerified))
       .map(u => {
         const isSelf = requestingUserId && u.id === requestingUserId;
         const priv = u.privacy || {};
