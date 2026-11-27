@@ -104,7 +104,7 @@
         const emails=[];
         [contact?.emails,contact?.emailAddresses].forEach(a=>Array.isArray(a)&&a.forEach(x=>emails.push(typeof x==='string'?x:(x?.address||x?.email||x?.value||''))));
         if(contact?.email)emails.push(contact.email);
-        const cleanEmails=[...new Set(emails.map(e=>String(e||'').trim().toLowerCase()).filter(e=>/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(e)))];
+        const cleanEmails=[...new Set(emails.map(e=>String(e||'').trim().toLowerCase()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))];
         const phones=[...new Set(numbers.map(norm).filter(Boolean))];
         if(phones.length)phones.forEach(phone=>out.push({order:index,name,savedName:name,phone,email:cleanEmails[0]||'',emails:cleanEmails}));
         else if(cleanEmails.length)out.push({order:index,name,savedName:name,phone:'',email:cleanEmails[0],emails:cleanEmails});
