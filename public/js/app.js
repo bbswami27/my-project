@@ -199,6 +199,14 @@ class ChatterApp {
         // ==========================================
         const handleIncomingCall = (callData) => {
           if (!callData) return;
+          // The server emits both legacy hyphen and underscore call events.
+          // One offer must create only one incoming prompt/peer connection.
+          const incomingKey = String(callData.fromSocketId||callData.callerSocketId||callData.callerId||'')+
+            ':'+String(callData.timestamp||callData.callId||'')+
+            ':'+String(callData.signalData?.sdp||'').slice(0,96);
+          if(this.__lastIncomingKey===incomingKey && Date.now()-Number(this.__lastIncomingAt||0)<15000)return;
+          this.__lastIncomingKey=incomingKey;
+          this.__lastIncomingAt=Date.now();
           const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
           const currentUserId = currentUser ? currentUser.id : null;
           const currentPhone = currentUser ? currentUser.phone : null;
