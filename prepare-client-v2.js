@@ -27,13 +27,13 @@ function prepareHtml(filePath){
   html=html.replace(/\s*<script src="js\/post-auth-repairs-v15\.js(?:\?[^\"]*)?"><\/script>\s*/g,'\n');
   html=html.replace('</body>',`  ${bootstrap}\n</body>`);
   fs.writeFileSync(filePath,html,'utf8');
-  console.log(`[PREPARE] v1.1.3 clean client prepared in ${filePath}`);
+  console.log(`[PREPARE] v1.1.5 email OTP client prepared in ${filePath}`);
 }
 
 function bumpCache(filePath){
   if(!fs.existsSync(filePath))return;
   let sw=fs.readFileSync(filePath,'utf8');
-  sw=sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/,"const CACHE_NAME = 'gitpit-web-v1.1.4-repair';");
+  sw=sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/,"const CACHE_NAME = 'gitpit-web-v1.1.5-email';");
   for(const name of repairNames){
     const escaped=`./js/${name}`.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     sw=sw.replace(new RegExp(`\\s*'${escaped}',?`,'g'),'');
@@ -51,4 +51,4 @@ prepareHtml(path.join(__dirname,'public','index.html'));
 prepareHtml(path.join(__dirname,'index.html'));
 bumpCache(path.join(__dirname,'public','sw.js'));
 bumpCache(path.join(__dirname,'sw.js'));
-console.log('[PREPARE] GitPit v1.1.3 clean packaging complete');
+console.log('[PREPARE] GitPit v1.1.5 email OTP packaging complete');
