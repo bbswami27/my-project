@@ -45,13 +45,13 @@ class AuthManager {
     this.bindEvents();
 
     // Verify session on server if token and user exist
-    if (this.authToken && this.currentUser && this.currentUser.phoneVerified) {
+    if (this.authToken && this.currentUser && (this.currentUser.phoneVerified || this.currentUser.emailVerified)) {
       try {
         const resp = await fetch(`${window.API_BASE}/api/auth/session`, {
           headers: { 'Authorization': `Bearer ${this.authToken}` }
         });
         const data = await resp.json();
-        if (data.success && data.user && data.user.phoneVerified) {
+        if (data.success && data.user && (data.user.phoneVerified || data.user.emailVerified)) {
           this.currentUser = data.user;
           localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
           localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
@@ -64,7 +64,7 @@ class AuthManager {
         }
       } catch (err) {
         console.warn('[AUTH] Offline or network check, validating cached session');
-        if (this.currentUser && this.currentUser.phoneVerified && this.authToken) {
+        if (this.currentUser && (this.currentUser.phoneVerified || this.currentUser.emailVerified) && this.authToken) {
           this.renderAuthenticatedUI();
           return;
         }
@@ -110,10 +110,10 @@ class AuthManager {
       window.ChatEngine.syncRegisteredUsers();
     }
 
-    // Auto-sync native device contacts in background
-    setTimeout(() => {
-      this.grantContactsAndSync();
-    }, 1000);
+    // Phonebook matching is optional; email-only users use the registered user directory.
+    if (this.currentUser.phoneVerified && this.currentUser.phone) {
+      setTimeout(() => this.grantContactsAndSync(), 1000);
+    }
   }
 
   bindEvents() {
@@ -169,6 +169,8 @@ class AuthManager {
       });
     }
 
+    const emailResend=document.getElementById('btn-email-resend');
+    if(emailResend)emailResend.addEventListener('click',()=>this.sendEmailCode());
     // OTP Input auto-focus & keyboard navigation
     this.setupOtpInputNavigation('.otp-box-input');
     this.setupOtpInputNavigation('.mandatory-otp-box');
@@ -389,49 +391,57 @@ class AuthManager {
   }
 
   // ==========================================
-  // EMAIL / PASSWORD FLOW
+  // VERIFIED EMAIL OTP AUTHENTICATION
   // ==========================================
   async handleEmailAuth() {
-    const name = document.getElementById('email-name-input')?.value.trim() || 'User';
-    const email = document.getElementById('email-addr-input')?.value.trim();
-    const password = document.getElementById('email-password-input')?.value;
-
-    if (!email || !password || password.length < 6) {
-      alert('Please enter a valid email and a password of at least 6 characters.');
-      return;
-    }
-
-    try {
-      // Try login first, or register if new
-      let resp = await fetch(`${window.API_BASE}/api/auth/email/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+    const codeGroup=document.getElementById('email-code-group');
+    const code=document.getElementById('email-code-input')?.value.trim()||'';
+    if (codeGroup?.style.display === 'none') return this.sendEmailCode();
+    if(!/^\d{6}$/.test(code))return this.emailFeedback('Please enter the six-digit code.');
+    const email=document.getElementById('email-addr-input')?.value.trim()||'';
+    const name=document.getElementById('email-name-input')?.value.trim()||'';
+    const button=document.getElementById('btn-email-auth');
+    if(button)button.disabled=true;
+    try{
+      const resp=await fetch(window.API_BASE+'/api/auth/email/verify-code',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email,name,code})
       });
-      let data = await resp.json();
+      const data=await resp.json();
+      if(resp.ok && data.success && data.user && data.token) {
+        this.loginSuccess(data.user,data.token);
+      } else this.emailFeedback(data.error||'Verification failed.');
+    }catch(e){this.emailFeedback('Network error during email verification.');}
+    finally{if(button)button.disabled=false;}
+  }
 
-      if (!resp.ok) {
-        resp = await fetch(`${window.API_BASE}/api/auth/email/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password })
-        });
-        data = await resp.json();
-      }
+  emailFeedback(message) {
+    const elem=document.getElementById('email-auth-feedback');
+    if(elem)elem.textContent=message;
+  }
 
-      if (resp.ok && data.success) {
-        if (data.phoneVerificationRequired) {
-          this.pendingSocialUser = { name, email, userId: data.userId };
-          this.openMandatoryPhoneModal();
-        } else if (data.user && data.token) {
-          this.loginSuccess(data.user, data.token);
-        }
-      } else {
-        alert(data.error || 'Email authentication failed.');
-      }
-    } catch (err) {
-      alert('Network error connecting to email authentication.');
-    }
+  async sendEmailCode() {
+    const email=document.getElementById('email-addr-input')?.value.trim()||'';
+    const name=document.getElementById('email-name-input')?.value.trim()||'';
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return this.emailFeedback('Enter a valid email address.');
+    const button=document.getElementById('btn-email-auth');
+    if(button)button.disabled=true;
+    this.emailFeedback('Requesting email verification code...');
+    try {
+      const resp=await fetch(window.API_BASE+'/api/auth/email/send-code',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,name})
+      });
+      const data=await resp.json();
+      if(!resp.ok || !data.success)return this.emailFeedback(data.error||'Could not send code.');
+      const group=document.getElementById('email-code-group');
+      if(group)group.style.display='block';
+      if(button)button.textContent='Verify Email & Login';
+      const resend=document.getElementById('btn-email-resend');
+      if(resend)resend.style.display='block';
+      this.emailFeedback('Code sent. Check your inbox and spam folder. Valid for 10 minutes.');
+      document.getElementById('email-code-input')?.focus();
+    }catch(e){this.emailFeedback('Network error sending verification code.');}
+    finally{if(button)button.disabled=false;}
   }
 
   // ==========================================
@@ -548,9 +558,9 @@ class AuthManager {
   // SUCCESSFUL LOGIN HANDLER
   // ==========================================
   loginSuccess(user, token) {
-    if (!user || user.phoneVerified !== true ||
+    if (!user || !(user.phoneVerified || user.emailVerified) ||
         typeof token !== 'string' || !token) {
-      alert('Verified mobile number and valid session required.');
+      alert('Verified email or mobile number and valid session required.');
       return;
     }
 
