@@ -477,6 +477,24 @@ app.post('/api/groups', requirePhoneVerified, (req, res) => {
   res.json({ success: true, group });
 });
 
+// Restore durable conversation list after reinstall, account switch, or WebView reload.
+// No cross-account cache access and no unverified identities.
+app.get('/api/conversations', requirePhoneVerified, (req, res) => {
+  const userId=req.currentUser.id;
+  const ids=new Set();
+  for(const m of (db.data.messages||[])) {
+    if(m.senderId===userId && m.recipientId && m.recipientId!==userId) ids.add(m.recipientId);
+    if(m.recipientId===userId && m.senderId && m.senderId!==userId) ids.add(m.senderId);
+  }
+  const conversations=[...ids].map(id=>{
+    const peer=db.getUser(id);
+    if(!peer || !(peer.phoneVerified||peer.emailVerified))return null;
+    return {id:peer.id,name:peer.name,avatar:peer.avatar||'',phone:peer.phoneVerified&&!peer.privacy?.hidePhone?(peer.phone||''):''};
+  }).filter(Boolean);
+  res.set('Cache-Control','private, no-store');
+  res.json({success:true,conversations});
+});
+
 // Messages History API
 app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
   const messages = db.getChatMessages(req.params.chatId, req.currentUser ? req.currentUser.id : null);
