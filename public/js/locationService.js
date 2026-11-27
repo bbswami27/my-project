@@ -126,7 +126,7 @@ window.LocationService = new LocationService();
       try { socket.connect(); } catch (e) {}
       return;
     }
-    socket.emit('user_join', auth.currentUser);
+    socket.emit('user_join', {token: localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')});
   }
 
   function applyInstanceFixes() {

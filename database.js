@@ -4,7 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.GITPIT_DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'chatterpatter_data.json');
 
 // Ensure data directory exists
@@ -83,7 +83,7 @@ class Database {
     this.data = this.loadJson();
     this.pgPool = null;
     this.isPostgres = false;
-    this.initPostgres();
+    this.ready = this.initPostgres();
   }
 
   seedDummyUsers() {
@@ -177,13 +177,10 @@ class Database {
       // Test connection
       const client = await this.pgPool.connect();
       console.log('✅ [DATABASE] Connected to Durable External PostgreSQL Database!');
-      this.isPostgres = true;
-
       // Run DDL Schema Migration
       await this.runPgMigrations(client);
       await this.seedPgFromLocalJson(client);
-      await this.loadDataFromPg(client);
-      client.release();
+      try { await this.loadDataFromPg(client); this.isPostgres = true; } finally { client.release(); }
     } catch (err) {
       console.error('❌ [DATABASE ERROR] PostgreSQL connection failed, falling back to local file storage:', err.message);
       this.isPostgres = false;
@@ -192,6 +189,10 @@ class Database {
 
   async loadDataFromPg(client) {
     try {
+      const tokens = await client.query('SELECT * FROM cp_push_tokens');
+      this.data.pushTokens = tokens.rows.map(r=>({userId:r.user_id,token:r.token,platform:r.platform,updatedAt:r.updated_at}));
+      const otps = await client.query('SELECT * FROM cp_otps WHERE window_start > $1',[Date.now()-600000]);
+      this.data.otps = Object.fromEntries(otps.rows.map(r=>[r.phone,{otpHash:r.otp_hash,expiresAt:Number(r.expires_at),attempts:r.attempts,lastSentAt:Number(r.last_sent_at),requestCount:r.request_count,windowStart:Number(r.window_start)}]));
       // 1. Sync Users from PostgreSQL
       const res = await client.query('SELECT * FROM cp_users');
       if (res && res.rows) {
@@ -226,7 +227,7 @@ class Database {
       }
 
       // 2. Sync Messages from PostgreSQL
-      const msgRes = await client.query('SELECT * FROM cp_messages ORDER BY created_at ASC LIMIT 1000');
+      const msgRes = await client.query('SELECT * FROM cp_messages ORDER BY created_at ASC');
       if (msgRes && msgRes.rows) {
         msgRes.rows.forEach(row => {
           const m = {
@@ -239,8 +240,12 @@ class Database {
             text: row.text,
             type: row.type || 'text',
             mediaUrl: row.media_url,
-            mediaName: row.media_name,
-            mediaSize: row.media_size,
+            fileName: row.file_name,
+            senderName: row.sender_name,
+            senderAvatar: row.sender_avatar,
+            fileSize: row.file_size,
+            quote: row.quote,
+            edited: row.edited,
             objectKey: row.object_key,
             isAi: row.is_ai,
             timestamp: row.timestamp,
@@ -321,7 +326,7 @@ class Database {
         });
       }
     } catch (e) {
-      console.warn('[DATABASE LOAD PG WARNING]', e.message);
+      throw e;
     }
   }
 
@@ -488,7 +493,8 @@ class Database {
 
   saveJson(data = this.data) {
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+      fs.writeFileSync(DB_FILE + '.tmp', JSON.stringify(data, null, 2), {encoding:'utf8',mode:0o600});
+      fs.renameSync(DB_FILE + '.tmp', DB_FILE);
     } catch (e) {
       console.error('[DB] Error writing to JSON DB file:', e.message);
     }
@@ -613,42 +619,75 @@ class Database {
     return this.data.otps[normalized];
   }
 
-  verifyOtp(phone, otp) {
+  invalidateOtp(phone) {
     const normalized = this.normalizePhone(phone);
-    if (!normalized) return { success: false, error: 'Invalid phone number format' };
-
     const record = this.data.otps[normalized];
-    if (!record) {
-      return { success: false, error: 'No OTP requested for this phone number. Please request a new OTP.' };
-    }
 
-    const now = Date.now();
-    if (now > record.expiresAt) {
-      delete this.data.otps[normalized];
-      this.saveJson();
-      return { success: false, error: 'OTP has expired. Please request a fresh code.' };
-    }
+    if (!record) return false;
 
-    if (record.attempts >= 5) {
-      delete this.data.otps[normalized];
-      this.saveJson();
-      return { success: false, error: 'Too many incorrect attempts. Please request a new OTP.' };
-    }
+    record.otpHash = '';
+    record.expiresAt = 0;
 
-    const inputHash = this.hashString(otp, normalized);
-    if (inputHash !== record.otpHash) {
-      record.attempts += 1;
-      this.saveJson();
-      return { success: false, error: `Invalid OTP code. (${5 - record.attempts} attempts remaining)` };
-    }
-
-    delete this.data.otps[normalized];
     this.saveJson();
 
     if (this.isPostgres && this.pgPool) {
-      this.pgPool.query('DELETE FROM cp_otps WHERE phone = $1', [normalized])
-        .catch(e => console.error('[PG OTP DELETE ERROR]', e.message));
+      this.pgPool.query(
+        'UPDATE cp_otps SET otp_hash = $2, expires_at = $3 WHERE phone = $1',
+        [normalized, '', 0]
+      ).catch(e => console.error('[PG OTP INVALIDATION ERROR]', e.message));
     }
+
+    return true;
+  }
+
+  verifyOtp(phone, otp) {
+    const normalized = this.normalizePhone(phone);
+
+    if (!normalized || !/^\d{6}$/.test(String(otp))) {
+      return { success: false, error: 'Invalid phone number or OTP.' };
+    }
+
+    const record = this.data.otps[normalized];
+
+    if (!record || !record.otpHash) {
+      return { success: false, error: 'Request a new OTP.' };
+    }
+
+    if (Date.now() >= record.expiresAt) {
+      this.invalidateOtp(normalized);
+      return { success: false, error: 'OTP has expired.' };
+    }
+
+    if (record.attempts >= 5) {
+      this.invalidateOtp(normalized);
+      return { success: false, error: 'Too many incorrect attempts.' };
+    }
+
+    const inputHash = this.hashString(String(otp), normalized);
+
+    if (inputHash !== record.otpHash) {
+      record.attempts += 1;
+      this.saveJson();
+
+      if (this.isPostgres && this.pgPool) {
+        this.pgPool.query(
+          'UPDATE cp_otps SET attempts = $2 WHERE phone = $1',
+          [normalized, record.attempts]
+        ).catch(e => console.error('[PG OTP ATTEMPTS ERROR]', e.message));
+      }
+
+      if (record.attempts >= 5) {
+        this.invalidateOtp(normalized);
+      }
+
+      return {
+        success: false,
+        error: 'Invalid OTP. Attempts remaining: ' +
+          Math.max(0, 5 - record.attempts)
+      };
+    }
+
+    this.invalidateOtp(normalized);
 
     return { success: true };
   }
@@ -657,12 +696,10 @@ class Database {
   findUserByPhone(phone) {
     const normalized = this.normalizePhone(phone);
     if (!normalized) return null;
-    const cleanDigits = normalized.slice(-10);
-    return this.data.users.find(u => {
-      const uNorm = this.normalizePhone(u.phone);
-      return uNorm === normalized || (u.phone && u.phone.replace(/\D/g, '').slice(-10) === cleanDigits);
-    });
+    return this.data.users.find(u => this.normalizePhone(u.phone) === normalized) || null;
   }
+
+  getUserByPhone(phone) { return this.findUserByPhone(phone); }
 
   findUserByEmail(email) {
     if (!email) return null;
@@ -760,16 +797,16 @@ class Database {
     const users = this.data.users || [];
 
     contacts.forEach(c => {
-      const rawPhone = typeof c === 'string' ? c : (c.phone || '');
-      const rawName = typeof c === 'string' ? '' : (c.name || '');
+      const rawPhone = typeof c === 'string' ? c : String(c?.phone || '');
+      const rawName = typeof c === 'string' ? '' : (c?.name || '');
       const cleanDigits = rawPhone.replace(/\D/g, '').slice(-10);
 
       if (!cleanDigits || cleanDigits.length < 10) return;
 
       const matchedUser = users.find(u => {
-        if (!u.phone) return false;
+        if (!u.phone || !u.phoneVerified) return false;
         const uDigits = u.phone.replace(/\D/g, '').slice(-10);
-        return uDigits === cleanDigits;
+        return this.normalizePhone(u.phone) === this.normalizePhone(rawPhone);
       });
 
       if (matchedUser) {
@@ -806,7 +843,7 @@ class Database {
       if (!u.phoneVerified || !u.phone) return false;
       const uNorm = this.normalizePhone(u.phone);
       const uLast10 = uNorm.slice(-10);
-      return phoneSet.has(uNorm) || cleanLast10Set.has(uLast10);
+      return phoneSet.has(uNorm);
     }).map(u => ({
       id: u.id,
       name: u.name,
@@ -820,7 +857,7 @@ class Database {
 
   getAllUsers(requestingUserId = null) {
     return (this.data.users || [])
-      .filter(u => u && (u.phone || u.id))
+      .filter(u => u && u.phoneVerified && u.phone)
       .map(u => {
         const isSelf = requestingUserId && u.id === requestingUserId;
         const priv = u.privacy || {};
@@ -834,9 +871,9 @@ class Database {
           status: u.status || 'Available',
           presence: u.presence || 'online',
           online: u.online !== undefined ? u.online : true,
-          phone: u.phone || (cleanPhone ? `+91 ${cleanPhone}` : ''),
-          email: (isSelf || !priv.hideEmail) ? u.email : '',
-          dob: (isSelf || !priv.hideDob) ? u.dob : '',
+          phone: (isSelf || !priv.hidePhone) ? u.phone : '',
+          email: isSelf ? u.email : '',
+          dob: isSelf ? u.dob : '',
           privacy: isSelf ? priv : undefined
         };
       });
@@ -926,10 +963,10 @@ class Database {
       createdAt: msg.createdAt || Date.now()
     };
 
+    const prior = this.data.messages.find(m => m.id === newMsg.id);
+    if (prior) { if (prior.senderId !== newMsg.senderId || prior.recipientId !== newMsg.recipientId) throw new Error("Message ID conflict"); return prior; }
     this.data.messages.push(newMsg);
-    if (this.data.messages.length > 25000) {
-      this.data.messages = this.data.messages.slice(-25000);
-    }
+
     this.saveJson();
 
     if (this.isPostgres && this.pgPool) {
@@ -945,49 +982,18 @@ class Database {
   }
 
   getChatMessages(chatId, currentUserId = null, limit = 200) {
-    const isGroupOrAi = chatId === 'chat_ai' || (chatId && chatId.startsWith('group_'));
-    if (isGroupOrAi) {
-      return this.data.messages
-        .filter(m => m.chatId === chatId)
-        .slice(-limit);
-    }
+    if (!currentUserId) return [];
+    const peer = this.getUser(chatId) || this.findUserByPhone(chatId);
+    return this.data.messages.filter(m => {
+      if (m.senderId !== currentUserId && m.recipientId !== currentUserId) return false;
+      return m.chatId === chatId || (peer && (m.senderId === peer.id || m.recipientId === peer.id));
+    }).slice(-limit);
+  }
 
-    const cleanChatPhone = (chatId || '').replace(/\D/g, '').slice(-10);
-    const currentUser = currentUserId ? this.getUser(currentUserId) : null;
-    const cleanMyPhone = currentUser && currentUser.phone ? currentUser.phone.replace(/\D/g, '').slice(-10) : '';
-
-    return this.data.messages
-      .filter(m => {
-        if (m.chatId === chatId) return true;
-
-        const mSenderPhone = (m.senderPhone || m.senderId || '').replace(/\D/g, '').slice(-10);
-        const mRecipPhone = (m.recipientPhone || m.recipientId || '').replace(/\D/g, '').slice(-10);
-
-        // 10-digit Phone Match between User A and User B
-        if (cleanChatPhone && cleanMyPhone) {
-          if ((mSenderPhone === cleanMyPhone && mRecipPhone === cleanChatPhone) ||
-              (mSenderPhone === cleanChatPhone && mRecipPhone === cleanMyPhone)) {
-            return true;
-          }
-        }
-
-        if (cleanChatPhone && (mSenderPhone === cleanChatPhone || mRecipPhone === cleanChatPhone)) {
-          return true;
-        }
-
-        if (currentUserId) {
-          if ((m.senderId === currentUserId && m.recipientId === chatId) ||
-              (m.senderId === chatId && m.recipientId === currentUserId)) {
-            return true;
-          }
-        }
-
-        if (m.senderId === chatId || m.recipientId === chatId) {
-          return true;
-        }
-        return false;
-      })
-      .slice(-limit);
+  unregisterPushToken(userId, token) {
+    this.data.pushTokens = (this.data.pushTokens || []).filter(t => t.userId !== userId || t.token !== token);
+    this.saveJson();
+    if (this.isPostgres) this.pgPool.query('DELETE FROM cp_push_tokens WHERE user_id=$1 AND token=$2',[userId,token]).catch(e=>console.error('[PG PUSH DELETE]',e.message));
   }
 
   // ================= CALL LOGS =================
@@ -1028,6 +1034,22 @@ class Database {
   }
 
   // ================= PUSH TOKENS =================
+  getPushTokens(userId) {
+    if (!userId) return [];
+
+    const tokens = Array.isArray(this.data.pushTokens)
+      ? this.data.pushTokens
+      : [];
+
+    return tokens.filter(entry =>
+      entry &&
+      entry.userId === userId &&
+      typeof entry.token === 'string' &&
+      entry.token.trim().length > 0
+    );
+  }
+
+
   registerPushToken(userId, token, platform = 'android') {
     if (!this.data.pushTokens) this.data.pushTokens = [];
     this.data.pushTokens = this.data.pushTokens.filter(p => p.token !== token);

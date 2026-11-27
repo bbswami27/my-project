@@ -1,7 +1,7 @@
 // GitPit - Production Authentication, Persistent Sessions, Mandatory Phone Verification & Contact Sync Manager
 
 function getApiBaseUrl() {
-  return 'https://chitchat-chatterpatter.onrender.com';
+  return /^https?:$/.test(location.protocol) && ['localhost','127.0.0.1'].includes(location.hostname) && location.port === '3001' ? location.origin : 'https://chitchat-chatterpatter.onrender.com';
 }
 
 window.API_BASE = getApiBaseUrl();
@@ -102,7 +102,7 @@ class AuthManager {
 
     // Connect socket with authenticated user
     if (window.ChatterApp && window.ChatterApp.socket) {
-      window.ChatterApp.socket.emit('user_join', this.currentUser);
+      window.ChatterApp.socket.emit('user_join', {token: localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')});
     }
 
     // Sync Contacts & Registered Users
@@ -135,7 +135,9 @@ class AuthManager {
     // Direct 1-Click Test Login (Bypass OTP)
     const quickTestBtn = document.getElementById('btn-quick-test-login');
     if (quickTestBtn) {
-      quickTestBtn.addEventListener('click', () => this.handleDirectTestLogin());
+      quickTestBtn.hidden = true;
+      quickTestBtn.style.display = 'none';
+      quickTestBtn.disabled = true;
     }
 
     // Mobile Number Step 2: Verify OTP
@@ -147,11 +149,9 @@ class AuthManager {
     // Bypass OTP button on step 2
     const bypassOtpBtn = document.getElementById('btn-bypass-verify-otp');
     if (bypassOtpBtn) {
-      bypassOtpBtn.addEventListener('click', () => {
-        const boxes = document.querySelectorAll('.otp-box-input');
-        boxes.forEach(b => { b.value = '0'; });
-        this.handleVerifyOtp();
-      });
+      bypassOtpBtn.hidden = true;
+      bypassOtpBtn.style.display = 'none';
+      bypassOtpBtn.disabled = true;
     }
 
     // Google Sign-In
@@ -281,7 +281,7 @@ class AuthManager {
         sendBtn.textContent = 'Send 6-Digit OTP 🚀';
       }
 
-      if (data.success) {
+      if (resp.ok && data.success) {
         document.getElementById('mobile-step-phone').style.display = 'none';
         document.getElementById('mobile-step-otp').style.display = 'block';
         document.getElementById('display-phone-target').textContent = fullPhone;
@@ -330,7 +330,7 @@ class AuthManager {
     const otpBoxes = document.querySelectorAll('.otp-box-input');
     const otp = Array.from(otpBoxes).map(b => b.value).join('');
 
-    if (otp.length < 6) {
+    if (!/^\d{6}$/.test(otp)) {
       alert('Please enter complete 6-digit OTP code.');
       return;
     }
@@ -363,7 +363,7 @@ class AuthManager {
       if (mobilePanel) mobilePanel.style.display = 'block';
       if (verifyBtn) verifyBtn.disabled = false;
 
-      if (data.success && data.user && data.token) {
+      if (resp.ok && data.success && data.user && data.token) {
         this.loginSuccess(data.user, data.token);
       } else {
         alert(data.error || 'Verification failed. Please check the code entered.');
@@ -378,91 +378,14 @@ class AuthManager {
 
   // Direct 1-Click Test Login (Instant Bypass)
   async handleDirectTestLogin() {
-    const countryCode = document.getElementById('country-code-select')?.value || '+91';
-    let rawInput = document.getElementById('mobile-number-input')?.value.trim() || '';
-    let cleanDigits = rawInput.replace(/\D/g, '').slice(-10);
-    
-    // Generate a random test phone number if none entered
-    if (!cleanDigits || cleanDigits.length < 10) {
-      cleanDigits = '98' + Math.floor(10000000 + Math.random() * 90000000);
-      const phoneInput = document.getElementById('mobile-number-input');
-      if (phoneInput) phoneInput.value = cleanDigits;
-    }
-
-    const nameInput = document.getElementById('mobile-name-input')?.value.trim();
-    const displayName = nameInput || `User ${cleanDigits.slice(-4)}`;
-    const fullPhone = `${countryCode}${cleanDigits}`;
-
-    const loadingState = document.getElementById('auth-loading-state');
-    const mobilePanel = document.getElementById('auth-panel-mobile');
-
-    if (mobilePanel) mobilePanel.style.display = 'none';
-    if (loadingState) {
-      loadingState.style.display = 'block';
-      document.getElementById('auth-loading-text').textContent = 'Logging in directly with Test Account... ⚡';
-    }
-
-    try {
-      const resp = await fetch(`${window.API_BASE}/api/auth/test-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: fullPhone,
-          name: displayName
-        })
-      });
-      const data = await resp.json();
-
-      if (loadingState) loadingState.style.display = 'none';
-      if (mobilePanel) mobilePanel.style.display = 'block';
-
-      if (data.success && data.user && data.token) {
-        this.loginSuccess(data.user, data.token);
-      } else {
-        alert(data.error || 'Test login failed. Please try again.');
-      }
-    } catch (err) {
-      if (loadingState) loadingState.style.display = 'none';
-      if (mobilePanel) mobilePanel.style.display = 'block';
-      alert('Network error during test login. Please check connection.');
-    }
+    alert('Test login is disabled.');
   }
 
   // ==========================================
   // GOOGLE SIGN-IN FLOW
   // ==========================================
   async handleGoogleLogin() {
-    const name = document.getElementById('google-name-input')?.value.trim() || 'Google User';
-    const email = document.getElementById('google-email-input')?.value.trim();
-
-    if (!email || !email.includes('@')) {
-      alert('Please enter a valid Gmail / Email address.');
-      const inp = document.getElementById('google-email-input');
-      if (inp) inp.focus();
-      return;
-    }
-
-    try {
-      const resp = await fetch(`${window.API_BASE}/api/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email })
-      });
-      const data = await resp.json();
-
-      if (data.success) {
-        if (data.phoneVerificationRequired) {
-          this.pendingSocialUser = { name, email, userId: data.userId };
-          this.openMandatoryPhoneModal();
-        } else if (data.user && data.token) {
-          this.loginSuccess(data.user, data.token);
-        }
-      } else {
-        alert(data.error || 'Google login failed.');
-      }
-    } catch (err) {
-      alert('Network error connecting to Google Auth service.');
-    }
+    alert('Google Sign-In is temporarily unavailable. Please use mobile OTP.');
   }
 
   // ==========================================
@@ -496,7 +419,7 @@ class AuthManager {
         data = await resp.json();
       }
 
-      if (data.success) {
+      if (resp.ok && data.success) {
         if (data.phoneVerificationRequired) {
           this.pendingSocialUser = { name, email, userId: data.userId };
           this.openMandatoryPhoneModal();
@@ -547,7 +470,7 @@ class AuthManager {
       const data = await resp.json();
       if (sendBtn) sendBtn.disabled = false;
 
-      if (data.success) {
+      if (resp.ok && data.success) {
         document.getElementById('mandatory-step-phone').style.display = 'none';
         document.getElementById('mandatory-step-otp').style.display = 'block';
         document.getElementById('mandatory-display-phone').textContent = fullPhone;
@@ -591,7 +514,7 @@ class AuthManager {
     const otpBoxes = document.querySelectorAll('.mandatory-otp-box');
     const otp = Array.from(otpBoxes).map(b => b.value).join('');
 
-    if (otp.length < 6) {
+    if (!/^\d{6}$/.test(otp)) {
       alert('Please enter complete 6-digit OTP code.');
       return;
     }
@@ -609,7 +532,7 @@ class AuthManager {
       });
       const data = await resp.json();
 
-      if (data.success && data.user && data.token) {
+      if (resp.ok && data.success && data.user && data.token) {
         const modal = document.getElementById('mandatory-phone-verify-modal');
         if (modal) modal.classList.remove('active');
         this.loginSuccess(data.user, data.token);
@@ -625,10 +548,13 @@ class AuthManager {
   // SUCCESSFUL LOGIN HANDLER
   // ==========================================
   loginSuccess(user, token) {
-    this.currentUser = {
-      ...user,
-      phoneVerified: true
-    };
+    if (!user || user.phoneVerified !== true ||
+        typeof token !== 'string' || !token) {
+      alert('Verified mobile number and valid session required.');
+      return;
+    }
+
+    this.currentUser = { ...user };
     this.authToken = token;
 
     localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));

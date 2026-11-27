@@ -108,7 +108,7 @@
   }
   function bindSocket(){
     const s=window.ChatterApp?.socket;if(!s||s.__v111ReceiverBound)return false;s.__v111ReceiverBound=true;
-    const join=()=>{const u=me();if(u?.id)s.emit('user_join',{id:u.id,name:u.name,phone:u.phone,avatar:u.avatar,email:u.email});};
+    const join=()=>{const u=me();if(u?.id)s.emit('user_join', {token: localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')});};
     if(s.connected)join();s.on('connect',join);
     ['receive_message','chat_message'].forEach(ev=>s.on(ev,mergeIncoming));
     s.on('new_status_update',st=>mergeStatus(st));

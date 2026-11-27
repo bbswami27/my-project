@@ -9,7 +9,29 @@ function initFirebase() {
   if (isFcmInitialized && admin) return;
 
   try {
-    const firebaseAdmin = require('firebase-admin');
+    const {
+      initializeApp,
+      applicationDefault,
+      cert,
+      getApps
+    } = require('firebase-admin/app');
+
+    const { getMessaging } = require('firebase-admin/messaging');
+
+    const firebaseAdmin = {
+      initializeApp: (options) => {
+        const app = getApps().find(a => a.name === '[DEFAULT]') ||
+          initializeApp(options);
+
+        return {
+          messaging: () => getMessaging(app)
+        };
+      },
+      credential: {
+        applicationDefault,
+        cert
+      }
+    };
 
     // 1. Primary: Google Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS / Render Secret File)
     const renderSecretPath = '/etc/secrets/firebase-service-account.json';

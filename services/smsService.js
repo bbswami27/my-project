@@ -27,6 +27,7 @@ class SmsService {
         const clean10 = normalizedPhone.replace(/\D/g, '').slice(-10);
         const resp = await fetch('https://www.fast2sms.com/dev/bulkV2', {
           method: 'POST',
+          signal: AbortSignal.timeout(15000),
           headers: {
             'authorization': process.env.FAST2SMS_API_KEY,
             'Content-Type': 'application/json'
@@ -38,8 +39,20 @@ class SmsService {
           })
         });
         const data = await resp.json();
-        console.log(`[SMS-SERVICE] Fast2SMS dispatched to ${clean10}:`, data);
-        return { success: true, provider: 'fast2sms', response: data };
+        console.log("[SMS-SERVICE] Gateway response received.");
+        if (!resp.ok || data.return !== true) {
+          return {
+            success: false,
+            provider: 'fast2sms',
+            error: 'SMS_PROVIDER_REJECTED',
+            httpStatus: resp.status
+          };
+        }
+        return {
+          success: true,
+          provider: 'fast2sms',
+          requestId: data.request_id
+        };
       } catch (err) {
         console.error('[SMS-SERVICE] Fast2SMS error:', err.message);
         return { success: false, error: err.message };
@@ -57,6 +70,7 @@ class SmsService {
         });
         const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
           method: 'POST',
+          signal: AbortSignal.timeout(15000),
           headers: {
             'Authorization': `Basic ${auth}`,
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -64,7 +78,15 @@ class SmsService {
           body: body.toString()
         });
         const data = await resp.json();
-        console.log(`[SMS-SERVICE] Twilio SMS dispatched to ${normalizedPhone}:`, data.sid || data.message);
+        console.log("[SMS-SERVICE] Gateway response received.");
+        if (!resp.ok || !data.sid || ['failed', 'undelivered'].includes(data.status)) {
+          return {
+            success: false,
+            provider: 'twilio',
+            error: 'SMS_PROVIDER_REJECTED',
+            httpStatus: resp.status
+          };
+        }
         return { success: true, provider: 'twilio', sid: data.sid };
       } catch (err) {
         console.error('[SMS-SERVICE] Twilio error:', err.message);
@@ -72,7 +94,7 @@ class SmsService {
       }
     }
 
-    console.log(`[SMS-LOG] Unconfigured provider (${provider || 'none'}). Phone: ${normalizedPhone} | Code: [${otp}]`);
+    console.warn("[SMS-LOG] SMS provider not configured.");
     return { success: false, reason: 'SMS_GATEWAY_NOT_CONFIGURED' };
   }
 }

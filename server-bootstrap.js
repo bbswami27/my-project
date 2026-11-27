@@ -115,6 +115,8 @@ async function installDurableStatusStore() {
 }
 
 (async () => {
+  await db.ready;
+  if(process.env.NODE_ENV === "production" && !db.isPostgres) throw new Error("Production requires PostgreSQL");
   await hydrateDurableSessions();
   await installDurableStatusStore();
   require('./server');

@@ -1,5 +1,5 @@
 // GitPit - Service Worker for PWA Offline Caching & Fast Loading
-const CACHE_NAME = 'gitpit-web-v1.1.3';
+const CACHE_NAME = 'gitpit-web-v1.1.4-repair';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

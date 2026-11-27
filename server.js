@@ -42,14 +42,6 @@ app.post('/api/admin/clean-users', (_req, res) => {
   res.status(410).json({ success: false, error: 'Demo-user reset is disabled.' });
 });
 
-app.get('/api/admin/users-status', (req, res) => {
-  const users = db.getAllUsers ? db.getAllUsers() : (db.data ? db.data.users : []);
-  res.json({
-    totalUsers: users.length,
-    users: users.map(u => ({ id: u.id, name: u.name, phone: u.phone, status: u.status, verified: u.phoneVerified }))
-  });
-});
-
 // Phase 1 Modular Services
 const smsService = require('./services/smsService');
 const fcmService = require('./services/fcmService');
@@ -71,7 +63,7 @@ app.get('/api/health', (req, res) => res.status(200).json({
 app.get('/ping', (req, res) => res.json({ status: 'live', app: 'GitPit', time: new Date().toISOString() }));
 
 // Safe Isolated R2 Object Storage Health Self-Check Endpoint
-app.get('/api/storage/r2-check', async (req, res) => {
+app.get('/api/storage/r2-check', requirePhoneVerified, async (req, res) => {
   try {
     const report = await storageService.runR2SelfCheck();
     res.json({
@@ -110,12 +102,13 @@ const activeUsers = new Map();
 // ==========================================
 // AUTHENTICATION MIDDLEWARE
 // ==========================================
+function safeUser(u) { const {passwordHash, ...safe} = u; return safe; }
 function getAuthToken(req) {
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7).trim();
   }
-  return req.headers['x-auth-token'] || req.query.token || null;
+  return req.headers['x-auth-token'] || null;
 }
 
 function requireAuth(req, res, next) {
@@ -158,7 +151,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
   }
 
   const normalized = db.normalizePhone(phone);
-  if (!normalized || normalized.length < 10) {
+  if (!/^\+91[6-9]\d{9}$/.test(normalized)) {
     return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
   }
 
@@ -188,6 +181,17 @@ app.post('/api/auth/send-otp', async (req, res) => {
   // Dispatch carrier SMS
   const smsResult = await smsService.sendOtp(normalized, otpNumber);
 
+  if (!smsResult.success) {
+    db.invalidateOtp(normalized);
+    console.warn('[OTP] SMS gateway rejected request:', smsResult.httpStatus || 'Unavailable');
+
+    return res.status(503).json({
+      success: false,
+      error: 'Unable to send verification code. Please try again later.',
+      smsDelivered: false
+    });
+  }
+
   res.json({
     success: true,
     message: `Verification code sent to ${normalized}`,
@@ -200,25 +204,33 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
 // 2. Verify OTP & Issue Persistent Session (Supports real OTP and Test OTP bypass)
 app.post('/api/auth/verify-otp', (req, res) => {
-  const { phone, otp, name, email, avatar, bio, bypassOtp } = req.body;
+  const { phone, otp, name, email, avatar, bio } = req.body;
   if (!phone) {
     return res.status(400).json({ error: 'Phone number is required' });
   }
 
   const normalized = db.normalizePhone(phone);
-  if (!normalized) {
+  if (!/^\+91[6-9]\d{9}$/.test(normalized)) {
     return res.status(400).json({ error: 'Invalid mobile number format' });
   }
 
   const enteredOtp = (otp || '').toString().trim();
-  const isTestBypass = bypassOtp === true || ['000000', '123456', '999999', '111111', '888888'].includes(enteredOtp) || enteredOtp === '';
-
-  if (!isTestBypass) {
-    const verifyResult = db.verifyOtp(normalized, enteredOtp);
-    if (!verifyResult.success) {
-      return res.status(400).json({ error: verifyResult.error });
-    }
+  if (!/^\d{6}$/.test(enteredOtp)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Valid 6-digit OTP required.'
+    });
   }
+
+  const verifyResult = db.verifyOtp(normalized, enteredOtp);
+
+  if (!verifyResult.success) {
+    return res.status(400).json({
+      success: false,
+      error: verifyResult.error
+    });
+  }
+
 
   // Find or Create User with verified mobile status
   const existingUser = db.findUserByPhone(normalized);
@@ -227,13 +239,13 @@ app.post('/api/auth/verify-otp', (req, res) => {
   if (existingUser) {
     user = db.saveUser({
       id: existingUser.id,
-      name: name || existingUser.name,
+      name: existingUser.name,
       phone: normalized,
       phoneVerified: true,
       phoneVerifiedAt: new Date().toISOString(),
-      email: email || existingUser.email,
-      avatar: avatar || existingUser.avatar,
-      bio: bio || existingUser.bio
+      email: existingUser.email,
+      avatar: existingUser.avatar,
+      bio: existingUser.bio
     });
   } else {
     user = db.saveUser({
@@ -241,7 +253,7 @@ app.post('/api/auth/verify-otp', (req, res) => {
       phone: normalized,
       phoneVerified: true,
       phoneVerifiedAt: new Date().toISOString(),
-      email: email || '',
+      email: '',
       avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${normalized}`,
       bio: bio || 'Hey there! I am using GitPit 🚀'
     });
@@ -249,11 +261,11 @@ app.post('/api/auth/verify-otp', (req, res) => {
 
   // Create persistent session
   const session = db.createSession(user.id, 30);
-  io.emit('user_registered', user);
+  io.to(`user_${user.id}`).emit('user_registered', safeUser(user));
 
   res.json({
     success: true,
-    message: isTestBypass ? 'Test login verified successfully!' : 'Mobile number verified successfully!',
+    message: 'Mobile number verified successfully!',
     user: {
       id: user.id,
       name: user.name,
@@ -273,188 +285,28 @@ app.post('/api/auth/verify-otp', (req, res) => {
 });
 
 // Direct 1-Click Test Login Endpoint (Bypass OTP for Instant Testing)
-app.post('/api/auth/test-login', (req, res) => {
-  const { phone, name } = req.body;
-  const rawPhone = phone || ('+9198' + Math.floor(10000000 + Math.random() * 90000000));
-  const normalized = db.normalizePhone(rawPhone) || rawPhone;
-  
-  const existingUser = db.findUserByPhone(normalized);
-  let user;
-  if (existingUser) {
-    user = db.saveUser({
-      id: existingUser.id,
-      name: name || existingUser.name,
-      phone: normalized,
-      phoneVerified: true,
-      phoneVerifiedAt: new Date().toISOString()
-    });
-  } else {
-    user = db.saveUser({
-      name: name || `Test User ${normalized.slice(-4)}`,
-      phone: normalized,
-      phoneVerified: true,
-      phoneVerifiedAt: new Date().toISOString(),
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${normalized}`,
-      bio: 'ChatterPatter Verified User 🚀'
-    });
-  }
-
-  const session = db.createSession(user.id, 30);
-  io.emit('user_registered', user);
-
-  res.json({
-    success: true,
-    message: 'Direct Test Login successful!',
-    user: {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      phone: user.phone,
-      phoneVerified: user.phoneVerified,
-      phoneVerifiedAt: user.phoneVerifiedAt,
-      email: user.email || '',
-      avatar: user.avatar,
-      bio: user.bio,
-      status: user.status,
-      privacy: user.privacy
-    },
-    token: session.token,
-    expiresAt: session.expiresAt
+app.post('/api/auth/test-login', (_req, res) => {
+  return res.status(410).json({
+    success: false,
+    error: 'Test login is disabled.'
   });
 });
+
 
 // 3. Email / Password Register (requires phone verification)
-app.post('/api/auth/email/register', (req, res) => {
-  const { name, email, password, phone } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-
-  const cleanEmail = email.trim().toLowerCase();
-  const existing = db.findUserByEmail(cleanEmail);
-  if (existing && existing.passwordHash) {
-    return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
-  }
-
-  const normalizedPhone = phone ? db.normalizePhone(phone) : '';
-  const passwordHash = db.hashString(password, cleanEmail);
-
-  const user = db.saveUser({
-    name: name || 'User',
-    email: cleanEmail,
-    passwordHash,
-    phone: normalizedPhone,
-    phoneVerified: false
-  });
-
-  res.json({
-    success: true,
-    message: 'Account created. Please verify your mobile number to continue.',
-    userId: user.id,
-    email: user.email,
-    phoneVerificationRequired: true
-  });
-});
-
-// 4. Email / Password Login
-app.post('/api/auth/email/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-
-  const cleanEmail = email.trim().toLowerCase();
-  const user = db.findUserByEmail(cleanEmail);
-
-  if (!user || !user.passwordHash) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
-  }
-
-  const passwordHash = db.hashString(password, cleanEmail);
-  if (passwordHash !== user.passwordHash) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
-  }
-
-  if (!user.phoneVerified || !user.phone) {
-    return res.json({
-      success: true,
-      phoneVerificationRequired: true,
-      userId: user.id,
-      email: user.email,
-      message: 'Mobile number verification is mandatory before accessing GitPit.'
-    });
-  }
-
-  const session = db.createSession(user.id, 30);
-  res.json({
-    success: true,
-    user: {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      phone: user.phone,
-      phoneVerified: user.phoneVerified,
-      phoneVerifiedAt: user.phoneVerifiedAt,
-      email: user.email,
-      avatar: user.avatar,
-      bio: user.bio,
-      privacy: user.privacy
-    },
-    token: session.token,
-    expiresAt: session.expiresAt
-  });
-});
+// Legacy email credentials cannot be trusted until ownership is reverified.
+for (const route of ['/api/auth/email/register','/api/auth/email/login']) {
+  app.post(route, (_req,res)=>res.status(503).json({error:'Use mobile OTP while email authentication is being secured.'}));
+}
 
 // 5. Google Sign-In with mandatory phone verification
-app.post('/api/auth/google', (req, res) => {
-  const { name, email, avatar, phone } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required for Google Sign-In' });
-  }
-
-  const cleanEmail = email.trim().toLowerCase();
-  let user = db.findUserByEmail(cleanEmail);
-
-  if (user && user.phoneVerified && user.phone) {
-    const session = db.createSession(user.id, 30);
-    return res.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        phone: user.phone,
-        phoneVerified: user.phoneVerified,
-        phoneVerifiedAt: user.phoneVerifiedAt,
-        email: user.email,
-        avatar: user.avatar,
-        bio: user.bio,
-        privacy: user.privacy
-      },
-      token: session.token,
-      expiresAt: session.expiresAt
-    });
-  }
-
-  if (!user) {
-    user = db.saveUser({
-      name: name || 'Google User',
-      email: cleanEmail,
-      avatar: avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${cleanEmail}`,
-      phone: phone ? db.normalizePhone(phone) : '',
-      phoneVerified: false
-    });
-  }
-
-  res.json({
-    success: true,
-    phoneVerificationRequired: true,
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    message: 'Please verify your mobile number to complete onboarding.'
+app.post('/api/auth/google', (_req, res) => {
+  return res.status(503).json({
+    success: false,
+    error: 'Google Sign-In is temporarily unavailable. Please use mobile OTP.'
   });
 });
+
 
 // 6. Validate Session on App Restart / Resume
 app.get('/api/auth/session', requireAuth, (req, res) => {
@@ -490,9 +342,10 @@ app.post('/api/auth/logout', (req, res) => {
 // ==========================================
 
 // Phonebook Contacts Match API (Protected & Public helper)
-app.post('/api/contacts/sync', (req, res) => {
+app.post('/api/contacts/sync', requirePhoneVerified, (req, res) => {
   const { phoneNumbers = [], contacts = [] } = req.body;
-  const listToSync = contacts.length > 0 ? contacts : phoneNumbers;
+  const listToSync = Array.isArray(contacts) && contacts.length > 0 ? contacts : phoneNumbers;
+  if (!Array.isArray(listToSync) || listToSync.length > 500) return res.status(400).json({error:'Invalid contact batch'});
   const result = db.syncRegisteredContacts(listToSync);
   res.json({
     success: true,
@@ -504,9 +357,10 @@ app.post('/api/contacts/sync', (req, res) => {
   });
 });
 
-app.post('/api/contacts/sync-registered', (req, res) => {
+app.post('/api/contacts/sync-registered', requirePhoneVerified, (req, res) => {
   const { phoneNumbers = [], contacts = [] } = req.body;
-  const listToSync = contacts.length > 0 ? contacts : phoneNumbers;
+  const listToSync = Array.isArray(contacts) && contacts.length > 0 ? contacts : phoneNumbers;
+  if (!Array.isArray(listToSync) || listToSync.length > 500) return res.status(400).json({error:'Invalid contact batch'});
   const result = db.syncRegisteredContacts(listToSync);
   res.json({
     success: true,
@@ -530,11 +384,11 @@ app.put('/api/user/profile', requireAuth, (req, res) => {
     name: name || req.currentUser.name,
     bio: bio !== undefined ? bio : req.currentUser.bio,
     avatar: avatar || req.currentUser.avatar,
-    phone: phone ? db.normalizePhone(phone) : req.currentUser.phone,
-    email: email || req.currentUser.email
+    phone: req.currentUser.phone,
+    email: req.currentUser.email
   });
-  io.emit('user_registered', updatedUser);
-  res.json({ success: true, user: updatedUser });
+  io.to(`user_${updatedUser.id}`).emit('user_registered', safeUser(updatedUser));
+  res.json({ success: true, user: safeUser(updatedUser) });
 });
 
 app.post('/api/user/profile', requireAuth, (req, res) => {
@@ -544,11 +398,11 @@ app.post('/api/user/profile', requireAuth, (req, res) => {
     name: name || req.currentUser.name,
     bio: bio !== undefined ? bio : req.currentUser.bio,
     avatar: avatar || req.currentUser.avatar,
-    phone: phone ? db.normalizePhone(phone) : req.currentUser.phone,
-    email: email || req.currentUser.email
+    phone: req.currentUser.phone,
+    email: req.currentUser.email
   });
-  io.emit('user_registered', updatedUser);
-  res.json({ success: true, user: updatedUser });
+  io.to(`user_${updatedUser.id}`).emit('user_registered', safeUser(updatedUser));
+  res.json({ success: true, user: safeUser(updatedUser) });
 });
 
 // User Privacy Settings API
@@ -609,10 +463,10 @@ app.get('/api/groups', requirePhoneVerified, (req, res) => {
 
 app.post('/api/groups', requirePhoneVerified, (req, res) => {
   const group = db.saveGroup({
-    ...req.body,
+    name: req.body.name, members: req.body.members, avatar: req.body.avatar,
     createdById: req.currentUser.id
   });
-  io.emit('group_created', group);
+  io.to(`user_${req.currentUser.id}`).emit('group_created', group);
   res.json({ success: true, group });
 });
 
@@ -623,66 +477,26 @@ app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
 });
 
 // Save Message API
-app.post('/api/messages', requirePhoneVerified, (req, res) => {
-  const targetId = req.body.recipientId;
-  if (targetId && db.isBlocked(req.currentUser.id, targetId)) {
-    return res.status(403).json({ error: 'Message cannot be delivered. User is blocked.' });
-  }
-
-  const msgData = {
-    ...req.body,
-    senderId: req.currentUser.id,
-    senderPhone: req.currentUser.phone
-  };
-  const savedMsg = db.saveMessage(msgData);
-  if (req.body.chatId) {
-    io.emit(`receive_message_${req.body.chatId}`, savedMsg);
-  }
-  io.emit('receive_message', savedMsg);
-
-  // Background Push Notification via FCM HTTP v1 if target has registered devices
-  if (targetId) {
-    const tokens = db.getPushTokens(targetId);
-    tokens.forEach(t => {
-      fcmService.sendPushNotification(t.token, {
-        title: req.currentUser.name,
-        body: msgData.text || (msgData.type === 'image' ? '📷 Sent a photo' : msgData.type === 'video' ? '🎥 Sent a video' : msgData.type === 'voice' ? '🎤 Sent a voice note' : 'Sent an attachment'),
-        data: { chatId: msgData.chatId, senderId: req.currentUser.id }
-      });
-    });
-  }
-
-  res.json({ success: true, message: savedMsg });
+function deliverMessage(user, body) {
+  if (!user || !body || typeof body !== 'object') return null;
+  const target = db.getUser(body.recipientId) || db.findUserByPhone(body.recipientPhone);
+  if (!target || !target.phoneVerified || db.isBlocked(user.id,target.id)) return null;
+  const prior = body.id && db.data.messages.find(m=>m.id===body.id);
+  if (prior) return prior.senderId===user.id && prior.recipientId===target.id ? prior : null;
+  const msg = db.saveMessage({...body, senderId:user.id,senderName:user.name,senderAvatar:user.avatar,senderPhone:user.phone,recipientId:target.id,recipientPhone:target.phone,createdAt:Date.now()});
+  io.to(`user_${user.id}`).to(`user_${target.id}`).emit('receive_message',msg);
+  for (const t of db.getPushTokens(target.id)) fcmService.sendPushNotification(t.token,{title:'GitPit',body:'New message',data:{chatId:String(msg.chatId||''),senderId:String(user.id)}});
+  return msg;
+}
+app.post('/api/messages', requirePhoneVerified, (req,res)=>{
+  const msg=deliverMessage(req.currentUser,req.body);
+  if (!msg) return res.status(403).json({error:'Recipient unavailable or message conflict'});
+  res.json({success:true,message:msg});
 });
-
-// Edit Message API
-app.put('/api/messages/:id', requirePhoneVerified, (req, res) => {
-  const { text } = req.body;
-  const updated = db.editMessage(req.params.id, text);
-  if (updated) {
-    io.emit('message_edited', updated);
-    return res.json({ success: true, message: updated });
-  }
-  res.status(404).json({ error: 'Message not found' });
-});
-
-// Delete Message API
-app.delete('/api/messages/:id', requirePhoneVerified, (req, res) => {
-  const isForEveryone = req.query.everyone !== 'false';
-  const deleted = db.deleteMessage(req.params.id, isForEveryone);
-  if (deleted) {
-    io.emit('message_deleted', { id: req.params.id, isForEveryone });
-    return res.json({ success: true });
-  }
-  res.status(404).json({ error: 'Message not found' });
-});
-
-// Delete Entire Chat API
-app.delete('/api/chats/:chatId', requirePhoneVerified, (req, res) => {
-  const deleted = db.deleteChat(req.params.chatId);
-  io.emit('chat_deleted', { chatId: req.params.chatId });
-  res.json({ success: true });
-});
+// Destructive operations withheld until ownership-aware persistence is implemented.
+app.put('/api/messages/:id',requirePhoneVerified,(_req,res)=>res.status(501).json({error:'Editing temporarily unavailable'}));
+app.delete('/api/messages/:id',requirePhoneVerified,(_req,res)=>res.status(501).json({error:'Deletion temporarily unavailable'}));
+app.delete('/api/chats/:chatId',requirePhoneVerified,(_req,res)=>res.status(501).json({error:'Deletion temporarily unavailable'}));
 
 // Durable Media Storage Upload API (S3 / R2 / Supabase / Local Fallback)
 app.post('/api/media/upload', requirePhoneVerified, async (req, res) => {
@@ -736,21 +550,6 @@ app.post('/api/push/unregister', requirePhoneVerified, (req, res) => {
   res.json({ success: true });
 });
 
-// Groups List & Create API
-app.get('/api/groups', requirePhoneVerified, (req, res) => {
-  res.json(db.getAllGroups());
-});
-
-app.post('/api/groups', requirePhoneVerified, (req, res) => {
-  const group = db.createGroup({
-    ...req.body,
-    createdById: req.currentUser.id
-  });
-  io.emit('new_group_created', group);
-  res.json({ success: true, group });
-});
-
-// Status Updates API
 app.get('/api/status', requirePhoneVerified, (req, res) => {
   res.json(db.getActiveStatusUpdates());
 });
@@ -762,14 +561,15 @@ app.post('/api/status', requirePhoneVerified, (req, res) => {
     author: req.currentUser.name,
     avatar: req.currentUser.avatar
   });
-  io.emit('new_status_update', status);
+  io.to(`user_${req.currentUser.id}`).emit('new_status_update', status);
   res.json({ success: true, status });
 });
 
 // WebRTC ICE Servers API (Google STUN + Relay)
-app.get('/api/webrtc/ice-servers', (req, res) => {
+app.get('/api/webrtc/ice-servers', requirePhoneVerified, (req, res) => {
   res.json({
     iceServers: [
+      ...((process.env.TURN_URL || process.env.TURN_SERVER_URL) && process.env.TURN_USERNAME && (process.env.TURN_PASSWORD || process.env.TURN_CREDENTIAL) ? [{urls:(process.env.TURN_URL || process.env.TURN_SERVER_URL),username:process.env.TURN_USERNAME,credential:(process.env.TURN_PASSWORD || process.env.TURN_CREDENTIAL)}] : []),
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
@@ -876,343 +676,62 @@ io.on('connection', (socket) => {
   console.log(`[SOCKET] Client connected: ${socket.id}`);
 
   // User Join / Authenticate
-  socket.on('user_join', (userData) => {
-    if (!userData || !userData.id) return;
-    let user = db.getUser(userData.id);
-    if (!user && userData.phone) {
-      user = db.getUserByPhone(userData.phone);
-    }
-    if (!user) {
-      user = db.saveUser({
-        id: userData.id,
-        name: userData.name || 'GitPit User',
-        phone: userData.phone || '',
-        avatar: userData.avatar || 'assets/logo-icon.svg',
-        email: userData.email || '',
-        bio: userData.bio || '',
-        phoneVerified: true,
-        online: true
-      });
-    }
-
-    const cleanPhone = (user.phone || userData.phone || '').replace(/\D/g, '').slice(-10);
-    activeUsers.set(socket.id, {
-      ...user,
-      cleanPhone,
-      socketId: socket.id,
-      online: true,
-      lastSeen: new Date().toISOString()
-    });
-
-    if (cleanPhone) socket.join(`user_${cleanPhone}`);
-    if (user.id) socket.join(`user_${user.id}`);
-    if (userData.id && userData.id !== user.id) socket.join(`user_${userData.id}`);
-
-    io.emit('online_users', Array.from(activeUsers.values()).map(u => ({
-      id: u.id,
-      name: u.name,
-      phone: u.phone,
-      avatar: u.avatar,
-      online: true
-    })));
-
-    console.log(`[USER ONLINE] ${user.name} (${user.phone}) [Socket: ${socket.id}, CleanPhone: ${cleanPhone}]`);
+  socket.on('user_join', (data) => {
+    const auth = db.validateSession(data?.token);
+    if (!auth?.user?.phoneVerified) return socket.emit('error_message',{error:'Authentication required'});
+    for (const room of socket.rooms) if (room !== socket.id) socket.leave(room);
+    activeUsers.set(socket.id,auth.user);
+    socket.data.token=data.token;
+    socket.join(`user_${auth.user.id}`);
+  });
+  socket.on('error',()=>{});
+  socket.use((_packet,next)=>{
+    const auth=db.validateSession(socket.data.token);
+    if (_packet[0]==='user_join' || auth?.user?.phoneVerified) return next();
+    next(new Error('Authentication required'));
+  });
+  socket.on('send_message', (body,ack)=>{
+    const msg=deliverMessage(activeUsers.get(socket.id),body||{});
+    if(typeof ack==='function') ack({success:!!msg,message:msg});
   });
 
-  // Direct Message
-  socket.on('send_message', (msgData) => {
-    let sender = activeUsers.get(socket.id);
-    if (!sender && msgData.senderId) {
-      const dbUser = db.getUser(msgData.senderId);
-      if (dbUser) sender = dbUser;
-    }
-    if (!sender && msgData.senderPhone) {
-      const dbUser = db.getUserByPhone(msgData.senderPhone);
-      if (dbUser) sender = dbUser;
-    }
-    if (!sender) {
-      sender = {
-        id: msgData.senderId || 'user',
-        name: msgData.senderName || 'User',
-        phone: msgData.senderPhone || '',
-        avatar: msgData.senderAvatar || ''
-      };
-    }
-
-    const targetId = msgData.recipientId;
-    if (targetId && sender.id && db.isBlocked(sender.id, targetId)) {
-      socket.emit('error_message', { error: 'Message blocked: Cannot send to this user.' });
-      return;
-    }
-
-    const enrichedMsg = db.saveMessage({
-      ...msgData,
-      senderId: sender.id || msgData.senderId,
-      senderName: sender.name || msgData.senderName,
-      senderAvatar: sender.avatar || msgData.senderAvatar,
-      senderPhone: sender.phone || msgData.senderPhone
-    });
-
-    if (msgData.chatId) {
-      io.emit(`receive_message_${msgData.chatId}`, enrichedMsg);
-    }
-    io.emit('receive_message', enrichedMsg);
-    io.emit('chat_message', enrichedMsg);
-
-    const recipientPhone10 = (msgData.recipientPhone || '').replace(/\D/g, '').slice(-10);
-    if (recipientPhone10) {
-      io.to(`user_${recipientPhone10}`).emit('receive_message', enrichedMsg);
-    }
-    if (targetId) {
-      io.to(`user_${targetId}`).emit('receive_message', enrichedMsg);
-    }
-
-    // AI Auto-Reply
-    if (msgData.recipientId === 'ai_assistant' || msgData.isAiChat || msgData.chatId === 'chat_ai') {
-      setTimeout(() => {
-        const aiAnswer = generateSmartAiResponse(msgData.text, sender.name);
-        const replyMsg = db.saveMessage({
-          chatId: msgData.chatId || 'chat_ai',
-          senderId: 'ai_assistant',
-          senderName: 'GitPit AI 🤖',
-          senderAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ChatterAI',
-          recipientId: sender.id,
-          recipientPhone: sender.phone,
-          text: aiAnswer,
-          type: 'text',
-          isAi: true
-        });
-        io.emit(`receive_message_${msgData.chatId || 'chat_ai'}`, replyMsg);
-        io.emit('receive_message', replyMsg);
-      }, 600);
-    }
-
-    // Push FCM Notification
-    if (targetId && targetId !== 'ai_assistant') {
-      const tokens = db.getPushTokens(targetId);
-      if (tokens && tokens.length > 0) {
-        tokens.forEach(t => {
-          fcmService.sendMessageNotification(t.token, {
-            title: sender.name,
-            body: msgData.type === 'image' ? '📷 Photo' : (msgData.type === 'document' ? '📄 Document' : (msgData.text || 'New message')),
-            senderId: sender.id,
-            chatId: msgData.chatId
-          });
-        });
-      }
-    }
-  });
-
-  // Typing Indicators
-  socket.on('typing', (data) => {
-    socket.broadcast.emit('user_typing', data);
-  });
-
-  socket.on('stop_typing', (data) => {
-    socket.broadcast.emit('user_stop_typing', data);
-  });
-
-  // Message Edits & Deletions
-  socket.on('edit_message', (data) => {
-    const updated = db.editMessage(data.id, data.text);
-    if (updated) io.emit('message_edited', updated);
-  });
-
-  socket.on('delete_message', (data) => {
-    const deleted = db.deleteMessage(data.id, data.isForEveryone);
-    if (deleted) io.emit('message_deleted', data);
-  });
-
-  socket.on('delete_chat', (data) => {
-    db.deleteChat(data.chatId);
-    io.emit('chat_deleted', data);
-  });
-
-  // Helper to find recipient socket
-  function findRecipientSocketId(targetUserId, targetPhone = '') {
-    const cleanPhone = (targetPhone || '').replace(/\D/g, '').slice(-10);
-    for (const [sockId, u] of activeUsers.entries()) {
-      if (u.id === targetUserId) {
-        return sockId;
-      }
-      if (cleanPhone && u.phone && u.phone.replace(/\D/g, '').includes(cleanPhone)) {
-        return sockId;
-      }
-    }
-    return null;
+  // Calls are routed only between authenticated participants.
+  const callPeers = socket.data.callPeers = new Set();
+  function startCall(data={}) {
+    const sender=activeUsers.get(socket.id);
+    const target=db.getUser(data.userToCall||data.recipientId)||db.findUserByPhone(data.recipientPhone);
+    if (!sender || !target?.phoneVerified || db.isBlocked(sender.id,target.id)) return;
+    const peer=[...activeUsers].find(([id,u])=>u.id===target.id && id!==socket.id);
+    if (!peer) { for(const t of db.getPushTokens(target.id)) fcmService.sendCallNotification(t.token,{callerName:sender.name,callerId:sender.id,callType:data.type,callId:data.callId}); return socket.emit('call-rejected',{reason:'Recipient offline'}); }
+    const remote=io.sockets.sockets.get(peer[0]); if(!remote) return;
+    callPeers.add(remote.id); remote.data.callPeers.add(socket.id);
+    const payload={...data,callerId:sender.id,callerName:sender.name,callerPhone:sender.phone,fromSocketId:socket.id,callerSocketId:socket.id};
+    remote.emit('incoming-call',payload); remote.emit('incoming_call',payload);
   }
-
-  // 1. Call User (Offer)
-  socket.on('call-user', (callData) => {
-    let sender = activeUsers.get(socket.id);
-    if (!sender && callData.callerId) {
-      const dbUser = db.getUser(callData.callerId);
-      if (dbUser) sender = dbUser;
-    }
-    if (!sender) {
-      sender = {
-        id: callData.callerId || 'user',
-        name: callData.callerName || 'User',
-        phone: callData.callerPhone || '',
-        avatar: callData.callerAvatar || ''
-      };
-    }
-
-    const targetRecipientId = callData.userToCall || callData.recipientId;
-    if (targetRecipientId && sender.id && db.isBlocked(sender.id, targetRecipientId)) {
-      socket.emit('call-rejected', { reason: 'Blocked user' });
-      return;
-    }
-
-    const targetSocketId = findRecipientSocketId(targetRecipientId, callData.recipientPhone);
-    const payload = {
-      ...callData,
-      callerId: sender.id,
-      callerName: sender.name,
-      callerAvatar: sender.avatar,
-      callerPhone: sender.phone,
-      fromSocketId: socket.id,
-      callerSocketId: socket.id
-    };
-
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('incoming-call', payload);
-      io.to(targetSocketId).emit('incoming_call', payload);
-    } else {
-      socket.broadcast.emit('incoming-call', payload);
-      socket.broadcast.emit('incoming_call', payload);
-      
-      // Dispatch background FCM call notification if receiver is offline
-      if (targetRecipientId) {
-        const tokens = db.getPushTokens(targetRecipientId);
-        tokens.forEach(t => {
-          fcmService.sendCallNotification(t.token, {
-            callerName: sender.name,
-            callType: callData.type || 'video',
-            callId: callData.callId
-          });
-        });
-      }
-    }
+  for(const event of ['call-user','call_user']) socket.on(event,startCall);
+  const aliases={'call-accepted':['call-accepted','call_accepted'],accept_call:['call-accepted','call_accepted'],'ice-candidate':['ice-candidate','ice_candidate'],ice_candidate:['ice-candidate','ice_candidate'],'call-rejected':['call-rejected','call_rejected'],reject_call:['call-rejected','call_rejected'],'end-call':['end-call','call_ended'],end_call:['end-call','call_ended']};
+  for(const [event,outputs] of Object.entries(aliases)) socket.on(event,(data={})=>{
+    const target=data.to||data.targetSocketId||data.callerSocketId||([...callPeers].length===1?[...callPeers][0]:null);
+    if(!callPeers.has(target)) return;
+    for(const output of outputs) io.to(target).emit(output,{...data,fromSocketId:socket.id,responderSocketId:socket.id});
+    if(event.includes('end')||event.includes('reject')) {callPeers.delete(target);io.sockets.sockets.get(target)?.data.callPeers.delete(socket.id);}
   });
-
-  socket.on('call_user', (callData) => {
-    const targetSocketId = findRecipientSocketId(callData.userToCall || callData.recipientId, callData.recipientPhone);
-    const payload = { ...callData, fromSocketId: socket.id, callerSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('incoming-call', payload);
-      io.to(targetSocketId).emit('incoming_call', payload);
-    } else {
-      socket.broadcast.emit('incoming-call', payload);
-      socket.broadcast.emit('incoming_call', payload);
-    }
-  });
-
-  // 2. Call Accepted (Answer)
-  socket.on('call-accepted', (data) => {
-    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
-    const payload = { ...data, responderSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('call-accepted', payload);
-      io.to(targetSocketId).emit('call_accepted', payload);
-    } else {
-      socket.broadcast.emit('call-accepted', payload);
-      socket.broadcast.emit('call_accepted', payload);
-    }
-  });
-
-  socket.on('accept_call', (data) => {
-    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
-    const payload = { ...data, responderSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('call-accepted', payload);
-      io.to(targetSocketId).emit('call_accepted', payload);
-    } else {
-      socket.broadcast.emit('call-accepted', payload);
-      socket.broadcast.emit('call_accepted', payload);
-    }
-  });
-
-  // 3. ICE Candidate
-  socket.on('ice-candidate', (data) => {
-    const targetSocketId = data.to || data.targetSocketId || findRecipientSocketId(data.targetUserId, data.targetPhone);
-    const payload = { candidate: data.candidate, fromSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('ice-candidate', payload);
-      io.to(targetSocketId).emit('ice_candidate', payload);
-    } else {
-      socket.broadcast.emit('ice-candidate', payload);
-      socket.broadcast.emit('ice_candidate', payload);
-    }
-  });
-
-  socket.on('ice_candidate', (data) => {
-    const targetSocketId = data.to || data.targetSocketId || findRecipientSocketId(data.targetUserId, data.targetPhone);
-    const payload = { candidate: data.candidate, fromSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('ice-candidate', payload);
-      io.to(targetSocketId).emit('ice_candidate', payload);
-    } else {
-      socket.broadcast.emit('ice-candidate', payload);
-      socket.broadcast.emit('ice_candidate', payload);
-    }
-  });
-
-  // 4. Call Rejected
-  socket.on('call-rejected', (data) => {
-    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
-    const payload = { ...data, fromSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('call-rejected', payload);
-      io.to(targetSocketId).emit('call_rejected', payload);
-    } else {
-      socket.broadcast.emit('call-rejected', payload);
-      socket.broadcast.emit('call_rejected', payload);
-    }
-  });
-
-  socket.on('reject_call', (data) => {
-    const targetSocketId = data.to || data.callerSocketId || findRecipientSocketId(data.callerId, data.callerPhone);
-    const payload = { ...data, fromSocketId: socket.id };
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('call-rejected', payload);
-      io.to(targetSocketId).emit('call_rejected', payload);
-    } else {
-      socket.broadcast.emit('call-rejected', payload);
-      socket.broadcast.emit('call_rejected', payload);
-    }
-  });
-
-  // 5. End Call
-  socket.on('end-call', (data) => {
-    io.emit('end-call', { ...(data || {}), fromSocketId: socket.id });
-    io.emit('call_ended', { ...(data || {}), fromSocketId: socket.id });
-  });
-
-  socket.on('end_call', (data) => {
-    io.emit('end-call', { ...(data || {}), fromSocketId: socket.id });
-    io.emit('call_ended', { ...(data || {}), fromSocketId: socket.id });
-  });
-
-  // Disconnect
   socket.on('disconnect', () => {
     activeUsers.delete(socket.id);
-    io.emit('online_users', Array.from(activeUsers.values()).map(u => ({
-      id: u.id,
-      name: u.name,
-      phone: u.phone,
-      avatar: u.avatar,
-      online: true
-    })));
+    for(const peer of callPeers) io.sockets.sockets.get(peer)?.data.callPeers.delete(socket.id);
   });
 });
 
 // Fallback for SPA routing
 app.get('*', (req, res) => {
+  if(req.path.startsWith('/api/')) return res.status(404).json({error:'Not found'});
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-server.listen(PORT, () => {
+async function start() {
+ await db.ready;
+ if (process.env.NODE_ENV === 'production' && !db.isPostgres) throw new Error('Production requires a working PostgreSQL database');
+ server.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`🚀 GitPit Production Server on Port: ${PORT}`);
   console.log(`📦 Database: ${db.isPostgres ? 'PostgreSQL (Durable)' : 'JSON File (Ephemeral)'}`);
@@ -1222,3 +741,6 @@ server.listen(PORT, () => {
   console.log(`🌐 Production URL: https://chitchat-chatterpatter.onrender.com`);
   console.log(`=======================================================`);
 });
+
+}
+start().catch(e=>{console.error(e.message);process.exit(1);});

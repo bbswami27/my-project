@@ -168,7 +168,7 @@
 
   function bindSocketDelivery(){
     const s=window.ChatterApp?.socket;if(!s||s.__v112Bound)return false;s.__v112Bound=true;
-    const join=()=>{const u=me();if(u?.id)s.emit('user_join',{id:u.id,name:u.name,phone:u.phone,avatar:u.avatar,email:u.email});};
+    const join=()=>{const u=me();if(u?.id)s.emit('user_join', {token: localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')});};
     s.connected&&join();s.on('connect',join);
     const incoming=msg=>{if(!msg||msg.senderId===me()?.id)return;try{window.ChatEngine?.onReceiveMessage?.(msg);}catch(e){console.warn('[V112] incoming message merge failed',e);}};
     ['receive_message','chat_message'].forEach(ev=>s.on(ev,incoming));

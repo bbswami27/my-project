@@ -11,7 +11,7 @@
   function joinSocket(){
     const socket=window.ChatterApp?.socket,u=me();
     if(!socket||!u)return false;
-    const identify=()=>socket.emit('user_join',{id:u.id,name:u.name,phone:u.phone,avatar:u.avatar,email:u.email});
+    const identify=()=>socket.emit('user_join', {token: localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')});
     if(socket.connected)identify();
     if(!socket.__gpIdentityV112){socket.__gpIdentityV112=true;socket.on('connect',identify);}
     return true;
@@ -67,7 +67,7 @@
       try{
         const saved=await postMessage(msg);Object.assign(msg,saved||{},{status:'sent'});this.saveChats?.();this.renderMessages?.();this.renderChatList?.();
         // REST saves durably; socket emission supplies immediate receiver delivery.
-        window.ChatterApp?.socket?.emit('send_message',{...msg,...saved});
+        // REST already delivers the message.
       }catch(err){msg.status='failed';msg.deliveryError=err.message;this.saveChats?.();this.renderMessages?.();console.error('[MESSAGE V112] delivery failed',err);alert(`Message not delivered: ${err.message}`);}
     };
     return true;

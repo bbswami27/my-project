@@ -256,6 +256,7 @@ class CallManager {
       await this.initLocalStream(acceptedType === 'video');
 
       // 2. Create WebRTC PeerConnection
+      await this.refreshIceServers();
       this.createPeerConnection(callerSocketId, contactId, callerPhone);
 
       // 3. Set Remote Offer Description
@@ -380,6 +381,7 @@ class CallManager {
       const recipientPhone = targetChat ? targetChat.phone : '';
 
       // 3. Create WebRTC PeerConnection
+      await this.refreshIceServers();
       this.createPeerConnection(null, contactId, recipientPhone);
 
       // 4. Create and Set Local Offer
@@ -419,6 +421,10 @@ class CallManager {
   // ==========================================
   // WEBRTC PEER CONNECTION & SIGNALING
   // ==========================================
+  async refreshIceServers() {
+    const token=localStorage.getItem('gitpit_auth_token')||localStorage.getItem('chatterpatter_token');
+    try { const r=await fetch(`${window.API_BASE}/api/webrtc/ice-servers`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(5000)}); if(r.ok){const d=await r.json();if(Array.isArray(d.iceServers))this.rtcConfig.iceServers=d.iceServers;} } catch(e) { console.warn('ICE configuration unavailable'); }
+  }
   createPeerConnection(targetSocketId = null, targetUserId = null, targetPhone = '') {
     if (this.peerConnection) {
       try { this.peerConnection.close(); } catch (e) {}

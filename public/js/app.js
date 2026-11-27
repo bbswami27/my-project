@@ -92,7 +92,7 @@ class ChatterApp {
   initSocket() {
     try {
       if (typeof io !== 'undefined') {
-        const socketUrl = 'https://chitchat-chatterpatter.onrender.com';
+        const socketUrl = window.API_BASE || 'https://chitchat-chatterpatter.onrender.com';
 
         this.socket = io(socketUrl, {
           transports: ['websocket', 'polling'],
@@ -105,7 +105,7 @@ class ChatterApp {
           console.log('⚡ Connected to ChatterPatter Socket Server:', this.socket.id, 'via', socketUrl);
           const currentUser = window.AuthManager && window.AuthManager.currentUser ? window.AuthManager.currentUser : null;
           if (currentUser) {
-            this.socket.emit('user_join', currentUser);
+            this.socket.emit('user_join', {token: localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')});
           }
           if (window.ChatEngine) {
             window.ChatEngine.syncRegisteredUsers();

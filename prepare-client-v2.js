@@ -23,7 +23,7 @@ function prepareHtml(filePath){
     html=html.replace(new RegExp(`\\s*<script src="js/${escaped}"><\\/script>\\s*`,'g'),'\n');
   }
   html=html.replace(/\s*<script src="js\/message-routing-v3\.js"><\/script>\s*/g,'\n');
-  const bootstrap='<script src="js/post-auth-repairs-v15.js?v=113"></script>';
+  const bootstrap='<script src="js/post-auth-repairs-v15.js?v=114"></script>';
   html=html.replace(/\s*<script src="js\/post-auth-repairs-v15\.js(?:\?[^\"]*)?"><\/script>\s*/g,'\n');
   html=html.replace('</body>',`  ${bootstrap}\n</body>`);
   fs.writeFileSync(filePath,html,'utf8');
@@ -33,7 +33,7 @@ function prepareHtml(filePath){
 function bumpCache(filePath){
   if(!fs.existsSync(filePath))return;
   let sw=fs.readFileSync(filePath,'utf8');
-  sw=sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/,"const CACHE_NAME = 'gitpit-web-v1.1.3';");
+  sw=sw.replace(/const CACHE_NAME = 'gitpit-web-v[^']+';/,"const CACHE_NAME = 'gitpit-web-v1.1.4-repair';");
   for(const name of repairNames){
     const escaped=`./js/${name}`.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     sw=sw.replace(new RegExp(`\\s*'${escaped}',?`,'g'),'');
