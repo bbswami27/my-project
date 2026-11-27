@@ -554,25 +554,40 @@ app.post('/api/media/upload', requirePhoneVerified, async (req, res) => {
 
 // Call Logs API
 app.get('/api/calls', requirePhoneVerified, (req, res) => {
-  const logs = db.getCallLogs(req.currentUser.id);
+  const myId=req.currentUser.id;
+  // Format DB call records as the legacy Calls UI expects, without leaking
+  // names/phones from unrelated accounts or fabricating identity mappings.
+  const logs = db.getCallLogs(myId).map(call => {
+    const outgoing=call.callerId===myId;
+    const peerId=outgoing?call.receiverId:call.callerId;
+    const peer=db.getUser(peerId);
+    const peerName=peer?.name||(outgoing?call.receiverName:call.callerName)||'GitPit Member';
+    return {
+      ...call,contactId:peerId,name:peerName,
+      avatar:peer?.avatar||'assets/logo-icon.svg',
+      phone:peer?.phoneVerified&&!peer?.privacy?.hidePhone ? (peer.phone||'') : '',
+      direction:outgoing?'outgoing':'incoming',
+      timestamp:Number(call.createdAt)||Date.parse(call.timestamp)||Date.now()
+    };
+  });
+  res.set('Cache-Control','private, no-store');
   res.json({ success: true, callLogs: logs });
 });
 
 app.post('/api/calls', requirePhoneVerified, (req, res) => {
   const body = req.body || {};
-  const peer = db.getUser(body.receiverId || body.recipientId || body.userToCall || body.contactId) ||
-    (body.receiverPhone ? db.findUserByPhone(body.receiverPhone) : null);
+  const candidateId=body.contactId || body.receiverId || body.recipientId || body.userToCall ||
+    (body.direction==='incoming'?body.callerId:null);
+  const peer = db.getUser(candidateId) || (body.receiverPhone && db.findUserByPhone(body.receiverPhone));
   if (!peer || peer.id === req.currentUser.id || !(peer.phoneVerified || peer.emailVerified)) {
-    return res.status(400).json({ success: false, error: 'A valid registered call recipient is required.' });
+    return res.status(400).json({ success: false, error: 'A valid registered call peer is required.' });
   }
+  const incoming=body.direction==='incoming';
+  const caller=incoming?peer:req.currentUser;
+  const receiver=incoming?req.currentUser:peer;
   const log = db.saveCallLog({
-    ...body,
-    receiverId: peer.id,
-    receiverName: peer.name,
-    receiverPhone: peer.phone || '',
-    callerId: req.currentUser.id,
-    callerName: req.currentUser.name,
-    callerPhone: req.currentUser.phone || ''
+    ...body,callerId:caller.id,callerName:caller.name,callerPhone:caller.phoneVerified?(caller.phone||''):'',
+    receiverId:receiver.id,receiverName:receiver.name,receiverPhone:receiver.phoneVerified?(receiver.phone||''):''
   });
   res.json({ success: true, callLog: log });
 });
