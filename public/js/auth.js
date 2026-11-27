@@ -58,8 +58,10 @@ class AuthManager {
           this.renderAuthenticatedUI();
           return;
         } else {
-          // Token expired or invalid on server
-          this.logout(false);
+          // Do not destructively log out on a single failed resume check.
+          // Explicit logout alone may invalidate the session or clear credentials.
+          console.warn('[AUTH] Session check not accepted; preserving stored session and chat history');
+          this.showLoginModal();
           return;
         }
       } catch (err) {
@@ -93,6 +95,11 @@ class AuthManager {
 
   renderAuthenticatedUI() {
     this.hideLoginModal();
+    // The chat engine starts before asynchronous session validation. Bind its
+    // per-account storage only after the authenticated identity is known.
+    if (this.currentUser?.id && window.ChatEngine?.bindAccountChats) {
+      window.ChatEngine.bindAccountChats(this.currentUser.id);
+    }
 
     const profileAvatar = document.getElementById('current-user-avatar');
     if (profileAvatar && this.currentUser) {
