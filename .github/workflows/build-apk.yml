@@ -1,6 +1,9 @@
 name: Build Signed GitPit APK
 
 on:
+  push:
+    branches: [gitpit-v114-testing]
+    paths: ['.github/workflows/build-apk.yml']
   workflow_dispatch:
 
 permissions:
