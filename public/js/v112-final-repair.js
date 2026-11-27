@@ -79,26 +79,54 @@
     if(!p)return [];
     try{await p.requestPermissions?.();}catch(_){}
     try{
-      let r;try{r=await p.getContacts({projection:{name:true,phones:true}});}catch(_){r=await p.getContacts();}
+      let r;try{r=await p.getContacts({projection:{name:true,phones:true,emails:true}});}catch(_){r=await p.getContacts();}
       const list=Array.isArray(r?.contacts)?r.contacts:[];
       const out=[];
-      list.forEach((c,index)=>{
-        const name=c?.displayName||c?.name?.display||[c?.name?.given,c?.name?.family].filter(Boolean).join(' ')||c?.givenName||c?.fullName||'Contact';
-        const nums=[];
-        [c?.phoneNumbers,c?.phones,c?.tel].forEach(a=>Array.isArray(a)&&a.forEach(x=>nums.push(typeof x==='string'?x:(x?.number||x?.value||x?.phoneNumber||''))));
-        if(c?.phone)nums.push(c.phone);if(c?.phoneNumber)nums.push(c.phoneNumber);
-        [...new Set(nums.map(norm).filter(Boolean))].forEach(phone=>out.push({order:index,name,savedName:name,phone}));
-      });
+      for(const [index,contact] of list.entries()){
+        const name=contact?.displayName||contact?.name?.display||
+          [contact?.name?.given,contact?.name?.family].filter(Boolean).join(' ')||'Contact';
+        const numbers=[];
+        [contact?.phoneNumbers,contact?.phones,contact?.tel].forEach(a=>Array.isArray(a)&&a.forEach(x=>numbers.push(typeof x==='string'?x:(x?.number||x?.value||x?.phoneNumber||''))));
+        if(contact?.phone)numbers.push(contact.phone);if(contact?.phoneNumber)numbers.push(contact.phoneNumber);
+        const emails=[];
+        [contact?.emails,contact?.emailAddresses].forEach(a=>Array.isArray(a)&&a.forEach(x=>emails.push(typeof x==='string'?x:(x?.address||x?.email||x?.value||''))));
+        if(contact?.email)emails.push(contact.email);
+        const cleanEmails=[...new Set(emails.map(e=>String(e||'').trim().toLowerCase()).filter(e=>/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(e)))];
+        const phones=[...new Set(numbers.map(norm).filter(Boolean))];
+        if(phones.length)phones.forEach(phone=>out.push({order:index,name,savedName:name,phone,email:cleanEmails[0]||'',emails:cleanEmails}));
+        else if(cleanEmails.length)out.push({order:index,name,savedName:name,phone:'',email:cleanEmails[0],emails:cleanEmails});
+      }
       return out;
-    }catch(e){console.warn('[V112] phonebook read failed',e);return [];}
+    }catch(e){console.warn('[CONTACTS] Native phonebook inaccessible');return [];}
   }
 
   async function syncDirectory(){
     const [registered,phonebook]=await Promise.all([getRegisteredUsers(),readPhonebookOrdered()]);
-    const byPhone=new Map(registered.filter(u=>d10(u.phone)).map(u=>[d10(u.phone),u]));
-    const ordered=phonebook.map(x=>{const u=byPhone.get(d10(x.phone));return u?{...u,...x,name:x.savedName||u.name,isRegistered:true,registeredUserId:u.id}:{...x,isRegistered:false};});
+    let matched=[];
+    if(phonebook.length){
+      try{
+        for(let i=0;i<phonebook.length;i+=150){
+          const response=await authFetch('/api/contacts/sync',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({contacts:phonebook.slice(i,i+150).map(x=>({name:x.name,phone:x.phone,email:x.email,emails:x.emails}))})
+          });
+          if(response.ok){const payload=await response.json();matched.push(...(payload.matchedUsers||[]));}
+        }
+      }catch(e){console.warn('[CONTACTS] Matching unavailable; registered ID list remains usable');}
+    }
+    const byPhone=new Map(registered.filter(u=>u.phoneVerified&&d10(u.phone)).map(u=>[d10(u.phone),u]));
+    const byEmail=new Map(matched.filter(u=>u.email).map(u=>[String(u.email).toLowerCase(),u]));
+    const byId=new Map(registered.map(u=>[u.id,u]));
+    const ordered=phonebook.map(x=>{
+      const user=(d10(x.phone)&&byPhone.get(d10(x.phone)))||
+        (x.emails||[]).map(e=>byEmail.get(e)).find(Boolean);
+      const canonical=user?byId.get(user.id)||user:null;
+      return canonical?{...x,...canonical,phone:canonical.phoneVerified?canonical.phone:'',email:x.email||'',savedName:x.savedName,name:x.savedName||canonical.name,isRegistered:true,registeredUserId:canonical.id}
+        :{...x,isRegistered:false};
+    });
     localStorage.setItem('gitpit_device_contacts_ordered',JSON.stringify(ordered));
     localStorage.setItem('gitpit_registered_directory',JSON.stringify(registered));
+    // The verified account's ID is canonical. Device contact numbers never become remote IDs.
     if(window.ChatEngine)window.ChatEngine.registeredUsers=registered;
     return {registered,ordered};
   }
@@ -122,7 +150,7 @@
       const q=(wrap.querySelector('[data-search]').value||'').toLowerCase();
       const rows=(tab==='registered'?registered:ordered).filter(x=>!q||String(x.savedName||x.name||'').toLowerCase().includes(q)||String(x.phone||'').includes(q)||String(x.email||'').toLowerCase().includes(q));
       const list=wrap.querySelector('[data-list]');list.innerHTML='';
-      rows.forEach(x=>{const b=document.createElement('button');b.type='button';b.style.cssText='width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;border-bottom:1px solid #ddd;background:transparent;color:inherit;text-align:left';b.innerHTML=`<span style="flex:1"><b>${esc(x.savedName||x.name||x.phone)}</b><small style="display:block">${esc(x.phone||x.email||'Email-verified account')} ${x.isRegistered?'• Registered':'• Not on GitPit'}</small></span>${x.isRegistered?'Chat':''}`;b.onclick=()=>{if(!x.isRegistered){alert('This contact is not registered on GitPit.');return;}const u=registered.find(r=>r.id===x.id||(d10(x.phone)&&d10(r.phone)===d10(x.phone)))||x;const c=ensureChat(u);wrap.remove();c&&window.ChatEngine?.openChat?.(c.id);};list.appendChild(b);});
+      rows.forEach(x=>{const b=document.createElement('button');b.type='button';b.style.cssText='width:100%;display:flex;align-items:center;gap:10px;padding:12px;border:0;border-bottom:1px solid #ddd;background:transparent;color:inherit;text-align:left';b.innerHTML=`<span style="flex:1"><b>${esc(x.savedName||x.name||x.phone)}</b><small style="display:block">${esc(x.phone||x.email||'Email-verified account')} ${x.isRegistered?'• Registered':'• Not on GitPit'}</small></span>${x.isRegistered?'Chat':''}`;b.onclick=()=>{if(!x.isRegistered){alert('This contact is not registered on GitPit.');return;}const u=registered.find(r=>r.id===(x.registeredUserId||x.id))||x;const c=ensureChat(u);wrap.remove();c&&window.ChatEngine?.openChat?.(c.id);};list.appendChild(b);});
       if(!rows.length)list.innerHTML='<div style="padding:24px;text-align:center">No contacts found. Refresh and verify both GitPit accounts.</div>';
     };
     wrap.querySelector('[data-back]').onclick=()=>wrap.remove();
