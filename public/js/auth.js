@@ -799,6 +799,13 @@ class AuthManager {
     const modal = document.getElementById('user-profile-modal');
     if (!modal) return;
 
+    if (this.currentUser && !this.currentUser.phoneVerified && this.currentUser.phone) {
+      // Older builds wrote arbitrary profile phone values into localStorage despite
+      // the server intentionally refusing them. Discard that stale local-only value.
+      this.currentUser.phone = '';
+      localStorage.setItem('gitpit_user', JSON.stringify(this.currentUser));
+      localStorage.setItem('chatterpatter_user', JSON.stringify(this.currentUser));
+    }
     const u = this.currentUser || {
       name: 'User',
       username: '@user',
