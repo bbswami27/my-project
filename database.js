@@ -283,6 +283,23 @@ class Database {
         });
       }
 
+      // Restore historical calls after every Render restart. Previously callLogs
+      // stayed empty even though cp_call_logs still contained durable records.
+      const callRes = await client.query('SELECT * FROM cp_call_logs ORDER BY created_at DESC LIMIT 5000');
+      const callMap = new Map((this.data.callLogs || []).filter(x => x?.id).map(x => [x.id,x]));
+      for (const row of callRes.rows || []) {
+        callMap.set(row.id,{
+          id:row.id,callerId:row.caller_id,callerName:row.caller_name||'',
+          callerPhone:row.caller_phone||'',receiverId:row.receiver_id,
+          receiverName:row.receiver_name||'',receiverPhone:row.receiver_phone||'',
+          type:row.type||'audio',duration:row.duration||'00:00',
+          durationSeconds:Number(row.duration_seconds||0),status:row.status||'completed',
+          timestamp:row.timestamp||'',createdAt:Number(row.created_at)||0
+        });
+      }
+      this.data.callLogs=Array.from(callMap.values()).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
+      console.log('[CALL HISTORY] Rehydrated', (callRes.rows||[]).length, 'durable call entries.');
+
       // 4. Sync Meetings from PostgreSQL
       const meetRes = await client.query('SELECT * FROM cp_meetings');
       if (meetRes && meetRes.rows) {
