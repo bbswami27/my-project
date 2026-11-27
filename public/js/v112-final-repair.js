@@ -76,7 +76,7 @@
     }
   }
 
-  async function readPhonebookOrdered(){
+  async function readPhonebookOrdered(interactive=false){
     const p=window.Capacitor?.Plugins?.Contacts;
     if(!p)return [];
     // Background refresh must never raise a permission dialog.
