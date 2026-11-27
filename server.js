@@ -129,10 +129,10 @@ function requireAuth(req, res, next) {
 
 function requirePhoneVerified(req, res, next) {
   requireAuth(req, res, () => {
-    if (!req.currentUser.phoneVerified || !req.currentUser.phone) {
+    if (!req.currentUser.phoneVerified && !req.currentUser.emailVerified) {
       return res.status(403).json({
-        error: 'Verified mobile number required to access this feature.',
-        phoneVerificationRequired: true
+        error: 'Verified email or mobile number required to access this feature.',
+        identityVerificationRequired: true
       });
     }
     next();
@@ -319,6 +319,7 @@ app.get('/api/auth/session', requireAuth, (req, res) => {
       phone: req.currentUser.phone,
       phoneVerified: req.currentUser.phoneVerified,
       phoneVerifiedAt: req.currentUser.phoneVerifiedAt,
+      emailVerified: !!req.currentUser.emailVerified,
       email: req.currentUser.email,
       avatar: req.currentUser.avatar,
       bio: req.currentUser.bio,
@@ -480,7 +481,7 @@ app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
 function deliverMessage(user, body) {
   if (!user || !body || typeof body !== 'object') return null;
   const target = db.getUser(body.recipientId) || db.findUserByPhone(body.recipientPhone);
-  if (!target || !target.phoneVerified || db.isBlocked(user.id,target.id)) return null;
+  if (!target || !(target.phoneVerified || target.emailVerified) || db.isBlocked(user.id,target.id)) return null;
   const prior = body.id && db.data.messages.find(m=>m.id===body.id);
   if (prior) return prior.senderId===user.id && prior.recipientId===target.id ? prior : null;
   const msg = db.saveMessage({...body, senderId:user.id,senderName:user.name,senderAvatar:user.avatar,senderPhone:user.phone,recipientId:target.id,recipientPhone:target.phone,createdAt:Date.now()});
@@ -678,7 +679,7 @@ io.on('connection', (socket) => {
   // User Join / Authenticate
   socket.on('user_join', (data) => {
     const auth = db.validateSession(data?.token);
-    if (!auth?.user?.phoneVerified) return socket.emit('error_message',{error:'Authentication required'});
+    if (!(auth?.user?.phoneVerified || auth?.user?.emailVerified)) return socket.emit('error_message',{error:'Authentication required'});
     for (const room of socket.rooms) if (room !== socket.id) socket.leave(room);
     activeUsers.set(socket.id,auth.user);
     socket.data.token=data.token;
@@ -687,7 +688,7 @@ io.on('connection', (socket) => {
   socket.on('error',()=>{});
   socket.use((_packet,next)=>{
     const auth=db.validateSession(socket.data.token);
-    if (_packet[0]==='user_join' || auth?.user?.phoneVerified) return next();
+    if (_packet[0]==='user_join' || auth?.user?.phoneVerified || auth?.user?.emailVerified) return next();
     next(new Error('Authentication required'));
   });
   socket.on('send_message', (body,ack)=>{
@@ -700,7 +701,7 @@ io.on('connection', (socket) => {
   function startCall(data={}) {
     const sender=activeUsers.get(socket.id);
     const target=db.getUser(data.userToCall||data.recipientId)||db.findUserByPhone(data.recipientPhone);
-    if (!sender || !target?.phoneVerified || db.isBlocked(sender.id,target.id)) return;
+    if (!sender || !(target?.phoneVerified || target?.emailVerified) || db.isBlocked(sender.id,target.id)) return;
     const peer=[...activeUsers].find(([id,u])=>u.id===target.id && id!==socket.id);
     if (!peer) { for(const t of db.getPushTokens(target.id)) fcmService.sendCallNotification(t.token,{callerName:sender.name,callerId:sender.id,callType:data.type,callId:data.callId}); return socket.emit('call-rejected',{reason:'Recipient offline'}); }
     const remote=io.sockets.sockets.get(peer[0]); if(!remote) return;
@@ -722,15 +723,14 @@ io.on('connection', (socket) => {
   });
 });
 
-// Fallback for SPA routing
-app.get('*', (req, res) => {
-  if(req.path.startsWith('/api/')) return res.status(404).json({error:'Not found'});
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 async function start() {
  await db.ready;
  if (process.env.NODE_ENV === 'production' && !db.isPostgres) throw new Error('Production requires a working PostgreSQL database');
+ await require('./services/emailOtp')(app,db,io);
+ app.get('*', (req, res) => {
+   if(req.path.startsWith('/api/')) return res.status(404).json({error:'Not found'});
+   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+ });
  server.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`🚀 GitPit Production Server on Port: ${PORT}`);
