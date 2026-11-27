@@ -113,8 +113,8 @@
     }catch(e){console.warn('[CONTACTS] Native phonebook inaccessible');return [];}
   }
 
-  async function syncDirectory(){
-    const [registered,phonebook]=await Promise.all([getRegisteredUsers(),readPhonebookOrdered(false)]);
+  async function syncDirectory(interactive=false){
+    const [registered,phonebook]=await Promise.all([getRegisteredUsers(),readPhonebookOrdered(interactive)]);
     let matched=[];
     if(phonebook.length){
       try{
@@ -154,7 +154,7 @@
 
   async function openNewChat(){
     // Explicit New Chat is a user-initiated contact-read action.
-    const {registered,ordered}=await syncDirectory();
+    const {registered,ordered}=await syncDirectory(true);
     document.querySelectorAll('.gitpit-v112-newchat').forEach(n=>n.remove());
     const wrap=document.createElement('div');wrap.className='gitpit-v112-newchat';wrap.style.cssText='position:fixed;inset:0;z-index:70000;background:var(--bg-app,#fff);color:var(--text-primary,#111);display:flex;flex-direction:column';
     wrap.innerHTML=`<div style="display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid #ccc"><button data-back>‹</button><b style="flex:1">Start New Chat</b><button data-new>+ Add Contact</button></div><div style="display:flex;gap:8px;padding:10px"><button data-tab="registered">GitPit Registered</button><button data-tab="phonebook">Phonebook</button></div><input data-search placeholder="Search name, number or email" style="margin:0 10px 10px;padding:10px"><div data-list style="overflow:auto;flex:1"></div>`;
