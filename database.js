@@ -204,6 +204,7 @@ class Database {
             phone: row.phone,
             phoneVerified: !!row.phone_verified,
             phoneVerifiedAt: row.phone_verified_at,
+            emailVerified: !!row.email_verified,
             email: row.email,
             passwordHash: row.password_hash,
             dob: row.dob,
