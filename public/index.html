@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+    // Hide the login modal while an existing session is being revalidated.
+    try {
+      if (localStorage.getItem('gitpit_auth_token') || localStorage.getItem('chatterpatter_token')) {
+        document.documentElement.classList.add('gitpit-session-check');
+      }
+    } catch (_) {}
+  </script>
+  <style>html.gitpit-session-check #auth-overlay-modal { display: none !important; }</style>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GitPit - Real-time Social Chat & Smart AI</title>
