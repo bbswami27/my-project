@@ -379,7 +379,10 @@ app.get('/api/users', requirePhoneVerified, (req, res) => {
 
 // User Profile Update API
 app.put('/api/user/profile', requireAuth, (req, res) => {
-  const { name, bio, avatar, phone, email } = req.body;
+  const { name, bio, avatar, phone, email } = req.body || {};
+  if (phone && String(phone) !== String(req.currentUser.phone || '')) {
+    return res.status(409).json({ success: false, error: 'Changing your mobile number requires verified phone OTP. Email login remains active.' });
+  }
   const updatedUser = db.saveUser({
     id: req.currentUser.id,
     name: name || req.currentUser.name,
@@ -393,7 +396,10 @@ app.put('/api/user/profile', requireAuth, (req, res) => {
 });
 
 app.post('/api/user/profile', requireAuth, (req, res) => {
-  const { name, bio, avatar, phone, email } = req.body;
+  const { name, bio, avatar, phone, email } = req.body || {};
+  if (phone && String(phone) !== String(req.currentUser.phone || '')) {
+    return res.status(409).json({ success: false, error: 'Changing your mobile number requires verified phone OTP. Email login remains active.' });
+  }
   const updatedUser = db.saveUser({
     id: req.currentUser.id,
     name: name || req.currentUser.name,
