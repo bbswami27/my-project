@@ -44,7 +44,7 @@ class SmsService {
           // Only numeric gateway diagnostic codes belong in application logs.
           // Never log the full provider response, API key, phone number or OTP.
           const codeCandidate = data?.status_code ?? data?.statusCode ?? data?.code;
-          const gatewayCode = /^\\d{3,4}$/.test(String(codeCandidate ?? ''))
+          const gatewayCode = /^\d{3,4}$/.test(String(codeCandidate ?? ''))
             ? String(codeCandidate) : 'unavailable';
           console.warn('[SMS-SERVICE] Fast2SMS rejected request', {
             httpStatus: resp.status,
