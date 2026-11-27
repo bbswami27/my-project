@@ -985,7 +985,12 @@ class CallManager {
       return;
     }
 
-    listElem.innerHTML = this.callLogs.map(log => {
+    listElem.innerHTML = this.callLogs.filter(Boolean).map(log => {
+      // Old local entries and PostgreSQL records may have different fields.
+      log.name = String(log.name || log.receiverName || log.callerName || 'GitPit Member');
+      log.avatar = log.avatar || 'assets/logo-icon.svg';
+      log.type = log.type || 'audio';
+      log.contactId = log.contactId || '';
       const isVideo = log.type === 'video';
       const isMissed = log.status === 'missed';
       const isOutgoing = log.direction === 'outgoing';
