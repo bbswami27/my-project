@@ -530,7 +530,7 @@ app.get('/api/calls', requirePhoneVerified, (req, res) => {
 
 app.post('/api/calls', requirePhoneVerified, (req, res) => {
   const body = req.body || {};
-  const peer = db.getUser(body.receiverId || body.recipientId || body.userToCall) ||
+  const peer = db.getUser(body.receiverId || body.recipientId || body.userToCall || body.contactId) ||
     (body.receiverPhone ? db.findUserByPhone(body.receiverPhone) : null);
   if (!peer || peer.id === req.currentUser.id || !(peer.phoneVerified || peer.emailVerified)) {
     return res.status(400).json({ success: false, error: 'A valid registered call recipient is required.' });
