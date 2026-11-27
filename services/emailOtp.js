@@ -12,7 +12,15 @@ module.exports = async function installEmailOtp(app, db, io) {
   await db.pgPool.query("CREATE TABLE IF NOT EXISTS cp_email_otps (email VARCHAR(254) PRIMARY KEY, code_hash VARCHAR(64) NOT NULL, expires_at BIGINT NOT NULL, attempts INT NOT NULL DEFAULT 0, last_sent_at BIGINT NOT NULL, request_count INT NOT NULL DEFAULT 0, window_start BIGINT NOT NULL)");
   const users = await db.pgPool.query('SELECT id, email_verified FROM cp_users');
   for(const row of users.rows){const u=db.getUser(row.id);if(u)u.emailVerified=!!row.email_verified;}
-  const ready=()=>!!(process.env.EMAIL_TEST_ALLOWLIST && process.env.EMAIL_OTP_SECRET && process.env.EMAIL_OTP_SECRET.length>=32 && ((process.env.RESEND_API_KEY && process.env.EMAIL_FROM) || (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)));
+  const gmailScriptConfigured=()=>!!(process.env.GMAIL_SCRIPT_URL && process.env.GMAIL_SCRIPT_SECRET && process.env.GMAIL_SCRIPT_SECRET.length>=32);
+  const providerReady=()=>{
+    const provider=(process.env.EMAIL_PROVIDER||'').trim().toLowerCase();
+    if(provider==='gmail_script') return gmailScriptConfigured();
+    if(provider==='mailgun') return !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+    if(provider==='resend') return !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+    return gmailScriptConfigured() || !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM) || !!(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN);
+  };
+  const ready=()=>!!(process.env.EMAIL_TEST_ALLOWLIST && process.env.EMAIL_OTP_SECRET && process.env.EMAIL_OTP_SECRET.length>=32 && providerReady());
   app.get('/api/auth/email/config',(_req,res)=>res.json({enabled:ready(),method:'email-otp'}));
   const noStore=(_req,res,next)=>{res.set('Cache-Control','no-store');next();};
 
@@ -42,7 +50,27 @@ module.exports = async function installEmailOtp(app, db, io) {
     }catch(err){try{await client.query('ROLLBACK');}catch{}console.error('[EMAIL OTP] Store error',err.code||'unknown');return res.status(503).json({success:false,error:'Unable to request code.'});}finally{client.release();}
     try{
       let response;
-      if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN && (process.env.EMAIL_PROVIDER === 'mailgun' || !process.env.RESEND_API_KEY)) {
+      const selectedProvider=(process.env.EMAIL_PROVIDER||'').trim().toLowerCase();
+      if (selectedProvider==='gmail_script' || (!selectedProvider && gmailScriptConfigured())) {
+        // Google Apps Script uses HTTPS (443), not SMTP (blocked on Render Free).
+        const scriptUrl=process.env.GMAIL_SCRIPT_URL;
+        if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(scriptUrl)) {
+          throw new Error('Invalid Google Apps Script web app URL');
+        }
+        response=await fetch(scriptUrl,{
+          method:'POST',signal:AbortSignal.timeout(20000),redirect:'follow',
+          headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body:JSON.stringify({secret:process.env.GMAIL_SCRIPT_SECRET,email:addr,code})
+        });
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok || result.success!==true) {
+          await db.pgPool.query("UPDATE cp_email_otps SET code_hash='',expires_at=0 WHERE email=$1 AND code_hash=$2",[addr,hash]);
+          console.warn('[EMAIL OTP] Gmail Apps Script rejected delivery',response.status,typeof result.error==='string'?result.error.slice(0,70):'Unknown');
+          return res.status(503).json({success:false,error:'Email delivery unavailable. Please retry later.'});
+        }
+        return res.json({success:true,expiresIn:600,cooldown:60,message:'Verification code sent.'});
+      }
+      if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN && (selectedProvider==='mailgun' || (!selectedProvider && !process.env.RESEND_API_KEY))) {
         // Mailgun sandbox domains permit verified/authorized recipient addresses.
         const domain=process.env.MAILGUN_DOMAIN;
         if(!/^[a-z0-9.-]+$/i.test(domain))throw new Error('Invalid sender domain');
