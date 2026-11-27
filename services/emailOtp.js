@@ -6,7 +6,7 @@ const digest = (email, code) => crypto.createHmac('sha256', process.env.EMAIL_OT
 const safeUser = u => ({id:u.id,name:u.name,username:u.username,phone:u.phone||'',phoneVerified:!!u.phoneVerified,email:u.email||'',emailVerified:!!u.emailVerified,avatar:u.avatar,bio:u.bio,status:u.status,privacy:u.privacy||{}});
 module.exports = async function installEmailOtp(app, db, io) {
   await db.ready;
-  if (!db.isPostgres || !db.pgPool) throw new Error('Email OTP requires PostgreSQL');
+  if (!db.isPostgres || !db.pgPool) { app.get('/api/auth/email/config',(_req,res)=>res.json({enabled:false,method:'email-otp'})); return; }
   await db.pgPool.query("ALTER TABLE cp_users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE");
   await db.pgPool.query("CREATE UNIQUE INDEX IF NOT EXISTS cp_users_email_lower_unique ON cp_users (lower(email)) WHERE email IS NOT NULL AND email <> ''");
   await db.pgPool.query("CREATE TABLE IF NOT EXISTS cp_email_otps (email VARCHAR(254) PRIMARY KEY, code_hash VARCHAR(64) NOT NULL, expires_at BIGINT NOT NULL, attempts INT NOT NULL DEFAULT 0, last_sent_at BIGINT NOT NULL, request_count INT NOT NULL DEFAULT 0, window_start BIGINT NOT NULL)");
