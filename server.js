@@ -529,10 +529,20 @@ app.get('/api/calls', requirePhoneVerified, (req, res) => {
 });
 
 app.post('/api/calls', requirePhoneVerified, (req, res) => {
+  const body = req.body || {};
+  const peer = db.getUser(body.receiverId || body.recipientId || body.userToCall) ||
+    (body.receiverPhone ? db.findUserByPhone(body.receiverPhone) : null);
+  if (!peer || peer.id === req.currentUser.id || !(peer.phoneVerified || peer.emailVerified)) {
+    return res.status(400).json({ success: false, error: 'A valid registered call recipient is required.' });
+  }
   const log = db.saveCallLog({
-    ...req.body,
+    ...body,
+    receiverId: peer.id,
+    receiverName: peer.name,
+    receiverPhone: peer.phone || '',
     callerId: req.currentUser.id,
-    callerPhone: req.currentUser.phone
+    callerName: req.currentUser.name,
+    callerPhone: req.currentUser.phone || ''
   });
   res.json({ success: true, callLog: log });
 });
