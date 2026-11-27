@@ -80,6 +80,8 @@ class ChatEngine {
       }
     }
 
+    this._initialChats=[...this.chats];
+
     // Never seed demo people or erase the phonebook in production. Device
     // contacts are synced separately and only registered GitPit members become
     // chat targets.
@@ -218,9 +220,65 @@ class ChatEngine {
     }
   }
 
+  bindAccountChats(userId) {
+    if (!userId || !/^[-_a-z0-9]{3,100}$/i.test(userId)) return;
+    if (this._chatAccountId === userId) return;
+    const key='gitpit_chats_account_'+userId;
+    // Keep a read-only backup of legacy chat storage; never delete it on login.
+    const legacy=localStorage.getItem('gitpit_chats') || localStorage.getItem('chatterpatter_chats') || '';
+    if(legacy && !localStorage.getItem('gitpit_legacy_chats_backup')) {
+      localStorage.setItem('gitpit_legacy_chats_backup', legacy);
+    }
+    let saved=localStorage.getItem(key);
+    if(!saved && legacy && !localStorage.getItem('gitpit_legacy_chat_owner')) {
+      localStorage.setItem('gitpit_legacy_chat_owner',userId);
+      saved=legacy;
+    }
+    this._chatAccountId=userId;
+    try {
+      this.chats=saved?JSON.parse(saved):[];
+      if(!Array.isArray(this.chats)) this.chats=[];
+    }catch(_){this.chats=[];}
+    if(!this.chats.some(ch=>ch.id==='chat_ai'||ch.isAi)) {
+      const ai=(this._initialChats||[]).find(ch=>ch.id==='chat_ai'||ch.isAi);
+      if(ai)this.chats.unshift(ai);
+    }
+    this.activeChatId=null;
+    this.saveChats();
+    this.renderChatList();
+    this.restoreServerConversations?.();
+  }
+
+  async restoreServerConversations() {
+    if(!this._chatAccountId)return;
+    try {
+      const token=window.AuthManager?.authToken||localStorage.getItem('gitpit_auth_token')||'';
+      if(!token)return;
+      const resp=await fetch((window.API_BASE||'')+'/api/conversations',{headers:{Authorization:'Bearer '+token}});
+      if(!resp.ok)return;
+      const data=await resp.json();
+      if(this._chatAccountId!==window.AuthManager?.currentUser?.id)return;
+      for(const item of (data.conversations||[])) {
+        if(!item?.id || item.id===this._chatAccountId)continue;
+        let ch=this.chats.find(x=>x.id===item.id);
+        if(!ch){ch={id:item.id,name:item.name||'GitPit Member',phone:item.phone||'',avatar:item.avatar||'assets/logo-icon.svg',messages:[],unreadCount:0,isRegistered:true};this.chats.push(ch);}
+        else {ch.name=ch.name||item.name;ch.phone=item.phone||ch.phone;}
+        const history=await fetch((window.API_BASE||'')+'/api/messages/'+encodeURIComponent(item.id),{headers:{Authorization:'Bearer '+token}});
+        if(history.ok){const payload=await history.json();const prior=new Set((ch.messages||[]).map(m=>m.id));for(const m of payload.messages||[])if(!prior.has(m.id)){ch.messages.push(m);prior.add(m.id);}}
+      }
+      this.saveChats();this.renderChatList();
+    }catch(err){console.warn('[CHAT RESTORE] Network unavailable; cached chats kept');}
+  }
+
   saveChats() {
-    localStorage.setItem('chatterpatter_chats', JSON.stringify(this.chats));
-    localStorage.setItem('gitpit_chats', JSON.stringify(this.chats));
+    if(this._chatAccountId) {
+      localStorage.setItem('gitpit_chats_account_'+this._chatAccountId,JSON.stringify(this.chats));
+    }
+    // Legacy keys are intentionally left untouched after account binding.
+    else {
+      localStorage.setItem('chatterpatter_chats',JSON.stringify(this.chats));
+      localStorage.setItem('gitpit_chats',JSON.stringify(this.chats));
+    }
   }
 
   getActiveChat() {
