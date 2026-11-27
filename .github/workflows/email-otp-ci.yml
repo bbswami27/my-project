@@ -32,6 +32,8 @@ jobs:
           node --check public/js/message-delivery-v4.js
       - name: Run existing UI regression tests
         run: npm run test:ui
+      - name: Verify canonical phonebook identity and email-only registration
+        run: node tests/gitpit-identity-regression.js
       - name: Verify email routes are present and phone is optional
         run: |
           node - <<'NODE'
@@ -62,5 +64,10 @@ jobs:
           if(!db.includes('emailVerified && emails.includes'))throw new Error('Verified email matching missing');
           if(!directory.includes('emails:true') || !directory.includes('/api/contacts/sync'))throw new Error('Native saved email matching missing');
           if(auth.includes('this.logout(false)'))throw new Error('Destructive automatic logout on app resume still present');
+          const native=fs.readFileSync('android/app/src/main/java/com/chatterpatter/app/ContactsPlugin.java','utf8');
+          const main=fs.readFileSync('android/app/src/main/java/com/chatterpatter/app/MainActivity.java','utf8');
+          if(!native.includes('CommonDataKinds.Email.CONTENT_ITEM_TYPE'))throw new Error('Native phonebook still ignores email-only contacts');
+          if(main.includes('requestAllPermissions();'))throw new Error('App still asks for all permissions on startup');
+          if(!db.includes('emailVerified: !!row.email_verified'))throw new Error('Server restart loses email verification flag');
           console.log('Email OTP integration checks passed.');
           NODE
