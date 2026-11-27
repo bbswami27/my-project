@@ -78,6 +78,7 @@ class AuthManager {
   }
 
   showLoginModal() {
+    document.documentElement.classList.remove('gitpit-session-check');
     const authModal = document.getElementById('auth-overlay-modal');
     if (authModal) {
       authModal.classList.add('active');
@@ -86,6 +87,7 @@ class AuthManager {
   }
 
   hideLoginModal() {
+    document.documentElement.classList.remove('gitpit-session-check');
     const authModal = document.getElementById('auth-overlay-modal');
     if (authModal) {
       authModal.classList.remove('active');
