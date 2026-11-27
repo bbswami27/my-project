@@ -5,10 +5,33 @@
   function authToken(){ return (window.AuthManager&&window.AuthManager.authToken)||localStorage.getItem('gitpit_auth_token')||localStorage.getItem('chatterpatter_token')||''; }
   function apiBase(){ return window.API_BASE||'https://chitchat-chatterpatter.onrender.com'; }
   function nowTime(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+  function accountKey(){
+    const id=window.AuthManager?.currentUser?.id;
+    return id ? 'gitpit_calls_account_'+id : null;
+  }
+  function hydrateAccount(cm){
+    const key=accountKey();
+    if(!key || cm.__historyAccount===key)return;
+    const old=Array.isArray(cm.callLogs)?cm.callLogs:[];
+    if(old.length && !localStorage.getItem('gitpit_legacy_call_backup')){
+      try{localStorage.setItem('gitpit_legacy_call_backup',JSON.stringify(old));}catch(_){}
+    }
+    const saved=localStorage.getItem(key);
+    let local=[];
+    if(saved){try{const parsed=JSON.parse(saved);if(Array.isArray(parsed))local=parsed;}catch(_){}}
+    // Preserve the first user's legacy history rather than overwriting it.
+    if(!saved && !localStorage.getItem('gitpit_legacy_call_owner')){
+      localStorage.setItem('gitpit_legacy_call_owner',key);
+      local=old;
+    }
+    cm.__historyAccount=key;
+    cm.callLogs=local;
+  }
   function persist(cm){
     try {
-      localStorage.setItem('gitpit_calls', JSON.stringify(cm.callLogs||[]));
-      localStorage.setItem('chatterpatter_calls', JSON.stringify(cm.callLogs||[]));
+      const key=accountKey();
+      if(key) localStorage.setItem(key,JSON.stringify(cm.callLogs||[]));
+      else localStorage.setItem('gitpit_calls', JSON.stringify(cm.callLogs||[]));
     } catch(_){}
     try { if(typeof cm.renderCallsTab==='function') cm.renderCallsTab(); } catch(_){}
   }
@@ -22,25 +45,39 @@
   }
   async function postServerLog(log){
     try{
-      await fetch(`${apiBase()}/api/calls`, {method:'POST', headers:{'Content-Type':'application/json','Authorization':authToken()?`Bearer ${authToken()}`:''}, body:JSON.stringify(log)});
-    }catch(_){}
+      if(!log?.contactId)return;
+      const r=await fetch(`${apiBase()}/api/calls`, {method:'POST', headers:{'Content-Type':'application/json','Authorization':authToken()?`Bearer ${authToken()}`:''}, body:JSON.stringify(log)});
+      if(!r.ok) console.warn('[CALL HISTORY] server save rejected HTTP',r.status);
+    }catch(err){console.warn('[CALL HISTORY] server save unavailable',err.message);}
   }
   async function loadServerLogs(cm){
-    if(!authToken()) return;
+    if(!authToken() || !accountKey()) return;
+    hydrateAccount(cm);
     try{
       const r=await fetch(`${apiBase()}/api/calls`, {headers:{'Authorization':`Bearer ${authToken()}`}});
+      if(!r.ok)throw new Error('HTTP '+r.status);
       const d=await r.json();
       const list=Array.isArray(d)?d:(Array.isArray(d.callLogs)?d.callLogs:[]);
       const map=new Map((cm.callLogs||[]).map(x=>[x.id||x.sessionKey,x]));
-      list.forEach(x=>{ const k=x.id||x.sessionKey; if(k&&!map.has(k)) map.set(k,x); });
-      cm.callLogs=Array.from(map.values()).sort((a,b)=>(b.createdAt||b.timestamp||0)-(a.createdAt||a.timestamp||0));
+      list.forEach(x=>{
+        const k=x.id||x.sessionKey;
+        if(!k)return;
+        const previous=map.get(k)||{};
+        map.set(k,{...previous,...x,
+          name:x.name||previous.name||'GitPit Member',
+          contactId:x.contactId||previous.contactId||'',
+          timestamp:Number(x.timestamp)||Number(x.createdAt)||Date.now()});
+      });
+      cm.callLogs=Array.from(map.values()).sort((a,b)=>Number(b.createdAt||b.timestamp||0)-Number(a.createdAt||a.timestamp||0));
       persist(cm);
-    }catch(_){}
+      console.log('[CALL HISTORY] loaded records',list.length);
+    }catch(err){console.warn('[CALL HISTORY] fetch failed',err.message);}
   }
   function patch(){
     const cm=window.CallManager;
     if(!cm||cm.__callReliabilityV5) return !!cm;
     cm.__callReliabilityV5=true;
+    hydrateAccount(cm);
 
     const originalStart=typeof cm.startCall==='function'?cm.startCall.bind(cm):null;
     if(originalStart){
@@ -123,6 +160,7 @@
     document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(()=>loadServerLogs(cm),150); });
     window.addEventListener('online',()=>setTimeout(()=>loadServerLogs(cm),150));
     loadServerLogs(cm);
+    window.addEventListener('gitpit-authenticated',()=>loadServerLogs(cm));
     console.log('[CALL V5] Point 4 call reliability/history installed');
     return true;
   }
