@@ -838,6 +838,16 @@ class AuthManager {
       }
     }
 
+    // A manually entered number is not proof of ownership. Do not advertise it
+    // as registered until the phone OTP verification service is available.
+    if (phoneInp) {
+      phoneInp.value = u.phoneVerified ? phoneInp.value : '';
+      phoneInp.readOnly = true;
+      phoneInp.placeholder = 'Phone OTP verification required';
+      phoneInp.title = 'Mobile number linking requires SMS OTP verification. Email accounts can chat using their GitPit ID.';
+    }
+    if (countryCodeSelect) countryCodeSelect.disabled = true;
+
     const emailInp = document.getElementById('profile-email-input');
     if (emailInp) emailInp.value = u.email || '';
 
@@ -911,7 +921,10 @@ class AuthManager {
     this.currentUser.name = name;
     this.currentUser.bio = bio;
     this.currentUser.status = bio;
-    this.currentUser.phone = phone;
+    // Never persist an unverified mobile number locally or present it as account identity.
+    if (phone && phone !== (this.currentUser.phone || '')) {
+      alert('Mobile number cannot be changed without SMS OTP verification. Your verified Email Login remains active.');
+    }
     this.currentUser.email = email;
     this.currentUser.dob = dob;
     this.currentUser.gender = gender;
