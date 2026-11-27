@@ -374,7 +374,9 @@ app.post('/api/contacts/sync-registered', requirePhoneVerified, (req, res) => {
 
 // Registered Users API
 app.get('/api/users', requirePhoneVerified, (req, res) => {
-  res.json(db.getAllUsers(req.currentUser.id));
+  const users=db.getAllUsers(req.currentUser.id);
+  console.log('[DIRECTORY] verified member directory returned', users.length, 'accounts');
+  res.json(users);
 });
 
 // User Profile Update API
@@ -505,7 +507,10 @@ app.get('/api/messages/:chatId', requirePhoneVerified, (req, res) => {
 function deliverMessage(user, body) {
   if (!user || !body || typeof body !== 'object') return null;
   const target = db.getUser(body.recipientId) || db.findUserByPhone(body.recipientPhone);
-  if (!target || !(target.phoneVerified || target.emailVerified) || db.isBlocked(user.id,target.id)) return null;
+  if (!target || !(target.phoneVerified || target.emailVerified) || db.isBlocked(user.id,target.id)) {
+    console.warn('[MESSAGE ROUTE] unavailable recipient, blocked sender, or unverified account');
+    return null;
+  }
   const prior = body.id && db.data.messages.find(m=>m.id===body.id);
   if (prior) return prior.senderId===user.id && prior.recipientId===target.id ? prior : null;
   const msg = db.saveMessage({...body, senderId:user.id,senderName:user.name,senderAvatar:user.avatar,senderPhone:user.phone,recipientId:target.id,recipientPhone:target.phone,createdAt:Date.now()});
@@ -516,6 +521,7 @@ function deliverMessage(user, body) {
 app.post('/api/messages', requirePhoneVerified, (req,res)=>{
   const msg=deliverMessage(req.currentUser,req.body);
   if (!msg) return res.status(403).json({error:'Recipient unavailable or message conflict'});
+  console.log('[MESSAGE ROUTE] persisted message for verified recipient');
   res.json({success:true,message:msg});
 });
 // Destructive operations withheld until ownership-aware persistence is implemented.
