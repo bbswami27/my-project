@@ -2418,24 +2418,24 @@ class ChatEngine {
     if (isGroupOrAi) {
       targetChat = this.chats.find(c => c.id === msg.chatId);
     } else {
-      const cleanSenderPhone = (msg.senderPhone || msg.senderId || '').replace(/\D/g, '').slice(-10);
+      const cleanSenderPhone = (msg.senderPhone || '').replace(/\D/g, '').slice(-10);
       targetChat = this.chats.find(c => {
         if (c.id === msg.senderId) return true;
-        const cPhone10 = (c.phone || c.id || '').replace(/\D/g, '').slice(-10);
+        const cPhone10 = (c.phone || '').replace(/\D/g, '').slice(-10);
         if (cleanSenderPhone && cPhone10 && cPhone10 === cleanSenderPhone) return true;
         return false;
       });
     }
 
     const phonebook = window.AuthManager ? window.AuthManager.getPhonebook() : {};
-    const cleanSender = (msg.senderPhone || msg.senderId || '').replace(/\D/g, '').slice(-10);
+    const cleanSender = (msg.senderPhone || '').replace(/\D/g, '').slice(-10);
     const savedEntry = phonebook[msg.senderId] || (cleanSender ? phonebook[cleanSender] : null);
     const displayName = savedEntry ? (savedEntry.savedName || savedEntry.name) : (msg.senderName || (cleanSender ? `+91 ${cleanSender}` : 'Friend'));
     const displayAvatar = (savedEntry && (savedEntry.photoUri || savedEntry.avatar)) || msg.senderAvatar || (cleanSender ? `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanSender}` : 'assets/logo-icon.svg');
 
     if (!targetChat) {
       targetChat = {
-        id: cleanSender ? `user_${cleanSender}` : (msg.senderId || ('user_' + Date.now())),
+        id: msg.senderId || (cleanSender ? `user_${cleanSender}` : ('user_' + Date.now())),
         name: displayName,
         savedName: savedEntry ? (savedEntry.savedName || savedEntry.name) : '',
         phone: msg.senderPhone || (cleanSender ? `+91 ${cleanSender}` : ''),
@@ -2464,7 +2464,7 @@ class ChatEngine {
 
     const activeChat = this.getActiveChat();
     const activePhone10 = activeChat ? (activeChat.phone || activeChat.id || '').replace(/\D/g, '').slice(-10) : '';
-    const cleanSenderDigits = (msg.senderPhone || msg.senderId || '').replace(/\D/g, '').slice(-10);
+    const cleanSenderDigits = (msg.senderPhone || '').replace(/\D/g, '').slice(-10);
     const isCurrentActive = this.activeChatId === targetChat.id || (activeChat && (this.activeChatId === msg.chatId || (cleanSenderDigits && activePhone10 && cleanSenderDigits === activePhone10)));
 
     if (isCurrentActive) {
