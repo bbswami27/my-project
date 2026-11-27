@@ -54,90 +54,81 @@ public class ContactsPlugin extends Plugin {
     }
 
     private void readContacts(PluginCall call) {
-        JSArray contactsArray = new JSArray();
-        Set<String> seen = new HashSet<>();
+        // Read one contact per Android contact ID, including EMAIL-ONLY entries.
+        // Previously querying Phone.CONTENT_URI excluded all email-only contacts.
+        JSArray results = new JSArray();
+        java.util.LinkedHashMap<String, JSObject> contacts = new java.util.LinkedHashMap<>();
+        java.util.HashMap<String, JSArray> numbers = new java.util.HashMap<>();
+        java.util.HashMap<String, JSArray> emails = new java.util.HashMap<>();
+        java.util.HashMap<String, Set<String>> seenPhones = new java.util.HashMap<>();
+        java.util.HashMap<String, Set<String>> seenEmails = new java.util.HashMap<>();
         ContentResolver cr = getContext().getContentResolver();
-
-        String[] projection = new String[] {
-            ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+        String[] columns = {
+            ContactsContract.Data.CONTACT_ID,
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY,
-            ContactsContract.CommonDataKinds.Phone.NUMBER,
-            ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI,
-            ContactsContract.CommonDataKinds.Phone.PHOTO_URI
+            ContactsContract.Data.MIMETYPE,
+            ContactsContract.Data.DATA1
         };
-
-        String selection = ContactsContract.Contacts.HAS_PHONE_NUMBER + " > 0";
-        String sortOrder = ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " ASC";
-
+        String selection = ContactsContract.Data.MIMETYPE + " IN (?, ?)";
+        String[] selectionArgs = {
+            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE,
+            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE
+        };
         try (Cursor cursor = cr.query(
-            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            projection,
-            selection,
-            null,
-            sortOrder
+            ContactsContract.Data.CONTENT_URI, columns, selection, selectionArgs,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " ASC"
         )) {
             if (cursor != null) {
-                int contactIdIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID);
-                int nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY);
-                if (nameIdx == -1) {
-                    nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
-                }
-                int numberIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-                int photoThumbIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_THUMBNAIL_URI);
-                int photoUriIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI);
-
+                int idColumn = cursor.getColumnIndexOrThrow(ContactsContract.Data.CONTACT_ID);
+                int nameColumn = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY);
+                int typeColumn = cursor.getColumnIndexOrThrow(ContactsContract.Data.MIMETYPE);
+                int valueColumn = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA1);
                 while (cursor.moveToNext()) {
-                    String name = nameIdx != -1 ? cursor.getString(nameIdx) : "";
-                    String number = numberIdx != -1 ? cursor.getString(numberIdx) : "";
-
-                    if (number != null && !number.trim().isEmpty()) {
-                        String clean = number.replaceAll("\\D", "");
-                        if (clean.length() >= 10) {
-                            String key = clean.substring(Math.max(0, clean.length() - 10));
-                            if (!seen.contains(key)) {
-                                seen.add(key);
-
-                                String finalPhoto = "";
-                                if (contactIdIdx != -1) {
-                                    long cid = cursor.getLong(contactIdIdx);
-                                    if (cid > 0) {
-                                        Uri contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, cid);
-                                        try (InputStream is = ContactsContract.Contacts.openContactPhotoInputStream(cr, contactUri, false)) {
-                                            if (is != null) {
-                                                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                                                byte[] buf = new byte[2048];
-                                                int r;
-                                                while ((r = is.read(buf)) != -1) {
-                                                    baos.write(buf, 0, r);
-                                                }
-                                                byte[] b = baos.toByteArray();
-                                                if (b.length > 0) {
-                                                    finalPhoto = "data:image/jpeg;base64," + Base64.encodeToString(b, Base64.NO_WRAP);
-                                                }
-                                            }
-                                        } catch (Exception ignored) {}
-                                    }
-                                }
-
-                                JSObject contact = new JSObject();
-                                String finalName = (name != null && !name.trim().isEmpty()) ? name.trim() : "Friend";
-                                contact.put("name", finalName);
-                                contact.put("phone", number.trim());
-                                contact.put("phoneNumber", "+91" + key);
-                                contact.put("photoUri", finalPhoto);
-                                contact.put("avatar", finalPhoto);
-                                contactsArray.put(contact);
-                            }
-                        }
+                    String id = cursor.getString(idColumn);
+                    String value = cursor.getString(valueColumn);
+                    String type = cursor.getString(typeColumn);
+                    if (id == null || value == null || value.trim().isEmpty()) continue;
+                    value = value.trim();
+                    if (!contacts.containsKey(id)) {
+                        JSObject obj = new JSObject();
+                        String name = cursor.getString(nameColumn);
+                        obj.put("contactId", id);
+                        obj.put("name", name == null || name.trim().isEmpty() ? "Contact" : name.trim());
+                        obj.put("displayName", name == null || name.trim().isEmpty() ? "Contact" : name.trim());
+                        contacts.put(id, obj);
+                        numbers.put(id, new JSArray());
+                        emails.put(id, new JSArray());
+                        seenPhones.put(id, new HashSet<>());
+                        seenEmails.put(id, new HashSet<>());
+                    }
+                    if (ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE.equals(type)) {
+                        String email = value.toLowerCase(java.util.Locale.ROOT);
+                        if (email.contains("@") && seenEmails.get(id).add(email)) emails.get(id).put(email);
+                    } else if (ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE.equals(type)) {
+                        String digits = value.replaceAll("[^0-9]", "");
+                        if (digits.length() >= 10 && seenPhones.get(id).add(digits)) numbers.get(id).put(value);
                     }
                 }
             }
-
-            JSObject result = new JSObject();
-            result.put("contacts", contactsArray);
-            call.resolve(result);
-        } catch (Exception e) {
-            call.reject("Failed to read contacts: " + e.getMessage());
+            for (String id : contacts.keySet()) {
+                JSArray p = numbers.get(id), e = emails.get(id);
+                if (p.length() == 0 && e.length() == 0) continue;
+                JSObject obj = contacts.get(id);
+                obj.put("phones", p);
+                obj.put("phoneNumbers", p);
+                obj.put("emails", e);
+                if (p.length() > 0) {
+                    obj.put("phone", p.optString(0));
+                    obj.put("phoneNumber", p.optString(0));
+                }
+                if (e.length() > 0) obj.put("email", e.optString(0));
+                results.put(obj);
+            }
+            JSObject payload = new JSObject();
+            payload.put("contacts", results);
+            call.resolve(payload);
+        } catch (Exception ex) {
+            call.reject("Unable to read phonebook: " + ex.getMessage());
         }
     }
 
