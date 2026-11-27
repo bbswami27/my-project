@@ -806,7 +806,7 @@ class Database {
       const emails = rawEmails
         .map(v=>typeof v==='string'?v:(v && (v.address||v.email||v.value))||'')
         .map(v=>String(v).trim().toLowerCase())
-        .filter(v=>v.length<=254 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v));
+        .filter(v=>v.length<=254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
       const user = users.find(u =>
         (normalizedPhone && u.phoneVerified && this.normalizePhone(u.phone) === normalizedPhone) ||
         (u.emailVerified && emails.includes(String(u.email||'').trim().toLowerCase()))
