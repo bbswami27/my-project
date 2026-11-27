@@ -26,7 +26,7 @@
       if(document.querySelector(`script[data-gitpit-repair="${name}"]`))continue;
       await new Promise(resolve=>{
         const s=document.createElement('script');
-        s.src=`js/${name}?v=117`;
+        s.src=`js/${name}?v=118`;
         s.dataset.gitpitRepair=name;
         s.onload=()=>setTimeout(resolve,120);
         s.onerror=()=>{console.error('[GITPIT V1.1.3] module load failed',name);resolve();};
@@ -34,7 +34,7 @@
       });
     }
     loaded=true;loading=false;
-    document.documentElement.dataset.gitpitBuild='1.1.7';
+    document.documentElement.dataset.gitpitBuild='1.1.8';
     console.log('[GITPIT V1.1.3] clean repairs loaded');
     return true;
   }
