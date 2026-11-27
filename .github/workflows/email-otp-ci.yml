@@ -50,5 +50,9 @@ jobs:
           if(!directory.includes('u.phoneVerified||u.emailVerified')) throw new Error('Email-only registered users missing from active new-chat directory');
           if(!directory.includes('d10(u.phone)&&d10(c.phone)')) throw new Error('Blank-phone chat collision not fixed');
           if(!activeLoader.includes('v112-final-repair.js')) throw new Error('Patched directory module is not loaded');
+          const db=fs.readFileSync('database.js','utf8');
+          if(!db.includes('u.phoneVerified && (isSelf || !priv.hidePhone)')) throw new Error('Unverified phone leaks in contacts');
+          const auth=fs.readFileSync('public/js/auth.js','utf8');
+          if(!auth.includes('Phone OTP verification required')) throw new Error('Unverified phone edit not locked');
           console.log('Email OTP integration checks passed.');
           NODE
