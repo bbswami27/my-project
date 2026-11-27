@@ -26,6 +26,10 @@ jobs:
           node --check public/js/auth.js
           node --check js/auth.js
           node --check prepare-client-v2.js
+          node --check public/js/contact-directory-v5.js
+          node --check public/js/v112-final-repair.js
+          node --check public/js/post-auth-repairs-v15.js
+          node --check public/js/message-delivery-v4.js
       - name: Run existing UI regression tests
         run: npm run test:ui
       - name: Verify email routes are present and phone is optional
@@ -41,5 +45,10 @@ jobs:
           if (!server.includes('emailVerified') || !ui.includes('email-code-input')) throw new Error('Email login UI or session support missing');
           if (!ui.includes('auth-panel-email')) throw new Error('Email panel missing');
           if (!email.includes('GMAIL_SCRIPT_URL') || !email.includes('GMAIL_SCRIPT_SECRET') || !email.includes('gmail_script')) throw new Error('Missing HTTPS Gmail relay integration');
+          const directory=fs.readFileSync('public/js/v112-final-repair.js','utf8');
+          const activeLoader=fs.readFileSync('public/js/post-auth-repairs-v15.js','utf8');
+          if(!directory.includes('u.phoneVerified||u.emailVerified')) throw new Error('Email-only registered users missing from active new-chat directory');
+          if(!directory.includes('d10(u.phone)&&d10(c.phone)')) throw new Error('Blank-phone chat collision not fixed');
+          if(!activeLoader.includes('v112-final-repair.js')) throw new Error('Patched directory module is not loaded');
           console.log('Email OTP integration checks passed.');
           NODE
