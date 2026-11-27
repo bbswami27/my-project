@@ -1053,9 +1053,9 @@
       <p class="auth-subline">Connect with friends, share stories, enjoy HD video calls & real-time messaging.</p>
 
       <div class="auth-methods-tabs">
-        <button class="auth-tab-btn active" data-method="mobile">📱 Mobile OTP</button>
+        <button class="auth-tab-btn" data-method="mobile">📱 Mobile OTP</button>
         <button class="auth-tab-btn" data-method="google">🌐 Google Sign-In</button>
-        <button class="auth-tab-btn" data-method="email">✉️ Email</button>
+        <button class="auth-tab-btn active" data-method="email">✉️ Email OTP</button>
       </div>
 
       <!-- Loading State Overlay -->
@@ -1065,7 +1065,7 @@
       </div>
 
       <!-- Mobile OTP Panel -->
-      <div class="auth-form-panel active" id="auth-panel-mobile">
+      <div class="auth-form-panel" id="auth-panel-mobile">
         <div id="mobile-step-phone">
           <div class="form-group">
             <label class="form-label">Full Name (Optional)</label>
@@ -1148,24 +1148,25 @@
         </button>
       </div>
 
-      <!-- Email / Password Panel -->
-      <div class="auth-form-panel" id="auth-panel-email">
+      <!-- Verified email OTP login; phone optional -->
+      <div class="auth-form-panel active" id="auth-panel-email">
         <form id="email-auth-form">
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">Sign in with your email. Mobile number is optional during testing. A six-digit code will be sent to your inbox.</p>
           <div class="form-group">
-            <label class="form-label">Full Name</label>
-            <input type="text" id="email-name-input" class="auth-input" placeholder="e.g. Vikramaditya" required>
+            <label class="form-label" for="email-name-input">Full Name (New users)</label>
+            <input type="text" id="email-name-input" class="auth-input" placeholder="Your name" maxlength="100" autocomplete="name">
           </div>
           <div class="form-group">
-            <label class="form-label">Email Address</label>
-            <input type="email" id="email-addr-input" class="auth-input" placeholder="name@domain.com" required>
+            <label class="form-label" for="email-addr-input">Email Address</label>
+            <input type="email" id="email-addr-input" class="auth-input" placeholder="name@gmail.com" autocomplete="email" required>
           </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" id="email-password-input" class="auth-input" placeholder="Enter secure password" required>
+          <div class="form-group" id="email-code-group" style="display:none">
+            <label class="form-label" for="email-code-input">Six-digit email verification code</label>
+            <input type="text" id="email-code-input" class="auth-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}">
           </div>
-          <button type="submit" class="auth-submit-btn">
-            Create Account & Verify Phone
-          </button>
+          <p id="email-auth-feedback" style="font-size:12px;color:var(--text-secondary);margin-bottom:12px" aria-live="polite"></p>
+          <button type="submit" class="auth-submit-btn" id="btn-email-auth">Send Email Code</button>
+          <button type="button" class="auth-submit-btn" id="btn-email-resend" style="display:none;margin-top:8px;background:transparent;color:var(--text-primary);border:1px solid var(--border-subtle)">Send new code</button>
         </form>
       </div>
     </div>
@@ -2459,7 +2460,7 @@
   <!-- JavaScript Modules -->
   <script src="js/mockData.js"></script>
   <script src="js/i18n.js"></script>
-  <script src="js/auth.js"></script>
+  <script src="js/auth.js?v=115"></script>
   <script src="js/voiceRecorder.js"></script>
   <script src="js/locationService.js"></script>
   <script src="js/paymentService.js"></script>
