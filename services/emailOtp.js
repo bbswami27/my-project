@@ -12,7 +12,7 @@ module.exports = async function installEmailOtp(app, db, io) {
   await db.pgPool.query("CREATE TABLE IF NOT EXISTS cp_email_otps (email VARCHAR(254) PRIMARY KEY, code_hash VARCHAR(64) NOT NULL, expires_at BIGINT NOT NULL, attempts INT NOT NULL DEFAULT 0, last_sent_at BIGINT NOT NULL, request_count INT NOT NULL DEFAULT 0, window_start BIGINT NOT NULL)");
   const users = await db.pgPool.query('SELECT id, email_verified FROM cp_users');
   for(const row of users.rows){const u=db.getUser(row.id);if(u)u.emailVerified=!!row.email_verified;}
-  const ready=()=>!!(process.env.EMAIL_OTP_SECRET && process.env.EMAIL_OTP_SECRET.length>=32 && ((process.env.RESEND_API_KEY && process.env.EMAIL_FROM) || (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)));
+  const ready=()=>!!(process.env.EMAIL_TEST_ALLOWLIST && process.env.EMAIL_OTP_SECRET && process.env.EMAIL_OTP_SECRET.length>=32 && ((process.env.RESEND_API_KEY && process.env.EMAIL_FROM) || (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)));
   app.get('/api/auth/email/config',(_req,res)=>res.json({enabled:ready(),method:'email-otp'}));
   const noStore=(_req,res,next)=>{res.set('Cache-Control','no-store');next();};
 
