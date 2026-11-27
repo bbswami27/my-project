@@ -63,13 +63,15 @@
   async function getRegisteredUsers(){
     try{
       const r=await authFetch('/api/users');
+      if(!r.ok)throw new Error('Registered directory HTTP '+r.status);
       const d=await r.json();
-      const arr=Array.isArray(d)?d:(d.users||[]);
+      const arr=Array.isArray(d)?d:(Array.isArray(d.users)?d.users:[]);
       const mine=me()?.id;
       const out=arr.filter(u=>u&&u.id&&u.id!==mine&&(u.phoneVerified||u.emailVerified)).map(u=>({...u,isRegistered:true,is_registered:true}));
       localStorage.setItem('gitpit_all_registered_users',JSON.stringify(out));
       return out;
     }catch(e){
+      console.warn('[DIRECTORY] Verified members unavailable:',e.message);
       try{return JSON.parse(localStorage.getItem('gitpit_all_registered_users')||'[]');}catch(_){return [];}
     }
   }
