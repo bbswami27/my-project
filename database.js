@@ -872,6 +872,8 @@ class Database {
           presence: u.presence || 'online',
           online: u.online !== undefined ? u.online : true,
           phone: (isSelf || !priv.hidePhone) ? u.phone : '',
+          phoneVerified: !!u.phoneVerified,
+          emailVerified: !!u.emailVerified,
           email: isSelf ? u.email : '',
           dob: isSelf ? u.dob : '',
           privacy: isSelf ? priv : undefined
