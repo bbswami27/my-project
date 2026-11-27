@@ -54,5 +54,13 @@ jobs:
           if(!db.includes('u.phoneVerified && (isSelf || !priv.hidePhone)')) throw new Error('Unverified phone leaks in contacts');
           const auth=fs.readFileSync('public/js/auth.js','utf8');
           if(!auth.includes('Phone OTP verification required')) throw new Error('Unverified phone edit not locked');
+          const chat=fs.readFileSync('public/js/chat.js','utf8');
+          for(const marker of ['bindAccountChats','gitpit_chats_account_','restoreServerConversations']) {
+            if(!chat.includes(marker))throw new Error('Account-scoped chat persistence missing: '+marker);
+          }
+          if(!server.includes('/api/conversations'))throw new Error('Durable chat recovery API missing');
+          if(!db.includes('emailVerified && emails.includes'))throw new Error('Verified email matching missing');
+          if(!directory.includes('emails:true') || !directory.includes('/api/contacts/sync'))throw new Error('Native saved email matching missing');
+          if(auth.includes('this.logout(false)'))throw new Error('Destructive automatic logout on app resume still present');
           console.log('Email OTP integration checks passed.');
           NODE
