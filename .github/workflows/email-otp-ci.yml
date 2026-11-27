@@ -69,5 +69,14 @@ jobs:
           if(!native.includes('CommonDataKinds.Email.CONTENT_ITEM_TYPE'))throw new Error('Native phonebook still ignores email-only contacts');
           if(main.includes('requestAllPermissions();'))throw new Error('App still asks for all permissions on startup');
           if(!db.includes('emailVerified: !!row.email_verified'))throw new Error('Server restart loses email verification flag');
+          const calls=fs.readFileSync('public/js/call-reliability-v5.js','utf8');
+          const callUI=fs.readFileSync('public/js/calls.js','utf8');
+          const initialUI=fs.readFileSync('public/index.html','utf8');
+          if(!db.includes('SELECT * FROM cp_call_logs ORDER BY created_at DESC'))throw new Error('Postgres call history hydration missing');
+          if(!server.includes("app.get('/api/calls'")||!server.includes("direction:outgoing?'outgoing':'incoming'"))throw new Error('Account call history mapping missing');
+          if(!calls.includes('gitpit_calls_account_')||!calls.includes('loadServerLogs(cm)'))throw new Error('Per-account call history restoration missing');
+          if(!callUI.includes('log.name = String(log.name'))throw new Error('Legacy call rendering fallback missing');
+          if(!initialUI.includes('id="auth-overlay-modal" style="display: none;"'))throw new Error('Login screen still flashes on startup');
+          if(!directory.includes('async function readPhonebookOrdered(interactive=false)'))throw new Error('Phonebook interactive parameter ReferenceError');
           console.log('Email OTP integration checks passed.');
           NODE
