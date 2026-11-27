@@ -711,13 +711,19 @@ io.on('connection', (socket) => {
   console.log(`[SOCKET] Client connected: ${socket.id}`);
 
   // User Join / Authenticate
-  socket.on('user_join', (data) => {
+  socket.on('user_join', (data, ack) => {
     const auth = db.validateSession(data?.token);
-    if (!(auth?.user?.phoneVerified || auth?.user?.emailVerified)) return socket.emit('error_message',{error:'Authentication required'});
+    if (!(auth?.user?.phoneVerified || auth?.user?.emailVerified)) {
+      console.warn('[SOCKET AUTH] rejected user join (invalid/expired session)');
+      if (typeof ack === 'function') ack({success:false,error:'Session not recognized'});
+      return socket.emit('error_message',{error:'Authentication required'});
+    }
     for (const room of socket.rooms) if (room !== socket.id) socket.leave(room);
     activeUsers.set(socket.id,auth.user);
     socket.data.token=data.token;
     socket.join(`user_${auth.user.id}`);
+    console.log('[SOCKET AUTH] joined verified account room');
+    if (typeof ack === 'function') ack({success:true});
   });
   socket.on('error',()=>{});
   socket.use((_packet,next)=>{
@@ -735,12 +741,21 @@ io.on('connection', (socket) => {
   function startCall(data={}) {
     const sender=activeUsers.get(socket.id);
     const target=db.getUser(data.userToCall||data.recipientId)||db.findUserByPhone(data.recipientPhone);
-    if (!sender || !(target?.phoneVerified || target?.emailVerified) || db.isBlocked(sender.id,target.id)) return;
-    const peer=[...activeUsers].find(([id,u])=>u.id===target.id && id!==socket.id);
-    if (!peer) { for(const t of db.getPushTokens(target.id)) fcmService.sendCallNotification(t.token,{callerName:sender.name,callerId:sender.id,callType:data.type,callId:data.callId}); return socket.emit('call-rejected',{reason:'Recipient offline'}); }
-    const remote=io.sockets.sockets.get(peer[0]); if(!remote) return;
+    if (!sender || !(target?.phoneVerified || target?.emailVerified) || db.isBlocked(sender.id,target.id)) {
+      console.warn('[CALL ROUTE] rejected: caller not authenticated or recipient not registered');
+      return socket.emit('call-rejected',{reason:'Recipient not available'});
+    }
+    const room = io.sockets.adapter.rooms.get(`user_${target.id}`);
+    const peerId=[...(room||[])].find(id=>id!==socket.id && io.sockets.sockets.has(id));
+    if (!peerId) {
+      console.warn('[CALL ROUTE] recipient offline / socket not joined');
+      for(const t of db.getPushTokens(target.id)) fcmService.sendCallNotification(t.token,{callerName:sender.name,callerId:sender.id,callType:data.callType||data.type,callId:data.callId});
+      return socket.emit('call-rejected',{reason:'Recipient offline'});
+    }
+    const remote=io.sockets.sockets.get(peerId); if(!remote) return;
     callPeers.add(remote.id); remote.data.callPeers.add(socket.id);
     const payload={...data,callerId:sender.id,callerName:sender.name,callerPhone:sender.phone,fromSocketId:socket.id,callerSocketId:socket.id};
+    console.log('[CALL ROUTE] delivered to authenticated recipient socket');
     remote.emit('incoming-call',payload); remote.emit('incoming_call',payload);
   }
   for(const event of ['call-user','call_user']) socket.on(event,startCall);
