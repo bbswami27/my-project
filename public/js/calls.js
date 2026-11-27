@@ -558,6 +558,11 @@ class CallManager {
   // LOCAL MEDIA CAPTURE & CONTROLS
   // ==========================================
   async initLocalStream(includeVideo = false) {
+    // Prompt for Android media permissions only when the user starts/answers a call.
+    const nativePermission = window.Capacitor?.Plugins?.CallPermissions;
+    if(nativePermission?.requestMediaPermissions) {
+      await nativePermission.requestMediaPermissions({video:!!includeVideo});
+    }
     this.stopLocalStream();
 
     let stream = null;
