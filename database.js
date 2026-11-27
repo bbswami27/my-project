@@ -792,45 +792,45 @@ class Database {
   }
 
   syncRegisteredContacts(contacts = []) {
-    const registered = [];
-    const nonRegistered = [];
-    const users = this.data.users || [];
-
-    contacts.forEach(c => {
-      const rawPhone = typeof c === 'string' ? c : String(c?.phone || '');
-      const rawName = typeof c === 'string' ? '' : (c?.name || '');
-      const cleanDigits = rawPhone.replace(/\D/g, '').slice(-10);
-
-      if (!cleanDigits || cleanDigits.length < 10) return;
-
-      const matchedUser = users.find(u => {
-        if (!u.phone || !u.phoneVerified) return false;
-        const uDigits = u.phone.replace(/\D/g, '').slice(-10);
-        return this.normalizePhone(u.phone) === this.normalizePhone(rawPhone);
-      });
-
-      if (matchedUser) {
+    // A phone number is a registered identity ONLY after phone OTP verification.
+    // A saved email is matched ONLY to an explicitly email-verified account.
+    const registered = [], nonRegistered = [], users = this.data.users || [];
+    const seen = new Set();
+    for (const contact of contacts) {
+      const obj = typeof contact === 'string' ? {phone:contact} : (contact || {});
+      const name = typeof obj.name === 'string' ? obj.name.slice(0,100) : '';
+      const rawPhone = String(obj.phone || '').trim();
+      const normalizedPhone = this.normalizePhone(rawPhone);
+      const rawEmails = [obj.email, ...(Array.isArray(obj.emails) ? obj.emails : [])];
+      const emails = rawEmails
+        .map(v=>typeof v==='string'?v:(v && (v.address||v.email||v.value))||'')
+        .map(v=>String(v).trim().toLowerCase())
+        .filter(v=>v.length<=254 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v));
+      const user = users.find(u =>
+        (normalizedPhone && u.phoneVerified && this.normalizePhone(u.phone) === normalizedPhone) ||
+        (u.emailVerified && emails.includes(String(u.email||'').trim().toLowerCase()))
+      );
+      const key = user ? 'user:'+user.id : 'contact:'+(normalizedPhone||emails[0]||'');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (user) {
         registered.push({
-          id: matchedUser.id,
-          name: matchedUser.name || rawName || `+91 ${cleanDigits}`,
-          savedName: rawName || matchedUser.name || `+91 ${cleanDigits}`,
-          phone: matchedUser.phone || `+91${cleanDigits}`,
-          avatar: matchedUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanDigits}`,
-          bio: matchedUser.bio || matchedUser.status || 'Active on GitPit 🚀',
-          online: matchedUser.online || false,
-          is_registered: true
+          id:user.id, registeredUserId:user.id,
+          name:user.name || name || 'GitPit Member',
+          savedName:name || user.name || 'GitPit Member',
+          phone:user.phoneVerified ? (user.phone || '') : '',
+          email: emails.includes(String(user.email||'').trim().toLowerCase()) ? user.email : '',
+          phoneVerified:!!user.phoneVerified, emailVerified:!!user.emailVerified,
+          avatar:user.avatar || '', bio:user.bio||'GitPit Member',
+          isRegistered:true, is_registered:true
         });
-      } else {
+      } else if (normalizedPhone || emails.length) {
         nonRegistered.push({
-          name: rawName || `Contact (+91 ${cleanDigits})`,
-          phone: `+91${cleanDigits}`,
-          cleanDigits: cleanDigits,
-          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanDigits}`,
-          is_registered: false
+          name:name||'Contact', phone:normalizedPhone||'',
+          email:emails[0]||'', isRegistered:false,is_registered:false
         });
       }
-    });
-
+    }
     return { registered, nonRegistered };
   }
 
