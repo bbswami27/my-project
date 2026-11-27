@@ -20,7 +20,11 @@ module.exports = async function installEmailOtp(app, db, io) {
     const {email,name}=req.body||{};
     if(!valid(email)||(name&&(typeof name!=='string'||name.length>100)))return res.status(400).json({success:false,error:'Enter a valid email address.'});
     if(!ready())return res.status(503).json({success:false,error:'Email verification is not configured yet.'});
-    const addr=normalize(email),now=Date.now(),client=await db.pgPool.connect();
+    const addr=normalize(email);
+    const allowList=(process.env.EMAIL_TEST_ALLOWLIST||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+    if(!allowList.length)return res.status(503).json({success:false,error:'Testing email allowlist is not configured.'});
+    if(!allowList.includes(addr))return res.status(403).json({success:false,error:'This email is not enrolled in the GitPit testing program.'});
+    const now=Date.now(),client=await db.pgPool.connect();
     let code,hash;
     try{
       await client.query('BEGIN');
@@ -38,7 +42,7 @@ module.exports = async function installEmailOtp(app, db, io) {
     }catch(err){try{await client.query('ROLLBACK');}catch{}console.error('[EMAIL OTP] Store error',err.code||'unknown');return res.status(503).json({success:false,error:'Unable to request code.'});}finally{client.release();}
     try{
       let response;
-      if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN && process.env.EMAIL_PROVIDER === 'mailgun') {
+      if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN && (process.env.EMAIL_PROVIDER === 'mailgun' || !process.env.RESEND_API_KEY)) {
         // Mailgun sandbox domains permit verified/authorized recipient addresses.
         const domain=process.env.MAILGUN_DOMAIN;
         if(!/^[a-z0-9.-]+$/i.test(domain))throw new Error('Invalid sender domain');
@@ -61,7 +65,7 @@ module.exports = async function installEmailOtp(app, db, io) {
         });
       }
       const result=await response.json().catch(()=>({}));
-      if(!response.ok||!result.id){await db.pgPool.query('DELETE FROM cp_email_otps WHERE email=$1 AND code_hash=$2',[addr,hash]);console.warn('[EMAIL OTP] Delivery rejected HTTP',response.status);return res.status(503).json({success:false,error:'Email delivery unavailable. Please retry later.'});}
+      if(!response.ok||!result.id){await db.pgPool.query("UPDATE cp_email_otps SET code_hash='',expires_at=0 WHERE email=$1 AND code_hash=$2",[addr,hash]);console.warn('[EMAIL OTP] Delivery rejected HTTP',response.status);return res.status(503).json({success:false,error:'Email delivery unavailable. Please retry later.'});}
       return res.json({success:true,expiresIn:600,cooldown:60,message:'Verification code sent.'});
     }catch(err){await db.pgPool.query('DELETE FROM cp_email_otps WHERE email=$1 AND code_hash=$2',[addr,hash]).catch(()=>{});return res.status(503).json({success:false,error:'Email delivery unavailable.'});}
   });
@@ -70,7 +74,11 @@ module.exports = async function installEmailOtp(app, db, io) {
     const {email,code,name}=req.body||{};
     if(!valid(email)||typeof code!=='string'||!/^\d{6}$/.test(code)||(name&&(typeof name!=='string'||name.length>100)))return res.status(400).json({success:false,error:'Valid email and six-digit code required.'});
     if(!ready())return res.status(503).json({success:false,error:'Email verification is not configured yet.'});
-    const addr=normalize(email),now=Date.now(),client=await db.pgPool.connect();
+    const addr=normalize(email);
+    const allowList=(process.env.EMAIL_TEST_ALLOWLIST||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+    if(!allowList.length)return res.status(503).json({success:false,error:'Testing email allowlist is not configured.'});
+    if(!allowList.includes(addr))return res.status(403).json({success:false,error:'This email is not enrolled in the GitPit testing program.'});
+    const now=Date.now(),client=await db.pgPool.connect();
     try{
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[addr]);
