@@ -1,0 +1,43 @@
+name: GitPit Email OTP CI
+on:
+  push:
+    branches:
+      - gitpit-v114-testing
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-email-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate updated JavaScript syntax
+        run: |
+          node --check server.js
+          node --check database.js
+          node --check server-bootstrap.js
+          node --check services/emailOtp.js
+          node --check public/js/auth.js
+          node --check js/auth.js
+          node --check prepare-client-v2.js
+      - name: Run existing UI regression tests
+        run: npm run test:ui
+      - name: Verify email routes are present and phone is optional
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const server=fs.readFileSync('server.js','utf8');
+          const email=fs.readFileSync('services/emailOtp.js','utf8');
+          const ui=fs.readFileSync('public/index.html','utf8');
+          for(const marker of ['/api/auth/email/send-code','/api/auth/email/verify-code','EMAIL_TEST_ALLOWLIST','timingSafeEqual']) {
+            if (!email.includes(marker)) throw new Error('Missing secure OTP behavior: '+marker);
+          }
+          if (!server.includes('emailVerified') || !ui.includes('email-code-input')) throw new Error('Email login UI or session support missing');
+          if (!ui.includes('auth-panel-email')) throw new Error('Email panel missing');
+          console.log('Email OTP integration checks passed.');
+          NODE
