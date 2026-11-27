@@ -12,7 +12,7 @@ module.exports = async function installEmailOtp(app, db, io) {
   await db.pgPool.query("CREATE TABLE IF NOT EXISTS cp_email_otps (email VARCHAR(254) PRIMARY KEY, code_hash VARCHAR(64) NOT NULL, expires_at BIGINT NOT NULL, attempts INT NOT NULL DEFAULT 0, last_sent_at BIGINT NOT NULL, request_count INT NOT NULL DEFAULT 0, window_start BIGINT NOT NULL)");
   const users = await db.pgPool.query('SELECT id, email_verified FROM cp_users');
   for(const row of users.rows){const u=db.getUser(row.id);if(u)u.emailVerified=!!row.email_verified;}
-  const ready=()=>!!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM && process.env.EMAIL_OTP_SECRET && process.env.EMAIL_OTP_SECRET.length>=32);
+  const ready=()=>!!(process.env.EMAIL_OTP_SECRET && process.env.EMAIL_OTP_SECRET.length>=32 && ((process.env.RESEND_API_KEY && process.env.EMAIL_FROM) || (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)));
   app.get('/api/auth/email/config',(_req,res)=>res.json({enabled:ready(),method:'email-otp'}));
   const noStore=(_req,res,next)=>{res.set('Cache-Control','no-store');next();};
 
@@ -37,7 +37,29 @@ module.exports = async function installEmailOtp(app, db, io) {
       await client.query('COMMIT');
     }catch(err){try{await client.query('ROLLBACK');}catch{}console.error('[EMAIL OTP] Store error',err.code||'unknown');return res.status(503).json({success:false,error:'Unable to request code.'});}finally{client.release();}
     try{
-      const response=await fetch('https://api.resend.com/emails',{method:'POST',signal:AbortSignal.timeout(12000),headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.EMAIL_FROM,to:[addr],subject:'Your GitPit verification code',text:'Your GitPit verification code is '+code+'. It expires in 10 minutes. Never share it.'})});
+      let response;
+      if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN && process.env.EMAIL_PROVIDER === 'mailgun') {
+        // Mailgun sandbox domains permit verified/authorized recipient addresses.
+        const domain=process.env.MAILGUN_DOMAIN;
+        if(!/^[a-z0-9.-]+$/i.test(domain))throw new Error('Invalid sender domain');
+        const fields=new URLSearchParams({
+          from:process.env.EMAIL_FROM || ('GitPit Testing <postmaster@'+domain+'>'),
+          to:addr,subject:'Your GitPit verification code',
+          text:'Your GitPit verification code is '+code+'. It expires in 10 minutes. Never share it.'
+        });
+        response=await fetch('https://'+(process.env.MAILGUN_REGION==='eu'?'api.eu.mailgun.net':'api.mailgun.net')+'/v3/'+domain+'/messages',{
+          method:'POST',signal:AbortSignal.timeout(12000),
+          headers:{Authorization:'Basic '+Buffer.from('api:'+process.env.MAILGUN_API_KEY).toString('base64'),'Content-Type':'application/x-www-form-urlencoded'},
+          body:fields.toString()
+        });
+      } else {
+        if(!process.env.RESEND_API_KEY||!process.env.EMAIL_FROM)throw new Error('Resend unavailable');
+        response=await fetch('https://api.resend.com/emails',{
+          method:'POST',signal:AbortSignal.timeout(12000),
+          headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'},
+          body:JSON.stringify({from:process.env.EMAIL_FROM,to:[addr],subject:'Your GitPit verification code',text:'Your GitPit verification code is '+code+'. It expires in 10 minutes. Never share it.'})
+        });
+      }
       const result=await response.json().catch(()=>({}));
       if(!response.ok||!result.id){await db.pgPool.query('DELETE FROM cp_email_otps WHERE email=$1 AND code_hash=$2',[addr,hash]);console.warn('[EMAIL OTP] Delivery rejected HTTP',response.status);return res.status(503).json({success:false,error:'Email delivery unavailable. Please retry later.'});}
       return res.json({success:true,expiresIn:600,cooldown:60,message:'Verification code sent.'});
