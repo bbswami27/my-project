@@ -871,7 +871,7 @@ class Database {
           status: u.status || 'Available',
           presence: u.presence || 'online',
           online: u.online !== undefined ? u.online : true,
-          phone: (isSelf || !priv.hidePhone) ? u.phone : '',
+          phone: u.phoneVerified && (isSelf || !priv.hidePhone) ? (u.phone || '') : '',
           phoneVerified: !!u.phoneVerified,
           emailVerified: !!u.emailVerified,
           email: isSelf ? u.email : '',
